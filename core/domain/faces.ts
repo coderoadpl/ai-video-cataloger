@@ -10,6 +10,10 @@ export const FACE_ENGINE_VERSION = 2;
 
 export const DEFAULT_FACE_CLUSTER_CUT_SIMILARITY = 0.56;
 
+export const FACE_CLUSTER_MIN_EDGE_DENSITY = 0.3;
+
+export const FACE_IDENTITY_MIN_SCORE = 0.75;
+
 export const FACE_CLUSTERING = {
   autoAssignSimilarity: 0.5,
   autoAssignMargin: 0.05,
@@ -332,6 +336,7 @@ export interface FaceClusteringOutcome {
 
 export interface FaceClusteringOptions {
   clusterCutSimilarity?: number | undefined;
+  minEdgeDensity?: number | undefined;
   onSimilarityBlock?: ((candidatePairs: number) => void) | undefined;
 }
 
@@ -354,38 +359,97 @@ interface MergeCandidate {
   leftId: number;
   rightId: number;
   score: number;
+  density: number;
   mergedSize: number;
-  minObsId: string;
+  minRank: number;
 }
 
+type NumericArray = Float64Array | Uint32Array | Uint8Array | readonly number[];
+
+const at = (array: NumericArray, index: number): number => array[index] ?? 0;
+
 class MergeHeap {
-  private readonly values: MergeCandidate[] = [];
+  private scores: Float64Array;
+  private densities: Float64Array;
+  private mergedSizes: Uint32Array;
+  private minRanks: Uint32Array;
+  private leftIds: Uint32Array;
+  private rightIds: Uint32Array;
+  private length = 0;
+
+  constructor(capacity: number) {
+    const initialCapacity = Math.max(16, capacity);
+    this.scores = new Float64Array(initialCapacity);
+    this.densities = new Float64Array(initialCapacity);
+    this.mergedSizes = new Uint32Array(initialCapacity);
+    this.minRanks = new Uint32Array(initialCapacity);
+    this.leftIds = new Uint32Array(initialCapacity);
+    this.rightIds = new Uint32Array(initialCapacity);
+  }
 
   push(candidate: MergeCandidate): void {
-    this.values.push(candidate);
-    this.bubbleUp(this.values.length - 1);
+    if (this.length === this.scores.length) this.grow();
+    const index = this.length;
+    this.scores[index] = candidate.score;
+    this.densities[index] = candidate.density;
+    this.mergedSizes[index] = candidate.mergedSize;
+    this.minRanks[index] = candidate.minRank;
+    this.leftIds[index] = candidate.leftId;
+    this.rightIds[index] = candidate.rightId;
+    this.length += 1;
+    this.bubbleUp(index);
   }
 
   pop(): MergeCandidate | undefined {
-    const first = this.values[0];
-    const last = this.values.pop();
-    if (first === undefined || last === undefined) return undefined;
-    if (this.values.length > 0) {
-      this.values[0] = last;
+    if (this.length === 0) return undefined;
+    const first = this.candidateAt(0);
+    this.length -= 1;
+    if (this.length > 0) {
+      this.copy(this.length, 0);
       this.bubbleDown(0);
     }
     return first;
+  }
+
+  private grow(): void {
+    const capacity = this.scores.length * 2;
+    const scores = new Float64Array(capacity);
+    scores.set(this.scores);
+    this.scores = scores;
+    const densities = new Float64Array(capacity);
+    densities.set(this.densities);
+    this.densities = densities;
+    const mergedSizes = new Uint32Array(capacity);
+    mergedSizes.set(this.mergedSizes);
+    this.mergedSizes = mergedSizes;
+    const minRanks = new Uint32Array(capacity);
+    minRanks.set(this.minRanks);
+    this.minRanks = minRanks;
+    const leftIds = new Uint32Array(capacity);
+    leftIds.set(this.leftIds);
+    this.leftIds = leftIds;
+    const rightIds = new Uint32Array(capacity);
+    rightIds.set(this.rightIds);
+    this.rightIds = rightIds;
+  }
+
+  private candidateAt(index: number): MergeCandidate {
+    return {
+      score: at(this.scores, index),
+      density: at(this.densities, index),
+      mergedSize: at(this.mergedSizes, index),
+      minRank: at(this.minRanks, index),
+      leftId: at(this.leftIds, index),
+      rightId: at(this.rightIds, index),
+    };
   }
 
   private bubbleUp(index: number): void {
     let child = index;
     while (child > 0) {
       const parent = Math.floor((child - 1) / 2);
-      const childValue = this.values[child];
-      const parentValue = this.values[parent];
-      if (childValue === undefined || parentValue === undefined || compareMergeCandidate(childValue, parentValue) >= 0) return;
-      this.values[child] = parentValue;
-      this.values[parent] = childValue;
+      if (this.compare(child, parent) >= 0) return;
+      this.swap(child, parent);
       child = parent;
     }
   }
@@ -396,58 +460,274 @@ class MergeHeap {
       const left = parent * 2 + 1;
       const right = left + 1;
       let best = parent;
-      const leftValue = this.values[left];
-      const rightValue = this.values[right];
-      const bestValue = this.values[best];
-      if (leftValue !== undefined && bestValue !== undefined && compareMergeCandidate(leftValue, bestValue) < 0) best = left;
-      const nextBestValue = this.values[best];
-      if (rightValue !== undefined && nextBestValue !== undefined && compareMergeCandidate(rightValue, nextBestValue) < 0) best = right;
+      if (left < this.length && this.compare(left, best) < 0) best = left;
+      if (right < this.length && this.compare(right, best) < 0) best = right;
       if (best === parent) return;
-      const parentValue = this.values[parent];
-      const swapValue = this.values[best];
-      if (parentValue === undefined || swapValue === undefined) return;
-      this.values[parent] = swapValue;
-      this.values[best] = parentValue;
+      this.swap(parent, best);
       parent = best;
     }
   }
+
+  private copy(from: number, to: number): void {
+    this.scores[to] = at(this.scores, from);
+    this.densities[to] = at(this.densities, from);
+    this.mergedSizes[to] = at(this.mergedSizes, from);
+    this.minRanks[to] = at(this.minRanks, from);
+    this.leftIds[to] = at(this.leftIds, from);
+    this.rightIds[to] = at(this.rightIds, from);
+  }
+
+  private swapField(field: Float64Array | Uint32Array, left: number, right: number): void {
+    const leftValue = at(field, left);
+    field[left] = at(field, right);
+    field[right] = leftValue;
+  }
+
+  private swap(left: number, right: number): void {
+    this.swapField(this.scores, left, right);
+    this.swapField(this.densities, left, right);
+    this.swapField(this.mergedSizes, left, right);
+    this.swapField(this.minRanks, left, right);
+    this.swapField(this.leftIds, left, right);
+    this.swapField(this.rightIds, left, right);
+  }
+
+  private compare(left: number, right: number): number {
+    return (at(this.scores, right) - at(this.scores, left))
+      || (at(this.mergedSizes, right) - at(this.mergedSizes, left))
+      || (at(this.minRanks, left) - at(this.minRanks, right))
+      || (at(this.leftIds, left) - at(this.leftIds, right))
+      || (at(this.rightIds, left) - at(this.rightIds, right));
+  }
 }
-
-const compareMergeCandidate = (left: MergeCandidate, right: MergeCandidate): number =>
-  right.score - left.score
-  || right.mergedSize - left.mergedSize
-  || left.minObsId.localeCompare(right.minObsId)
-  || left.leftId - right.leftId
-  || left.rightId - right.rightId;
-
-const clusterPairKey = (leftId: number, rightId: number): string =>
-  leftId < rightId ? `${leftId}:${rightId}` : `${rightId}:${leftId}`;
 
 const pairIds = (leftId: number, rightId: number): { leftId: number; rightId: number } =>
   leftId < rightId ? { leftId, rightId } : { leftId: rightId, rightId: leftId };
 
 const isClusterableFaceInput = (observation: FaceClusterInput): boolean =>
-  observation.quality >= FACE_QUALITY.minScore
+  observation.quality >= FACE_IDENTITY_MIN_SCORE
   && (observation.boxPx === undefined || observation.boxPx >= FACE_QUALITY.minBoxPx);
+
+interface FacePairSum {
+  sum: number;
+  count: number;
+}
+
+class FacePairSumStore {
+  private keyLeft: Uint32Array;
+  private keyRight: Uint32Array;
+  private sums: Float64Array;
+  private counts: Uint32Array;
+  private entries = 0;
+
+  constructor(expectedEntries: number) {
+    const capacity = tableCapacityFor(expectedEntries);
+    this.keyLeft = new Uint32Array(capacity);
+    this.keyRight = new Uint32Array(capacity);
+    this.sums = new Float64Array(capacity);
+    this.counts = new Uint32Array(capacity);
+  }
+
+  add(leftId: number, rightId: number, sum: number, count: number): void {
+    const slot = this.slotFor(leftId, rightId);
+    if (at(this.keyLeft, slot) !== 0) {
+      this.sums[slot] = at(this.sums, slot) + sum;
+      this.counts[slot] = at(this.counts, slot) + count;
+      return;
+    }
+    this.write(slot, leftId, rightId, sum, count);
+    if (this.entries * 10 > this.keyLeft.length * 7) this.grow();
+  }
+
+  set(leftId: number, rightId: number, sum: number, count: number): void {
+    const slot = this.slotFor(leftId, rightId);
+    if (at(this.keyLeft, slot) === 0) {
+      this.write(slot, leftId, rightId, sum, count);
+      if (this.entries * 10 > this.keyLeft.length * 7) this.grow();
+      return;
+    }
+    this.sums[slot] = sum;
+    this.counts[slot] = count;
+  }
+
+  get(leftId: number, rightId: number): FacePairSum {
+    const slot = this.slotFor(leftId, rightId);
+    return at(this.keyLeft, slot) === 0
+      ? { sum: 0, count: 0 }
+      : { sum: at(this.sums, slot), count: at(this.counts, slot) };
+  }
+
+  private write(slot: number, leftId: number, rightId: number, sum: number, count: number): void {
+    const ids = pairIds(leftId, rightId);
+    this.keyLeft[slot] = ids.leftId + 1;
+    this.keyRight[slot] = ids.rightId + 1;
+    this.sums[slot] = sum;
+    this.counts[slot] = count;
+    this.entries += 1;
+  }
+
+  private slotFor(leftId: number, rightId: number): number {
+    const ids = pairIds(leftId, rightId);
+    let slot = hashPair(ids.leftId, ids.rightId) & (this.keyLeft.length - 1);
+    while (true) {
+      const left = at(this.keyLeft, slot);
+      if (left === 0) return slot;
+      if (left === ids.leftId + 1 && at(this.keyRight, slot) === ids.rightId + 1) return slot;
+      slot = (slot + 1) & (this.keyLeft.length - 1);
+    }
+  }
+
+  private grow(): void {
+    const oldLeft = this.keyLeft;
+    const oldRight = this.keyRight;
+    const oldSums = this.sums;
+    const oldCounts = this.counts;
+    this.keyLeft = new Uint32Array(oldLeft.length * 2);
+    this.keyRight = new Uint32Array(oldRight.length * 2);
+    this.sums = new Float64Array(oldSums.length * 2);
+    this.counts = new Uint32Array(oldCounts.length * 2);
+    this.entries = 0;
+    for (let index = 0; index < oldLeft.length; index += 1) {
+      const left = at(oldLeft, index);
+      if (left === 0) continue;
+      this.set(left - 1, at(oldRight, index) - 1, at(oldSums, index), at(oldCounts, index));
+    }
+  }
+}
+
+const tableCapacityFor = (expectedEntries: number): number => {
+  let capacity = 16;
+  const target = Math.max(16, Math.ceil(expectedEntries / 0.7));
+  while (capacity < target) capacity *= 2;
+  return capacity;
+};
+
+const hashPair = (leftId: number, rightId: number): number =>
+  (Math.imul(leftId + 1, 0x9e3779b1) ^ Math.imul(rightId + 1, 0x85ebca77)) >>> 0;
+
+export const buildFacePairSumStoreForTest = (expectedEntries: number): {
+  add: (leftId: number, rightId: number, sum: number, count: number) => void;
+  get: (leftId: number, rightId: number) => FacePairSum;
+} => new FacePairSumStore(expectedEntries);
+
+export interface FaceSimilarityEdges {
+  leftIds: Uint32Array;
+  rightIds: Uint32Array;
+  similarities: Float64Array;
+  count: number;
+}
+
+class FaceSimilarityEdgeBuilder {
+  private leftIds: Uint32Array;
+  private rightIds: Uint32Array;
+  private similarities: Float64Array;
+  private length = 0;
+
+  constructor(capacity: number) {
+    const initialCapacity = Math.max(16, capacity);
+    this.leftIds = new Uint32Array(initialCapacity);
+    this.rightIds = new Uint32Array(initialCapacity);
+    this.similarities = new Float64Array(initialCapacity);
+  }
+
+  append(leftId: number, rightId: number, similarity: number): void {
+    if (this.length === this.leftIds.length) this.grow();
+    this.leftIds[this.length] = leftId;
+    this.rightIds[this.length] = rightId;
+    this.similarities[this.length] = similarity;
+    this.length += 1;
+  }
+
+  build(): FaceSimilarityEdges {
+    return {
+      leftIds: this.leftIds.slice(0, this.length),
+      rightIds: this.rightIds.slice(0, this.length),
+      similarities: this.similarities.slice(0, this.length),
+      count: this.length,
+    };
+  }
+
+  private grow(): void {
+    const capacity = this.leftIds.length * 2;
+    const leftIds = new Uint32Array(capacity);
+    leftIds.set(this.leftIds);
+    this.leftIds = leftIds;
+    const rightIds = new Uint32Array(capacity);
+    rightIds.set(this.rightIds);
+    this.rightIds = rightIds;
+    const similarities = new Float64Array(capacity);
+    similarities.set(this.similarities);
+    this.similarities = similarities;
+  }
+}
+
+export interface PreparedFaceClustering {
+  ordered: FaceClusterInput[];
+  unassignedObsIds: string[];
+  edges: FaceSimilarityEdges;
+}
+
+export const prepareFaceClustering = (
+  observations: readonly FaceClusterInput[],
+  options: Pick<FaceClusteringOptions, 'onSimilarityBlock'> = {},
+): PreparedFaceClustering => {
+  const allOrdered = [...observations].sort((left, right) => left.obsId.localeCompare(right.obsId));
+  const ordered = allOrdered.filter(isClusterableFaceInput);
+  const unassignedObsIds = allOrdered
+    .filter((observation) => !isClusterableFaceInput(observation))
+    .map((observation) => observation.obsId);
+  const edges = buildFaceSimilarityEdges(ordered, options.onSimilarityBlock);
+  return { ordered, unassignedObsIds, edges };
+};
+
+export const buildFaceSimilarityEdges = (
+  ordered: readonly FaceClusterInput[],
+  onSimilarityBlock?: ((candidatePairs: number) => void) | undefined,
+): FaceSimilarityEdges => {
+  const builder = new FaceSimilarityEdgeBuilder(ordered.length);
+  for (let leftBlockStart = 0; leftBlockStart < ordered.length; leftBlockStart += FACE_CLUSTERING.edgeBlockSize) {
+    const leftBlockEnd = Math.min(leftBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
+    for (let rightBlockStart = leftBlockStart; rightBlockStart < ordered.length; rightBlockStart += FACE_CLUSTERING.edgeBlockSize) {
+      const rightBlockEnd = Math.min(rightBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
+      onSimilarityBlock?.((leftBlockEnd - leftBlockStart) * (rightBlockEnd - rightBlockStart));
+      for (let leftIndex = leftBlockStart; leftIndex < leftBlockEnd; leftIndex += 1) {
+        const left = ordered[leftIndex];
+        if (left === undefined) continue;
+        const firstRight = rightBlockStart === leftBlockStart ? leftIndex + 1 : rightBlockStart;
+        for (let rightIndex = firstRight; rightIndex < rightBlockEnd; rightIndex += 1) {
+          const right = ordered[rightIndex];
+          if (right === undefined) continue;
+          const similarity = cosineSimilarity(left.embedding, right.embedding);
+          if (similarity < FACE_CLUSTERING.reviewBandMin) continue;
+          builder.append(leftIndex, rightIndex, similarity);
+        }
+      }
+    }
+  }
+  return builder.build();
+};
 
 const pushMergeCandidate = (
   heap: MergeHeap,
   clusters: ReadonlyMap<number, AgglomerativeCluster>,
-  edgeSums: ReadonlyMap<string, number>,
+  pairSums: FacePairSumStore,
   leftId: number,
   rightId: number,
 ): void => {
   const left = clusters.get(leftId);
   const right = clusters.get(rightId);
   if (left === undefined || right === undefined) return;
-  const sum = edgeSums.get(clusterPairKey(leftId, rightId)) ?? 0;
-  const score = sum / (left.members.length * right.members.length);
+  const pairSum = pairSums.get(leftId, rightId);
+  if (pairSum.count === 0) return;
+  const denominator = left.members.length * right.members.length;
+  const score = pairSum.sum / denominator;
   const ids = pairIds(leftId, rightId);
   heap.push({
     ...ids,
     score,
+    density: pairSum.count / denominator,
     mergedSize: left.members.length + right.members.length,
-    minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
+    minRank: Math.min(at(left.members, 0), at(right.members, 0)),
   });
 };
 
@@ -458,12 +738,18 @@ export const clusterFaceObservations = (
   observations: readonly FaceClusterInput[],
   options: FaceClusteringOptions = {},
 ): FaceClusteringOutcome => {
+  const prepared = prepareFaceClustering(observations, options);
+  return clusterPreparedFaceObservations(prepared, options);
+};
+
+export const clusterPreparedFaceObservations = (
+  prepared: PreparedFaceClustering,
+  options: Omit<FaceClusteringOptions, 'onSimilarityBlock'> = {},
+): FaceClusteringOutcome => {
   const clusterCutSimilarity = options.clusterCutSimilarity ?? FACE_CLUSTERING.clusterCutSimilarity;
-  const allOrdered = [...observations].sort((left, right) => left.obsId.localeCompare(right.obsId));
-  const ordered = allOrdered.filter(isClusterableFaceInput);
-  const unassignedObsIds = allOrdered
-    .filter((observation) => !isClusterableFaceInput(observation))
-    .map((observation) => observation.obsId);
+  const minEdgeDensity = options.minEdgeDensity ?? FACE_CLUSTER_MIN_EDGE_DENSITY;
+  const ordered = prepared.ordered;
+  const unassignedObsIds = [...prepared.unassignedObsIds];
 
   const clusters = new Map<number, AgglomerativeCluster>();
   for (let index = 0; index < ordered.length; index += 1) {
@@ -477,46 +763,41 @@ export const clusterFaceObservations = (
     });
   }
 
-  const edgeSums = new Map<string, number>();
-  const neighbours = new Map<number, Set<number>>();
-  const heap = new MergeHeap();
-  for (let leftBlockStart = 0; leftBlockStart < ordered.length; leftBlockStart += FACE_CLUSTERING.edgeBlockSize) {
-    const leftBlockEnd = Math.min(leftBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
-    for (let rightBlockStart = leftBlockStart; rightBlockStart < ordered.length; rightBlockStart += FACE_CLUSTERING.edgeBlockSize) {
-      const rightBlockEnd = Math.min(rightBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
-      options.onSimilarityBlock?.((leftBlockEnd - leftBlockStart) * (rightBlockEnd - rightBlockStart));
-      for (let leftIndex = leftBlockStart; leftIndex < leftBlockEnd; leftIndex += 1) {
-        const left = ordered[leftIndex];
-        if (left === undefined) continue;
-        const firstRight = rightBlockStart === leftBlockStart ? leftIndex + 1 : rightBlockStart;
-        for (let rightIndex = firstRight; rightIndex < rightBlockEnd; rightIndex += 1) {
-          const right = ordered[rightIndex];
-          if (right === undefined) continue;
-          const similarity = cosineSimilarity(left.embedding, right.embedding);
-          if (similarity < FACE_CLUSTERING.reviewBandMin) continue;
-          edgeSums.set(clusterPairKey(leftIndex, rightIndex), similarity);
-          const leftNeighbours = neighbours.get(leftIndex) ?? new Set<number>();
-          leftNeighbours.add(rightIndex);
-          neighbours.set(leftIndex, leftNeighbours);
-          const rightNeighbours = neighbours.get(rightIndex) ?? new Set<number>();
-          rightNeighbours.add(leftIndex);
-          neighbours.set(rightIndex, rightNeighbours);
-          pushMergeCandidate(heap, clusters, edgeSums, leftIndex, rightIndex);
-        }
-      }
-    }
+  const maxClusterCount = Math.max(1, ordered.length * 2);
+  const alive = new Uint8Array(maxClusterCount);
+  const neighbours: number[][] = Array.from({ length: maxClusterCount }, () => []);
+  for (let index = 0; index < ordered.length; index += 1) alive[index] = 1;
+  const pairSums = new FacePairSumStore(prepared.edges.count + ordered.length);
+  const heap = new MergeHeap(prepared.edges.count + ordered.length);
+  for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
+    const leftId = at(prepared.edges.leftIds, edgeIndex);
+    const rightId = at(prepared.edges.rightIds, edgeIndex);
+    const similarity = at(prepared.edges.similarities, edgeIndex);
+    pairSums.set(leftId, rightId, similarity, 1);
+    neighbours[leftId]?.push(rightId);
+    neighbours[rightId]?.push(leftId);
+  }
+  for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
+    pushMergeCandidate(heap, clusters, pairSums, at(prepared.edges.leftIds, edgeIndex), at(prepared.edges.rightIds, edgeIndex));
   }
 
   let nextClusterId = ordered.length;
+  let markerToken = 1;
+  const markers = new Uint32Array(maxClusterCount);
   while (true) {
     const candidate = heap.pop();
     if (candidate === undefined || candidate.score < clusterCutSimilarity) break;
+    if (at(alive, candidate.leftId) === 0 || at(alive, candidate.rightId) === 0) continue;
     const left = clusters.get(candidate.leftId);
     const right = clusters.get(candidate.rightId);
     if (left === undefined || right === undefined) continue;
-    const currentSum = edgeSums.get(clusterPairKey(left.id, right.id)) ?? 0;
-    const currentScore = currentSum / (left.members.length * right.members.length);
+    const currentPairSum = pairSums.get(left.id, right.id);
+    const currentDenominator = left.members.length * right.members.length;
+    const currentScore = currentPairSum.sum / currentDenominator;
+    const currentDensity = currentPairSum.count / currentDenominator;
     if (Math.abs(currentScore - candidate.score) > Number.EPSILON) continue;
+    if (Math.abs(currentDensity - candidate.density) > Number.EPSILON) continue;
+    if (left.members.length >= 3 && right.members.length >= 3 && currentDensity < minEdgeDensity) continue;
 
     const members = [...left.members, ...right.members].sort((leftMember, rightMember) =>
       (ordered[leftMember]?.obsId ?? '').localeCompare(ordered[rightMember]?.obsId ?? ''));
@@ -524,35 +805,38 @@ export const clusterFaceObservations = (
       id: nextClusterId,
       members,
       minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
-      totals: left.totals.map((value, index) => value + (right.totals[index] ?? 0)),
+      totals: left.totals.map((value, index) => value + at(right.totals, index)),
     };
     nextClusterId += 1;
 
-    const neighbourIds = new Set<number>([
-      ...(neighbours.get(left.id) ?? []),
-      ...(neighbours.get(right.id) ?? []),
-    ]);
-    neighbourIds.delete(left.id);
-    neighbourIds.delete(right.id);
+    const neighbourIds: number[] = [];
+    markerToken += 1;
+    for (const id of [...(neighbours[left.id] ?? []), ...(neighbours[right.id] ?? [])]) {
+      if (id === left.id || id === right.id || at(alive, id) === 0 || at(markers, id) === markerToken) continue;
+      markers[id] = markerToken;
+      neighbourIds.push(id);
+    }
     clusters.delete(left.id);
     clusters.delete(right.id);
-    neighbours.delete(left.id);
-    neighbours.delete(right.id);
+    alive[left.id] = 0;
+    alive[right.id] = 0;
+    neighbours[left.id] = [];
+    neighbours[right.id] = [];
     clusters.set(merged.id, merged);
-    neighbours.set(merged.id, new Set<number>());
+    alive[merged.id] = 1;
 
     for (const neighbourId of neighbourIds) {
       const neighbourCluster = clusters.get(neighbourId);
       if (neighbourCluster === undefined) continue;
-      const mergedSum = (edgeSums.get(clusterPairKey(left.id, neighbourId)) ?? 0)
-        + (edgeSums.get(clusterPairKey(right.id, neighbourId)) ?? 0);
-      neighbours.get(neighbourId)?.delete(left.id);
-      neighbours.get(neighbourId)?.delete(right.id);
-      if (mergedSum <= 0) continue;
-      edgeSums.set(clusterPairKey(merged.id, neighbourId), mergedSum);
-      neighbours.get(neighbourId)?.add(merged.id);
-      neighbours.get(merged.id)?.add(neighbourId);
-      pushMergeCandidate(heap, clusters, edgeSums, merged.id, neighbourId);
+      const leftPair = pairSums.get(left.id, neighbourId);
+      const rightPair = pairSums.get(right.id, neighbourId);
+      const mergedSum = leftPair.sum + rightPair.sum;
+      const mergedCount = leftPair.count + rightPair.count;
+      if (mergedCount === 0) continue;
+      pairSums.set(merged.id, neighbourId, mergedSum, mergedCount);
+      neighbours[neighbourId]?.push(merged.id);
+      neighbours[merged.id]?.push(neighbourId);
+      pushMergeCandidate(heap, clusters, pairSums, merged.id, neighbourId);
     }
   }
 

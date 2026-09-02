@@ -119,6 +119,7 @@ interface FacesReclusterOptions extends JsonOption {
   reference?: string | undefined;
   labelledPairs?: string | undefined;
   thresholds?: string | undefined;
+  densities?: string | undefined;
 }
 
 interface AnalyzerSelection {
@@ -1527,6 +1528,7 @@ faces
   .option('--reference <path>', 'reference partition file for benchmark scoring')
   .option('--labelled-pairs <path>', 'labelled pairs file for benchmark scoring')
   .option('--thresholds <list>', 'comma-separated benchmark threshold sweep')
+  .option('--densities <list>', 'comma-separated benchmark edge-density sweep')
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: FacesReclusterOptions) => {
     const json = isJsonMode(options);
@@ -1549,6 +1551,9 @@ faces
         ...(options.thresholds === undefined
           ? {}
           : { thresholds: options.thresholds.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
+        ...(options.densities === undefined
+          ? {}
+          : { densities: options.densities.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
       });
       if (!report.ok) {
         emitError(json, report.error);
@@ -1996,12 +2001,13 @@ const facesExemplarsHuman = (data: unknown): string => {
   const cropsWritten = typeof data.cropsWritten === 'number' ? data.cropsWritten : 0;
   const filesVisited = typeof data.filesVisited === 'number' ? data.filesVisited : 0;
   const filesUnavailable = typeof data.filesUnavailable === 'number' ? data.filesUnavailable : 0;
+  const cropPathsNormalized = typeof data.cropPathsNormalized === 'number' ? data.cropPathsNormalized : 0;
   const detectionsMismatched = typeof data.detectionsMismatched === 'number' ? data.detectionsMismatched : 0;
   const peopleWithoutExemplarBefore = typeof data.peopleWithoutExemplarBefore === 'number' ? data.peopleWithoutExemplarBefore : 0;
   const peopleWithoutExemplarAfter = typeof data.peopleWithoutExemplarAfter === 'number' ? data.peopleWithoutExemplarAfter : 0;
   const dryRun = data.dryRun === true;
   const limitReached = data.limitReached === true;
-  return `Exemplars: wrote ${cropsWritten} crops over ${filesVisited} files `
+  return `Exemplars: wrote ${cropsWritten} crops and normalized ${cropPathsNormalized} paths over ${filesVisited} files `
     + `(${filesUnavailable} unavailable, ${detectionsMismatched} detections no longer matched), `
     + `${peopleWithoutExemplarBefore} → ${peopleWithoutExemplarAfter} people without a photo`
     + (dryRun ? ' — dry run, nothing written' : '')

@@ -1,6 +1,7 @@
 import {
   EXEMPLAR_BBOX_MIN_IOU,
   FACE_ENGINE_VERSION,
+  FACE_IDENTITY_MIN_SCORE,
   FACE_LIMITS,
   FILE_ARTIFACTS,
   boxIoU,
@@ -73,6 +74,7 @@ export interface FacesExemplarsOutput {
   filesUnavailable: number;
   cropsPlanned: number;
   cropsWritten: number;
+  cropPathsNormalized: number;
   detectionsMismatched: number;
   observationsUnaddressable: number;
   limitReached: boolean;
@@ -968,6 +970,7 @@ export const runFacesExemplarsPass = async (
 
   const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
   const planObservations: ExemplarPlanObservation[] = [];
+  let cropPathsNormalized = 0;
   for (const observation of observations.value) {
     if (observation.personId === null) continue;
     let cropPath = observation.cropPath === null ? null : reanchorFaceCropPath(currentCatalogDir, observation.cropPath);
@@ -975,6 +978,13 @@ export const runFacesExemplarsPass = async (
       const exists = await deps.fs.exists(cropPath);
       if (!exists.ok) return exists;
       if (!exists.value) cropPath = null;
+      else if (observation.cropPath !== cropPath && !input.dryRun) {
+        const updated = await deps.globalCatalog.upsertFaceObservation({ ...observation, cropPath });
+        if (!updated.ok) return updated;
+        cropPathsNormalized += 1;
+      } else if (observation.cropPath !== cropPath) {
+        cropPathsNormalized += 1;
+      }
     }
     planObservations.push({
       obsId: observation.obsId,
@@ -1111,6 +1121,7 @@ export const runFacesExemplarsPass = async (
     filesUnavailable,
     cropsPlanned: items.length,
     cropsWritten,
+    cropPathsNormalized,
     detectionsMismatched,
     observationsUnaddressable: plan.observationsUnaddressable,
     limitReached,
@@ -1188,8 +1199,12 @@ const indexDetection = async (
   const embedding = normalizeEmbedding([...embedded.value]);
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
-  const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
-  const assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
+  const identityEligible = detection.score >= FACE_IDENTITY_MIN_SCORE;
+  let assignedPersonId: string | null = null;
+  if (identityEligible) {
+    const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
+    assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
+  }
   const observation: FaceObservation = {
     obsId,
     fingerprint: input.fingerprint,
@@ -1204,7 +1219,7 @@ const indexDetection = async (
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
-  pool.push(observation);
+  if (identityEligible) pool.push(observation);
   if (assignedPersonId !== null) {
     const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
     if (!updated.ok) return updated;
@@ -1219,7 +1234,7 @@ const seedNewPersonIfReady = async (
   deps: FacesIndexDeps,
   pool: FaceObservation[],
 ): Promise<Result<number, AppError>> => {
-  const unassigned = pool.filter((observation) => observation.personId === null);
+  const unassigned = pool.filter((observation) => observation.personId === null && observation.quality >= FACE_IDENTITY_MIN_SCORE);
   const seed = findNewClusterSeed(unassigned.map((observation) => observation.embedding));
   if (seed.length === 0) return ok(0);
   const personId = `person-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

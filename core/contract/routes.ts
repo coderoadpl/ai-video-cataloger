@@ -1051,6 +1051,7 @@ export const facesExemplarsOutputSchema = z.object({
   filesUnavailable: z.number().int().nonnegative(),
   cropsPlanned: z.number().int().nonnegative(),
   cropsWritten: z.number().int().nonnegative(),
+  cropPathsNormalized: z.number().int().nonnegative(),
   detectionsMismatched: z.number().int().nonnegative(),
   observationsUnaddressable: z.number().int().nonnegative(),
   limitReached: z.boolean(),

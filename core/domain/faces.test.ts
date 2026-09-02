@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 import {
   FACE_CLUSTERING,
+  FACE_CLUSTER_MIN_EDGE_DENSITY,
   FACE_EMBEDDING_DIM,
   FACE_ENGINE_VERSION,
+  FACE_IDENTITY_MIN_SCORE,
   FACE_QUALITY,
   DEFAULT_FACE_CLUSTER_CUT_SIMILARITY,
+  buildFacePairSumStoreForTest,
   boxIoU,
   classifyFace,
   clusterFaceObservations,
@@ -149,6 +153,35 @@ describe('clusterFaceObservations', () => {
       quality: 0.9,
     }));
 
+  it('stores more pair scores than the V8 Map entry cap', () => {
+    const pairCount = 16_777_217;
+    const store = buildFacePairSumStoreForTest(pairCount);
+    for (let index = 0; index < pairCount; index += 1) store.add(index, pairCount + index, 0.6, 1);
+    expect(store.get(0, pairCount)).toEqual({ sum: 0.6, count: 1 });
+    expect(store.get(pairCount - 1, pairCount + pairCount - 1)).toEqual({ sum: 0.6, count: 1 });
+  }, scaledTimeout(60_000));
+
+  it('clusters hundreds of observations across multiple similarity blocks', () => {
+    const groupAngles = [0, 130, 250];
+    const perGroup = 110;
+    const observations = groupAngles.flatMap((baseAngle, groupIndex) =>
+      Array.from({ length: perGroup }, (_, memberIndex) => ({
+        obsId: `g${groupIndex}-${String(memberIndex).padStart(3, '0')}`,
+        embedding: unitAtAngleDeg(baseAngle + (memberIndex % 5) * 0.2),
+        quality: 0.9,
+      })));
+
+    const outcome = clusterFaceObservations(observations);
+
+    expect(outcome.unassignedObsIds).toEqual([]);
+    expect(outcome.clusters.length).toBe(groupAngles.length);
+    for (const cluster of outcome.clusters) {
+      const groupIds = new Set(cluster.memberObsIds.map((obsId) => obsId.split('-')[0]));
+      expect(groupIds.size).toBe(1);
+      expect(cluster.memberObsIds.length).toBe(perGroup);
+    }
+  });
+
   it('clusters two clearly distinct embedding sets into two people', () => {
     const outcome = clusterFaceObservations(poolInputs());
     expect(outcome.clusters.length).toBe(2);
@@ -198,6 +231,36 @@ describe('clusterFaceObservations', () => {
     ]);
   });
 
+  it('blocks sparse bridge merges when both candidate clusters are established', () => {
+    const left = [1, 0];
+    const rightX = 0.2;
+    const rightY = Math.sqrt(1 - rightX * rightX);
+    const right = [rightX, rightY];
+    const bridge = normalizeEmbedding([1 + rightX, rightY]);
+    const observations = [
+      { obsId: 'a-1', embedding: left, quality: 0.9 },
+      { obsId: 'a-2', embedding: left, quality: 0.9 },
+      { obsId: 'a-3', embedding: left, quality: 0.9 },
+      { obsId: 'bridge', embedding: bridge, quality: 0.9 },
+      { obsId: 'b-1', embedding: right, quality: 0.9 },
+      { obsId: 'b-2', embedding: right, quality: 0.9 },
+      { obsId: 'b-3', embedding: right, quality: 0.9 },
+    ];
+
+    expect(clusterFaceObservations(observations, {
+      clusterCutSimilarity: 0.19,
+      minEdgeDensity: 0,
+    }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+      ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'bridge'],
+    ]);
+    expect(clusterFaceObservations(observations, {
+      clusterCutSimilarity: 0.19,
+    }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+      ['a-1', 'a-2', 'a-3', 'bridge'],
+      ['b-1', 'b-2', 'b-3'],
+    ]);
+  });
+
   it('scores missing sparse edges as zero for average linkage', () => {
     const partialNeighbour = [0.37, -0.08362840386889553, Math.sqrt(1 - 0.37 * 0.37 - 0.08362840386889553 * 0.08362840386889553)];
     const outcome = clusterFaceObservations([
@@ -210,16 +273,16 @@ describe('clusterFaceObservations', () => {
     expect(outcome.unassignedObsIds).toEqual(['b-1']);
   });
 
-  it('keeps observations below the face quality floor unassigned', () => {
+  it('keeps observations below the identity quality floor unassigned', () => {
     const outcome = clusterFaceObservations([
-      { obsId: 'good-1', embedding: unitAtAngleDeg(0), quality: FACE_QUALITY.minScore, boxPx: FACE_QUALITY.minBoxPx },
+      { obsId: 'good-1', embedding: unitAtAngleDeg(0), quality: FACE_IDENTITY_MIN_SCORE, boxPx: FACE_QUALITY.minBoxPx },
       { obsId: 'good-2', embedding: unitAtAngleDeg(1), quality: 0.9, boxPx: 80 },
-      { obsId: 'low-score', embedding: unitAtAngleDeg(0), quality: FACE_QUALITY.minScore - 0.01, boxPx: 80 },
+      { obsId: 'stored-low-score', embedding: unitAtAngleDeg(0), quality: FACE_QUALITY.minScore, boxPx: 80 },
       { obsId: 'small-box', embedding: unitAtAngleDeg(0), quality: 0.9, boxPx: FACE_QUALITY.minBoxPx - 1 },
     ]);
 
     expect(outcome.clusters.map((cluster) => cluster.memberObsIds)).toEqual([['good-1', 'good-2']]);
-    expect(outcome.unassignedObsIds).toEqual(['low-score', 'small-box']);
+    expect(outcome.unassignedObsIds).toEqual(['small-box', 'stored-low-score']);
   });
 
   it('uses the supplied cut threshold for benchmark sweeps', () => {
@@ -459,6 +522,8 @@ describe('research thresholds are pinned', () => {
       autoMergeSimilarity: 0.55,
       autoMergeMinPairs: 2,
     });
+    expect(FACE_CLUSTER_MIN_EDGE_DENSITY).toBe(0.3);
+    expect(FACE_IDENTITY_MIN_SCORE).toBe(0.75);
     expect(FACE_EMBEDDING_DIM).toBe(128);
   });
 

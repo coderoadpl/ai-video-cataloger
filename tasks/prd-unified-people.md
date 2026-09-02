@@ -137,6 +137,15 @@ end with crops on disk.
   optimum against the reference partition, and it must admit **zero**
   user-labelled different-person pairs into one cluster. If the two criteria
   disagree, the user-labelled criterion wins.
+- The implemented edge store is typed-array backed and numeric-keyed, so the
+  sparse similarity edge pass is reusable by the benchmark. The benchmark also
+  sweeps `FACE_CLUSTER_MIN_EDGE_DENSITY` candidates because bridge-heavy false
+  merges are controlled by both the cosine cut and the cross-edge density
+  floor.
+- `FACE_IDENTITY_MIN_SCORE` is separate from `FACE_QUALITY.minScore`: borderline
+  detections remain stored and cropped, but they stay unassigned and cannot
+  seed or join identities until a future extraction produces a stronger
+  observation.
 
 **RED-first tests.**
 
@@ -243,15 +252,17 @@ adds no changelog line.
 2. `avc faces index <photo root>` (or Analiza → Zdjęcia). Watch
    `photosProcessed` climb. A catalog whose photos and videos live under
    different roots needs one run per root (see risk 6).
-3. `scripts/faces-benchmark.ts` in real-data mode over the freshly-indexed
+3. `faces exemplars` to normalize any re-anchored crop paths and regenerate
+   missing video or photo crops where the source media is reachable.
+4. `scripts/faces-benchmark.ts` in real-data mode over the freshly-indexed
    catalog, pointed at the operator's reference-partition directory outside
    the repo; the operator labels the emitted pair sample; the report picks the
-   cut.
-4. `faces recluster --dry-run` from Osoby; read people-before/after, largest
+   cut and density floor.
+5. `faces recluster --dry-run` from Osoby; read people-before/after, largest
    clusters and `personsWithoutExemplar`.
-5. `faces recluster` for real. Every person id is re-minted; every name is
+6. `faces recluster` for real. Every person id is re-minted; every name is
    gone.
-6. Rename the people that matter from the person cards.
+7. Rename the people that matter from the person cards.
 
 **Never** `faces purge` at any point: it destroys embeddings and leaves
 completion state stale, so the next pass believes the work is done.
