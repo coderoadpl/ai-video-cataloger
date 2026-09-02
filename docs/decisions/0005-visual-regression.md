@@ -1,7 +1,8 @@
 # ADR-0005: Visual regression — Playwright screenshots over the built renderer
 
 Date: 2026-07-27 · Status: **armed into `check` (2026-08-03, owner mandate,
-W43)** — see (d) below for what changed and why. Adopts the foundation's
+W43)** — see (d) below for what changed and why; **amended 2026-09-02 (W75)**
+with per-environment baselines — see (f). Adopts the foundation's
 ADR-0008
 (`agentproofarch/docs/decisions/0008-visual-regression.md`) with the
 app-specific rulings below. Builds on [ADR-0004](0004-layout-layer.md) (the
@@ -25,8 +26,8 @@ what this app decides for itself.
 ## Adopted verbatim from foundation ADR-0008
 
 1. **Playwright `toHaveScreenshot()`, baselines committed in-repo.** PNGs under
-   `visual/__screenshots__/{platform}/{projectName}/`, reviewed in the diff that
-   changes them. No new runtime, no new service, no hosting decision.
+   `visual/__screenshots__/{environment}/{projectName}/`, reviewed in the diff
+   that changes them. No new runtime, no new service, no hosting decision.
 2. **A separate suite, structurally isolated from the required gates.** The
    specs live in `visual/` with their own `visual/playwright.visual.config.ts`
    (`pnpm run visual`), not in `test/e2e/`. `check`, `smoke` and the e2e
@@ -58,20 +59,15 @@ OS font stack and rasterizer. The principle is "render where the gate runs"; its
 linux letter is a fact about that repo's runner, not about screenshots.
 
 This is a **mac-only Electron app**: it is built, packaged, gated and shipped on
-darwin, and the CI runner is (will be) the owner's mac. Rendering the baselines
+darwin, and every runner it is gated on is a mac. Rendering the baselines
 on linux would compare the product against a rasterizer no user and no gate ever
 sees. So the platform truth is inverted, mechanically, not by a README plea:
 
-- snapshot paths stay platform-scoped
-  (`visual/__screenshots__/{platform}/{projectName}/…`), so a run on another
-  platform cannot overwrite the darwin baselines;
+- snapshot paths are scoped to the environment that rendered them
+  (`visual/__screenshots__/{environment}/{projectName}/…`, see (f)), so one
+  machine's run cannot overwrite another's baselines;
 - `ignoreSnapshots` is on for every non-darwin platform, so such a run — with or
   without `--update-snapshots` — writes nothing at all.
-
-Until the self-hosted runner is registered (OWNER, tracked in
-[the migration plan](../../tasks/migration-agentproofarch-v2.md) decision 6),
-baselines are authored on the same machine that runs the gates. That is the
-same rasterizer, which is the whole of the ADR's requirement.
 
 ### (b) The suite drives the built renderer against fixtures, never live Electron
 
@@ -141,11 +137,10 @@ shown the break were deleted with the worktree before anyone could review them.
 `check` was the only required gate positioned to have caught it, so it is the
 gate that now runs the suite.
 
-The self-hosted-runner CI-job path described in the original version of this
+The staged CI-job path described in the original version of this
 ADR (non-required job first, then a green run history, then a ruleset edit) is
-superseded: there is still no CI runner, `check` runs on the same darwin
-machine that authors the baselines regardless of CI, and the owner chose
-immediate safety over that staged rollout. It is still reverted the moment it
+superseded: the owner chose immediate safety over that rollout, and `check`
+carries the suite wherever it runs. It is still reverted the moment it
 flakes — a flaky required gate is a P1, and an enforcer that cannot be trusted
 is worse than no enforcer; the flake doctrine in
 [CLAUDE.md](../../CLAUDE.md) and the `retries: 0` / `workers: 1` determinism
@@ -160,6 +155,38 @@ harnesses do not overlap: the gallery renders components in isolation at
 `deviceScaleFactor: 2` for inspection; the visual suite renders page skeletons at
 `deviceScaleFactor: 1` for comparison.
 
+### (f) One baseline set per environment (amendment, 2026-09-02, W75)
+
+CI moved to GitHub-hosted `macos-15` runners
+([ADR-0017](0017-hosted-ci-runners.md)). That image is a mac, so (a) still
+holds — but it is not the machine that rendered the committed baselines, and at
+`maxDiffPixels: 0` / `threshold: 0` a different font stack and rasterizer are a
+different image. Three answers were available and two are refused: widening the
+tolerance (the gate would stop seeing the class of regression it exists for) and
+making the CI run report-only (a gate that cannot fail is not a gate).
+
+The third is taken: **the baseline directory is keyed by an explicit environment
+id**, resolved in `scripts/visual-env.ts` and consumed by
+`visual/playwright.visual.config.ts`.
+
+- `VISUAL_ENV` unset or `local-darwin` → `visual/__screenshots__/darwin/` — the
+  existing set, unchanged, so the owner's `pnpm run check` behaves exactly as
+  before.
+- `VISUAL_ENV=ci-macos-15` → `visual/__screenshots__/ci-macos-15/` — rendered by
+  the `visual-baselines` workflow on the runner itself.
+- Any other value throws. Silently falling back would compare the product
+  against whichever set happened to be on disk, which is worse than no gate.
+
+Environment ids are opaque labels, not derived from `process.platform`: two
+darwin machines are two environments, and only an explicit name makes that
+visible in the directory listing.
+
+The CI set is bootstrapped by a `workflow_dispatch` run that renders it with
+`--update-snapshots` and opens a PR with the PNGs for review. Until that PR
+merges, the `check` job fails at the `visual` step — honestly, naming the
+missing baseline — instead of passing on nothing. The sequence is written down
+in [docs/ci.md](../ci.md).
+
 ## Consequences
 
 - `pnpm run visual` rebuilds the harness bundle on every run
@@ -172,8 +199,9 @@ harnesses do not overlap: the gallery renders components in isolation at
   Playwright suites are configured, not typechecked, in this repo. The harness
   *sources* under `apps/web/src/visual/` are fully linted and typechecked like
   any other renderer code, and excluded from the coverage ratchet like the
-  gallery.
+  gallery. The environment resolver it imports lives in `scripts/visual-env.ts`
+  instead, where it is typechecked, linted and unit-tested.
 - macOS font or Chromium updates will one day redraw a baseline with no code
-  change. That is the known cost of exactness; it surfaces as a red
-  **non-required** run, is re-baselined deliberately, and is the reason (d)
-  keeps the check out of the gates.
+  change. That is the known cost of exactness; it surfaces as a red `check`,
+  and is re-baselined deliberately — per environment (f) — never by relaxing
+  the comparison.

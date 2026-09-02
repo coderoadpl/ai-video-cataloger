@@ -147,7 +147,7 @@ upstream argument.
    (for the three binaries) executable. That makes the `onlyBuiltDependencies`
    list self-guarding — deleting an entry turns `smoke` red with the asset name.
 
-9. **Every install path moves together.** The three self-hosted workflows
+9. **Every install path moves together.** The gate workflows
    (`check`, `smoke`, `e2e`) install with `pnpm install --frozen-lockfile`,
    cache the pnpm store via `actions/setup-node`'s `cache: pnpm`, and get pnpm
    from `pnpm/action-setup` pinned by full commit SHA

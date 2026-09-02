@@ -1,0 +1,37 @@
+name: visual-baselines
+
+# Bootstrap and re-baseline the hosted runner's visual set. Never a gate: it
+# writes PNGs and opens a PR for review, and the `check` job stays red until that
+# PR is merged (docs/ci.md, ADR-0005 (f)).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: visual-baselines
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  visual-baselines:
+    name: visual-baselines
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      VISUAL_ENV: ci-macos-15
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      - run: pnpm run visual --update-snapshots
+      - name: Open the baselines PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/open-visual-baselines-pr.sh"

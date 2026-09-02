@@ -30,14 +30,14 @@ anything:
   with the renderer phase) + dependency-cruiser + the renderer bundle build
   (`electron:build:renderer`, which refuses any Node builtin in the renderer
   module graph) + vitest + `pnpm run visual` (Playwright screenshot comparison
-  against the darwin baselines, as required by
-  [ADR-0005](docs/decisions/0005-visual-regression.md)(d)).
+  against the baselines of the current `VISUAL_ENV`, as required by
+  [ADR-0005](docs/decisions/0005-visual-regression.md)(d) and (f)).
 - `pnpm run smoke` = installed-tree check → lockfile lint → boot the real
   in-process app in a temp HOME/folder → drive doctor/scan/config/status
   through the CLI → assert envelope shapes and taxonomy exit codes.
 
 `pnpm run visual` (screenshot comparison of the layout skeletons, including the
-sidebar surfaces, against the darwin baselines in `visual/__screenshots__/` —
+sidebar surfaces, against the baselines in `visual/__screenshots__/` —
 [ADR-0005](docs/decisions/0005-visual-regression.md)) builds and previews the
 `apps/web/visual.html` harness — no Electron, no server, no analysis run — and
 is now part of `check` (W43). An intentional
@@ -45,6 +45,12 @@ UI change is a two-step commit: land the change, run
 `pnpm run visual --update-snapshots` (no `--` — pnpm 10 forwards the literal
 `--` and Playwright then silently ignores the flag), review and commit the
 PNGs.
+The baseline set is chosen by `VISUAL_ENV` (ADR-0005(f)): unset or
+`local-darwin` → `__screenshots__/darwin/` (the local default, nothing changes
+for a local run), `ci-macos-15` → `__screenshots__/ci-macos-15/`, rendered on
+the hosted runner by the `visual-baselines` workflow and reviewed in its own PR;
+any other value is rejected. Re-baselining CI is a workflow dispatch, never a
+tolerance change.
 `scripts/gallery-shots.mjs` stays a capture-only dev tool, never a second
 baseline store.
 
