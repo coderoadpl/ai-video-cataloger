@@ -54,6 +54,15 @@ jobs:
           git fetch --no-tags --depth=200 origin main
           git diff origin/main...HEAD
 
+        On a large diff, work economically within your turn budget: start with
+        `git diff --stat origin/main...HEAD` to see the shape of the change,
+        then read the full diff in a few `git diff` calls grouped by file or
+        directory rather than opening files one by one. ALWAYS call
+        StructuredOutput with a verdict before your turns run out — if the diff
+        is too large to review in full, return FAIL and list in
+        blocking_issues which files you did not get to review; never end the
+        run without calling StructuredOutput.
+
         Judge the diff against this repo's doctrine. Read the files you need:
         `CLAUDE.md`, `docs/architecture.md`, and the relevant
         `docs/decisions/*.md`. Enforce:
@@ -91,7 +100,7 @@ jobs:
       # from the model's tool use).
       CLAUDE_ARGS: >-
         --model sonnet
-        --max-turns 40
+        --max-turns 90
         --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(git show:*)"
         --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}}},"required":["verdict","summary"]}'
     steps:
