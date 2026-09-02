@@ -229,6 +229,44 @@ describe('SqlJsPhotosStore', () => {
     expect(searchTags).toBe('galezie\njezowak');
   });
 
+  it('clears imported completion state in v6 so a completed photo becomes a candidate again', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ proxyState: 'done', proxyWidth: 1280, proxyHeight: 720 }));
+    await store.upsertSighting(sighting());
+    await store.completePhotoFaceIndex(photo().fingerprint, FACE_ENGINE_VERSION);
+    await store.flush();
+    await store.dispose();
+
+    const SQL = await initSqlJs();
+    const seeded = new SQL.Database(fs.readFileSync(store.databasePath()));
+    seeded.run('UPDATE schema_meta SET version = 5');
+    fs.writeFileSync(store.databasePath(), Buffer.from(seeded.export()));
+    seeded.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const candidates = await reopened.listPhotoFaceIndexCandidates(folder.currentPath);
+    expect(candidates.ok).toBe(true);
+    if (!candidates.ok) throw new Error(candidates.error.message);
+    expect(candidates.value).toEqual({
+      inScope: 1,
+      candidates: [{
+        fingerprint: photo().fingerprint,
+        currentPath: photo().currentPath,
+        previousEngineVersion: null,
+      }],
+    });
+    await reopened.flush();
+
+    const migrated = new SQL.Database(fs.readFileSync(reopened.databasePath()));
+    const stateRows = migrated.exec('SELECT * FROM photo_face_index_state')[0]?.values ?? [];
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    migrated.close();
+    expect(stateRows).toEqual([]);
+    expect(version).toBe(6);
+  });
+
   it('checkpoint persists mid-batch work without ending the batch', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
@@ -467,6 +505,8 @@ describe('SqlJsPhotosStore', () => {
 
       const counts = await store.counts('/media/photos');
       expect(counts.ok && counts.value).toMatchObject({ facesIndexed: 1 });
+      const stale = await store.countStalePhotoFaceIndexFiles(FACE_ENGINE_VERSION);
+      expect(stale).toEqual({ ok: true, value: 1 });
     });
 
     it('re-completing a photo overwrites its engine version instead of inserting a second row', async () => {

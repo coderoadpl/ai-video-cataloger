@@ -269,7 +269,7 @@ export const IndexRoute = () => {
             folder={shell.currentFolder}
             addLine={terminal.addLine}
             lockReason={catalogLock.disabledReason}
-            hasAnalyzedVideos={tree.processedTotal > 0}
+            hasIndexableMedia={tree.processedTotal > 0 || (photosAnalysis.counts?.proxied ?? 0) > 0}
           />
         </Box>
       )}

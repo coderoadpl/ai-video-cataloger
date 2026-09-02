@@ -30,6 +30,7 @@ import {
   type FaceDetection,
   type FaceEnginePort,
   type FaceIndexCandidate,
+  type FaceFrameInput,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobExecutionContext,
@@ -37,9 +38,12 @@ import {
   type JobsPort,
   type MediaPort,
   type ModelDownloadPort,
+  type PhotoFaceIndexCandidate,
+  type PhotosStore,
   type ConfigStore,
 } from '../ports.js';
 import { resolveConfigValues } from './config-resolution.js';
+import { photoArtifactsRoot, photoProxyPath } from './photo-artifacts.js';
 
 export interface FacesDeps {
   config: ConfigStore;
@@ -49,9 +53,10 @@ export interface FacesDeps {
   globalCatalog: GlobalCatalogStore;
   jobs: JobsPort;
   media: MediaPort;
+  photos: PhotosStore;
 }
 
-export type FacesIndexDeps = Omit<FacesDeps, 'jobs'>;
+export type FacesIndexDeps = Omit<FacesDeps, 'jobs' | 'photos'> & { photos?: PhotosStore | undefined };
 
 export type FacesReclusterDeps = Pick<FacesDeps, 'config' | 'fs' | 'globalCatalog'>;
 
@@ -107,7 +112,16 @@ export interface FacesIndexOutput {
   filesFailed: number;
   failures: FacesIndexFailure[];
   aborted: boolean;
+  photo: {
+    inScope: number;
+    scanned: number;
+    indexed: number;
+    observationsAdded: number;
+    failed: number;
+  };
 }
+
+export type PhotoFacesIndexOutput = FacesIndexOutput['photo'];
 
 export interface FacesStatusOutput {
   enabled: boolean;
@@ -117,7 +131,10 @@ export interface FacesStatusOutput {
   assignedObservations: number;
   unassignedObservations: number;
   filesIndexed: number;
+  videosIndexed: number;
+  photosIndexed: number;
   staleVersionFiles: number;
+  stalePhotoFiles: number;
 }
 
 interface FacePersonView extends Person {
@@ -433,9 +450,11 @@ export const facesStatus = async (deps: FacesDeps): Promise<Result<FacesStatusOu
   if (!enabled.ok) return enabled;
   const counts = await deps.globalCatalog.faceStatus();
   if (!counts.ok) return counts;
+  const stalePhotoFiles = await deps.photos.countStalePhotoFaceIndexFiles(FACE_ENGINE_VERSION);
+  if (!stalePhotoFiles.ok) return stalePhotoFiles;
   const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
-  return ok({ enabled: true, artifactsReady: artifactsReady.value, ...counts.value });
+  return ok({ enabled: true, artifactsReady: artifactsReady.value, ...counts.value, stalePhotoFiles: stalePhotoFiles.value });
 };
 
 const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppError> => {
@@ -464,12 +483,17 @@ export const runFacesIndexPass = async (
   if (!rootExists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${input.root}`) };
   const scope = await deps.globalCatalog.listFaceIndexCandidates(input.root);
   if (!scope.ok) return scope;
-  if (scope.value.foldersMatched === 0) {
+  const photoScope = deps.photos === undefined
+    ? ok({ inScope: 0, candidates: [] })
+    : await deps.photos.listPhotoFaceIndexCandidates(input.root);
+  if (!photoScope.ok) return photoScope;
+  if (scope.value.foldersMatched === 0 && photoScope.value.inScope === 0) {
     return {
       ok: false,
       error: appError('drive_root_empty', `No catalog folders found under: ${input.root}`, {
         root: input.root,
         catalogFolders: 0,
+        photosInScope: 0,
       }),
     };
   }
@@ -485,9 +509,20 @@ export const runFacesIndexPass = async (
     },
   });
   if (!started.ok) return started;
+  if (deps.photos !== undefined) {
+    const photoStarted = await report(progress, {
+      step: 'photo-faces-scanning',
+      percentage: 0,
+      total: Math.max(photoScope.value.candidates.length, 1),
+      data: {
+        root: input.root,
+        photosTotal: photoScope.value.candidates.length,
+        photosInScope: photoScope.value.inScope,
+      },
+    });
+    if (!photoStarted.ok) return photoStarted;
+  }
 
-  const loaded = await deps.faceEngine.load();
-  if (!loaded.ok) return loaded;
   let filesIndexed = 0;
   let observationsAdded = 0;
   let peopleCreated = 0;
@@ -496,9 +531,15 @@ export const runFacesIndexPass = async (
   const failures: FacesIndexFailure[] = [];
   let streak = 0;
   let streakCode: AppError['code'] | null = null;
+  let photosIndexed = 0;
+  let photoObservationsAdded = 0;
+  let photoPeopleCreated = 0;
+  let photosFailed = 0;
   const seeded = await deps.globalCatalog.listUnassignedFaceObservations();
   if (!seeded.ok) return seeded;
   let pool: FaceObservation[] = [...seeded.value];
+  const loaded = await deps.faceEngine.load();
+  if (!loaded.ok) return loaded;
 
   try {
     for (let candidateIndex = 0; candidateIndex < scope.value.candidates.length; candidateIndex += 1) {
@@ -536,17 +577,76 @@ export const runFacesIndexPass = async (
       streak = 0;
       streakCode = null;
     }
+    for (let candidateIndex = 0; candidateIndex < photoScope.value.candidates.length; candidateIndex += 1) {
+      if (aborted) break;
+      const candidate = photoScope.value.candidates[candidateIndex];
+      if (candidate === undefined) continue;
+      const cancellation = cancelled(progress);
+      if (!cancellation.ok) return cancellation;
+      if (deps.photos === undefined) continue;
+      const outcome = await indexPhotoCandidate(
+        deps,
+        deps.photos,
+        candidate,
+        pool,
+        progress,
+        candidateIndex,
+        photoScope.value.candidates.length,
+      );
+      pool = outcome.pool;
+      if (!outcome.result.ok) {
+        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        photosFailed += 1;
+        const failed = await report(progress, {
+          step: 'photo-faces-file-failed',
+          current: candidateIndex + 1,
+          total: photoScope.value.candidates.length,
+          data: {
+            fingerprint: candidate.fingerprint,
+            photoPath: candidate.currentPath,
+            code: outcome.result.error.code,
+            message: outcome.result.error.message,
+          },
+        });
+        if (!failed.ok) return failed;
+        continue;
+      }
+      photosIndexed += 1;
+      photoObservationsAdded += outcome.result.value.observationsAdded;
+      photoPeopleCreated += outcome.result.value.peopleCreated;
+      peopleCreated += outcome.result.value.peopleCreated;
+    }
   } finally {
     await deps.faceEngine.dispose();
   }
 
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
+  if (deps.photos !== undefined) {
+    const photosFlushed = await deps.photos.flush();
+    if (!photosFlushed.ok) return photosFlushed;
+  }
+
+  const photo = {
+    inScope: photoScope.value.inScope,
+    scanned: photoScope.value.candidates.length,
+    indexed: photosIndexed,
+    observationsAdded: photoObservationsAdded,
+    failed: photosFailed,
+  };
+  if (deps.photos !== undefined) {
+    const photoDone = await report(progress, {
+      step: 'photo-faces-summary',
+      percentage: 100,
+      data: { root: input.root, ...photo, peopleCreated: photoPeopleCreated },
+    });
+    if (!photoDone.ok) return photoDone;
+  }
 
   const done = await report(progress, {
     step: 'faces_done',
     percentage: 100,
-    data: { filesIndexed, observationsAdded, peopleCreated, filesFailed, aborted },
+    data: { filesIndexed, observationsAdded, peopleCreated, filesFailed, aborted, photo },
   });
   if (!done.ok) return done;
   return ok({
@@ -560,7 +660,109 @@ export const runFacesIndexPass = async (
     filesFailed,
     failures,
     aborted,
+    photo,
   });
+};
+
+export const runPhotoFacesIndexPass = async (
+  deps: FacesIndexDeps & { photos: PhotosStore },
+  input: { root: string },
+  progress?: JobExecutionContext,
+): Promise<Result<PhotoFacesIndexOutput, AppError>> => {
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
+  if (!artifactsReady.ok) return artifactsReady;
+  if (!artifactsReady.value) return { ok: false, error: appError('model_not_installed', 'Face artifacts are not installed') };
+  const scope = await deps.photos.listPhotoFaceIndexCandidates(input.root);
+  if (!scope.ok) return scope;
+  const started = await report(progress, {
+    step: 'photo-faces-scanning',
+    percentage: 0,
+    total: Math.max(scope.value.candidates.length, 1),
+    data: { root: input.root, photosTotal: scope.value.candidates.length, photosInScope: scope.value.inScope },
+  });
+  if (!started.ok) return started;
+  if (scope.value.candidates.length === 0) {
+    const output: PhotoFacesIndexOutput = {
+      inScope: scope.value.inScope,
+      scanned: 0,
+      indexed: 0,
+      observationsAdded: 0,
+      failed: 0,
+    };
+    const done = await report(progress, {
+      step: 'photo-faces-summary',
+      percentage: 100,
+      data: { root: input.root, ...output, peopleCreated: 0 },
+    });
+    return done.ok ? ok(output) : done;
+  }
+  const seeded = await deps.globalCatalog.listUnassignedFaceObservations();
+  if (!seeded.ok) return seeded;
+  let pool: FaceObservation[] = [...seeded.value];
+  const loaded = await deps.faceEngine.load();
+  if (!loaded.ok) return loaded;
+  let indexed = 0;
+  let observationsAdded = 0;
+  let peopleCreated = 0;
+  let failed = 0;
+  try {
+    for (let candidateIndex = 0; candidateIndex < scope.value.candidates.length; candidateIndex += 1) {
+      const candidate = scope.value.candidates[candidateIndex];
+      if (candidate === undefined) continue;
+      const cancellation = cancelled(progress);
+      if (!cancellation.ok) return cancellation;
+      const outcome = await indexPhotoCandidate(
+        deps,
+        deps.photos,
+        candidate,
+        pool,
+        progress,
+        candidateIndex,
+        scope.value.candidates.length,
+      );
+      pool = outcome.pool;
+      if (!outcome.result.ok) {
+        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        failed += 1;
+        const failedReport = await report(progress, {
+          step: 'photo-faces-file-failed',
+          current: candidateIndex + 1,
+          total: scope.value.candidates.length,
+          data: {
+            fingerprint: candidate.fingerprint,
+            photoPath: candidate.currentPath,
+            code: outcome.result.error.code,
+            message: outcome.result.error.message,
+          },
+        });
+        if (!failedReport.ok) return failedReport;
+        continue;
+      }
+      indexed += 1;
+      observationsAdded += outcome.result.value.observationsAdded;
+      peopleCreated += outcome.result.value.peopleCreated;
+    }
+  } finally {
+    await deps.faceEngine.dispose();
+  }
+  const catalogFlushed = await deps.globalCatalog.flush();
+  if (!catalogFlushed.ok) return catalogFlushed;
+  const photosFlushed = await deps.photos.flush();
+  if (!photosFlushed.ok) return photosFlushed;
+  const output: PhotoFacesIndexOutput = {
+    inScope: scope.value.inScope,
+    scanned: scope.value.candidates.length,
+    indexed,
+    observationsAdded,
+    failed,
+  };
+  const done = await report(progress, {
+    step: 'photo-faces-summary',
+    percentage: 100,
+    data: { root: input.root, ...output, peopleCreated },
+  });
+  if (!done.ok) return done;
+  return ok(output);
 };
 
 const isCancellation = (progress: JobExecutionContext | undefined, error: AppError): boolean =>
@@ -639,6 +841,77 @@ const indexCandidate = async (
   // fail an index that is already stored
   await deps.fs.deletePath(frameDirectory);
   return { result: added, pool };
+};
+
+const indexPhotoCandidate = async (
+  deps: FacesIndexDeps,
+  photos: PhotosStore,
+  candidate: PhotoFaceIndexCandidate,
+  poolIn: FaceObservation[],
+  progress: JobExecutionContext | undefined,
+  candidateIndex: number,
+  candidatesTotal: number,
+): Promise<IndexCandidateOutcome> => {
+  let pool = poolIn;
+  const fingerprint = candidate.fingerprint;
+  const stale = candidate.previousEngineVersion !== null && candidate.previousEngineVersion < FACE_ENGINE_VERSION;
+  if (stale) {
+    const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
+    if (!purged.ok) return { result: purged, pool };
+    const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+    const removedCrops = await deleteCropPaths(
+      deps.fs,
+      purged.value.cropPaths.map((cropPath) => reanchorFaceCropPath(currentCatalogDir, cropPath)),
+    );
+    if (!removedCrops.ok) return { result: removedCrops, pool };
+    pool = pool.filter((observation) => observation.fingerprint !== fingerprint);
+  }
+  const photo = await photos.getPhoto(fingerprint);
+  if (!photo.ok) return { result: photo, pool };
+  if (photo.value === null) {
+    return { result: { ok: false, error: appError('file_not_found', `Photo not found: ${fingerprint}`) }, pool };
+  }
+  if (photo.value.proxyWidth === null || photo.value.proxyHeight === null) {
+    return { result: { ok: false, error: appError('processing_error', `Photo proxy dimensions are unavailable: ${fingerprint}`) }, pool };
+  }
+  const proxyPath = photoProxyPath(deps.fs, photoArtifactsRoot(deps.fs, photos), fingerprint);
+  const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
+  if (!existing.ok) return { result: existing, pool };
+  const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
+  const detecting = await report(progress, {
+    step: 'photo-faces-detecting',
+    current: candidateIndex + 1,
+    total: candidatesTotal,
+    data: { fingerprint, photoPath: candidate.currentPath, proxyPath },
+  });
+  if (!detecting.ok) return { result: detecting, pool };
+  const frame: FaceFrameInput = { kind: 'image-path', frameJpegPath: proxyPath };
+  const detections = await deps.faceEngine.detect(frame);
+  if (!detections.ok) return { result: detections, pool };
+  let observationsAdded = 0;
+  let peopleCreated = 0;
+  for (let detectionIndex = 0; detectionIndex < detections.value.length; detectionIndex += 1) {
+    const detection = detections.value[detectionIndex];
+    if (detection === undefined) continue;
+    const indexed = await indexDetection(
+      deps,
+      { fingerprint, frameTsS: null },
+      frame,
+      0,
+      detectionIndex,
+      detection,
+      pool,
+      existingObsIds,
+      'photo',
+      { sourceWidth: photo.value.proxyWidth, sourceHeight: photo.value.proxyHeight },
+    );
+    if (!indexed.ok) return { result: indexed, pool };
+    observationsAdded += indexed.value.observationsAdded;
+    peopleCreated += indexed.value.peopleCreated;
+  }
+  const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
+  if (!completed.ok) return { result: completed, pool };
+  return { result: ok({ observationsAdded, peopleCreated }), pool };
 };
 
 export const runFacesExemplarsPass = async (
@@ -851,20 +1124,21 @@ const indexFramesForFile = async (
 
 const indexDetection = async (
   deps: FacesIndexDeps,
-  input: { fingerprint: string; frameTsS: number },
-  framePath: string,
+  input: { fingerprint: string; frameTsS: number | null },
+  frame: FaceFrameInput | string,
   frameIndex: number,
   detectionIndex: number,
   detection: FaceDetection,
   pool: FaceObservation[],
   existingObsIds: ReadonlySet<string>,
-  media: FaceObservation['media'] = 'video',
+  media: FaceObservation['media'],
+  sourceDimensions?: { sourceWidth: number; sourceHeight: number } | undefined,
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
   const obsId = `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`;
   if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, peopleCreated: 0 });
   const boxPx = Math.min(detection.bbox.width, detection.bbox.height);
   if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, peopleCreated: 0 });
-  const aligned = await deps.faceEngine.align(framePath, detection);
+  const aligned = await deps.faceEngine.align(frame, detection);
   if (!aligned.ok) return aligned;
   const cropPath = await writeObservationCrop(deps, obsId, aligned.value);
   if (typeof cropPath !== 'string') return cropPath;
@@ -880,7 +1154,7 @@ const indexDetection = async (
     fingerprint: input.fingerprint,
     kind: 'face',
     frameTsS: input.frameTsS,
-    bbox: detection.bbox,
+    bbox: sourceDimensions === undefined ? detection.bbox : { ...detection.bbox, ...sourceDimensions },
     embedding,
     quality: detection.score,
     personId: assignedPersonId,

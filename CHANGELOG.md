@@ -18,9 +18,20 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging.
 - Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
+- `faces index` and `photos process` now detect faces in photos themselves,
+  over the photo proxy, writing one crop per observation like the video pass;
+  photo face observations that arrived through `photos import-libra` are
+  dropped on first open (backed up under
+  `~/.ai-video-cataloger/backups/`) because they carry no crops and foreign
+  geometry.
 - A privacy-lint gate now runs in `check`, and `AVC_SCRATCH_DIR` replaces the previous fixed scratch-directory convention.
 - CI gates (`check`, `smoke`, `ai-review`) run on GitHub-hosted `macos-15` runners with literal job names and no arming variables, `e2e-cli` and the new `visual-baselines` workflow are dispatch-only, and the visual gate selects its baseline set with `VISUAL_ENV` (`local-darwin` by default, `ci-macos-15` on CI). See [docs/ci.md](docs/ci.md)
 - `variants import-translation` bulk-upserts Polish analysis variants from NDJSON with dry-run, optional selection, normalized tags, copied source transcripts and selectable source artifacts.
+
+### Changed
+
+- `GET /api/faces/status` reports `videosIndexed`, `photosIndexed` and
+  `stalePhotoFiles` alongside the existing counters.
 
 ### Fixed
 

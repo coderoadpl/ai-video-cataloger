@@ -325,6 +325,8 @@ export interface FaceStatusCounts {
   assignedObservations: number;
   unassignedObservations: number;
   filesIndexed: number;
+  videosIndexed: number;
+  photosIndexed: number;
   staleVersionFiles: number;
 }
 
@@ -666,6 +668,7 @@ export interface PhotosStore {
   listPhotoFaceIndexCandidates(root: string):
     Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>>;
   completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
+  countStalePhotoFaceIndexFiles(engineVersion: number): Promise<Result<number, AppError>>;
   listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>>;
   applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>>;
@@ -1372,6 +1375,11 @@ export type ProcessJobStep =
   | 'photo-analysis-failed'
   | 'photo-analysis-usage'
   | 'photo-process-summary'
+  | 'photo-faces-scanning'
+  | 'photo-faces-detecting'
+  | 'photo-faces-file-failed'
+  | 'photo-faces-summary'
+  | 'photo-faces-skipped'
   | 'photo-import-libra-scanning'
   | 'photo-import-libra-summary';
 

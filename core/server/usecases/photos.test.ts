@@ -16,7 +16,10 @@ import {
   FakePhotoMediaPort,
   InMemoryAnalyzer,
   InMemoryConfig,
+  InMemoryDownloads,
+  InMemoryFaceEngine,
   InMemoryFileSystem,
+  InMemoryGlobalCatalogStore,
   InMemoryJobs,
   InMemoryMedia,
   InMemoryPhotosStore,
@@ -58,6 +61,7 @@ const buildDeps = (): {
   config: InMemoryConfig;
   analyzer: InMemoryAnalyzer;
   spendLedger: InMemorySpendLedger;
+  downloads: InMemoryDownloads;
 } => {
   const fs = new InMemoryFileSystem('/work');
   const photos = new InMemoryPhotosStore();
@@ -68,8 +72,11 @@ const buildDeps = (): {
   const config = new InMemoryConfig();
   const analyzer = new InMemoryAnalyzer();
   const spendLedger = new InMemorySpendLedger();
+  const downloads = new InMemoryDownloads();
+  const faceEngine = new InMemoryFaceEngine();
+  const globalCatalog = new InMemoryGlobalCatalogStore();
   return {
-    deps: { photos, fs, exif, jobs, photoMedia, media, config, analyzer, spendLedger },
+    deps: { photos, fs, exif, jobs, photoMedia, media, config, analyzer, spendLedger, downloads, faceEngine, globalCatalog },
     fs,
     photos,
     exif,
@@ -79,6 +86,7 @@ const buildDeps = (): {
     config,
     analyzer,
     spendLedger,
+    downloads,
   };
 };
 
@@ -1464,6 +1472,50 @@ describe('runPhotoProcess', () => {
     expect(summary?.data?.['root']).toBe('/work/photos');
     expect(summary?.data?.['configId']).toBe(result.value.configId);
     expect(typeof summary?.data?.['configId']).toBe('string');
+  });
+
+  it('best-effort chains photo face indexing after processing and completes zero-face photos', async () => {
+    const { deps, photos, fs, config, downloads } = buildDeps();
+    const fingerprint = 'ph_0000000000000001';
+    fs.addDirectory('/work/photos');
+    await seedAnalysisReadyPhoto(photos, fingerprint, '/work/photos/a.jpg');
+    await config.set({ kind: 'home' }, 'faces_enabled', 'true');
+    downloads.downloadedArtifacts.add('face-detector/yunet-2023mar');
+    downloads.downloadedArtifacts.add('face-embedder/sface-2021dec');
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(
+      deps,
+      { root: '/work/photos', force: false, batchSize: null },
+      recordingProgress(events),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(photos.faceIndexState.get(fingerprint)).toBe(2);
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'photo-faces-summary',
+      data: expect.objectContaining({ root: '/work/photos', indexed: 1, observationsAdded: 0 }),
+    }));
+  });
+
+  it('reports a skipped photo faces leg without failing photos process when artifacts are unavailable', async () => {
+    const { deps, photos, fs, config } = buildDeps();
+    fs.addDirectory('/work/photos');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await config.set({ kind: 'home' }, 'faces_enabled', 'true');
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(
+      deps,
+      { root: '/work/photos', force: false, batchSize: null },
+      recordingProgress(events),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'photo-faces-skipped',
+      data: expect.objectContaining({ root: '/work/photos', reason: 'artifacts_missing' }),
+    }));
   });
 
   const seedScannedRoot = async (photos: InMemoryPhotosStore, root: string, runId: string): Promise<void> => {

@@ -143,7 +143,7 @@ describe('FacesIndexAction', () => {
   it('is disabled without a folder', async () => {
     stubFaces({ facesEnabled: true, artifactsReady: true });
 
-    renderThemed(<FacesIndexAction active folder={null} addLine={vi.fn()} hasAnalyzedVideos={false} />);
+    renderThemed(<FacesIndexAction active folder={null} addLine={vi.fn()} hasIndexableMedia={false} />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).not.toBeNull());
   });
@@ -159,7 +159,7 @@ describe('FacesIndexAction', () => {
       }),
     );
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={addLine} hasAnalyzedVideos />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={addLine} hasIndexableMedia />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-index'));
@@ -168,14 +168,14 @@ describe('FacesIndexAction', () => {
     expect(indexBody).toEqual({ root: FOLDER });
   });
 
-  it('is disabled with an explanatory tooltip when the current root has no analyzed videos', async () => {
+  it('is disabled with an explanatory tooltip when the current root has no analyzed videos or proxied photos', async () => {
     stubFaces({ facesEnabled: true, artifactsReady: true });
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedVideos={false} />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasIndexableMedia={false} />);
 
     const button = screen.getByTestId('people-index');
     await waitFor(() => expect(button.getAttribute('disabled')).not.toBeNull());
-    expect(button.getAttribute('title')).toBe('Analyze at least one video in this folder before indexing faces.');
+    expect(button.getAttribute('title')).toBe('Analyze at least one video or generate one photo proxy in this folder before indexing faces.');
   });
 
   it('surfaces a failed faces index job via a visible alert instead of only the terminal', async () => {
@@ -187,7 +187,7 @@ describe('FacesIndexAction', () => {
       )),
     );
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedVideos />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasIndexableMedia />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-index'));
@@ -204,7 +204,7 @@ describe('FacesIndexAction', () => {
       )),
     );
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedVideos />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasIndexableMedia />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-index'));
