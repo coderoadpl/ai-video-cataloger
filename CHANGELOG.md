@@ -33,6 +33,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
 - `GET /api/faces/status` reports `videosIndexed`, `photosIndexed` and
   `stalePhotoFiles` alongside the existing counters.
+- The AI review gate has a 90-turn budget and reads large diffs in grouped
+  `git diff` calls, always returning a verdict.
 
 ### Fixed
 
