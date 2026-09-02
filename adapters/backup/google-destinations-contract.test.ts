@@ -116,7 +116,7 @@ const serviceAccountKey = (): string => {
 const fakeGoogle: typeof fetch = async (input, init) => {
   const url = new URL(String(input));
   if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
-  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1' });
+  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1', trashed: false });
   if (url.pathname.endsWith('/files/backup-1') && url.searchParams.get('alt') === null && init?.method !== 'DELETE') {
     return Response.json({ id: 'backup-1', parents: ['folder-1'], driveId: 'drive-1' });
   }
