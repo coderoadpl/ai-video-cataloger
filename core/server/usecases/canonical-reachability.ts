@@ -30,7 +30,7 @@ const artifactsAreReachable = async (
   const variants = await deps.globalCatalog.listVariants(location.fingerprint);
   if (!variants.ok) return variants;
   if (location.folderPath === null) return ok(false);
-  const root = await discoverArtifactRoot(deps.fs, location.folderPath);
+  const root = await discoverArtifactRoot(deps.fs, location.folderPath, location.folderId);
   if (!root.ok) return root;
   for (const variant of variants.value) {
     const output = variantOutputPaths(deps.fs, root.value, location.fingerprint, variant.configId);

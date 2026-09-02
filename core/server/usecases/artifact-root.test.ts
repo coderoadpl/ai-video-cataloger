@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { discoverArtifactRoot, folderArtifactRoot, readOnlyArtifactRoot, readOnlyArtifactRootById } from './artifact-root.js';
+import { folderMarkerPath } from './folder-identity.js';
 import { InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
 
 const legacyDerivedFolderId = (folder: string): string => {
@@ -15,11 +16,26 @@ describe('discoverArtifactRoot', () => {
   it('returns the writable folder root when a folder marker is present', async () => {
     const fs = new InMemoryFileSystem('/work');
     const folder = '/work/videos';
-    fs.addFile(`${folder}/.ai-video-cataloger/.folder-marker.json`, {
+    fs.addFile(folderMarkerPath(fs, folder), {
       content: JSON.stringify({ folderId: 'x', schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
     });
 
     const result = await discoverArtifactRoot(fs, folder);
+
+    expect(result).toEqual({ ok: true, value: folderArtifactRoot(fs, folder) });
+  });
+
+  it('prefers the writable root over a leftover read-only mirror once the folder gained a marker', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const folder = '/work/videos';
+    const knownFolderId = 'path-11111111';
+    const staleMirror = readOnlyArtifactRootById(fs, knownFolderId);
+    fs.addDirectory(staleMirror.path);
+    fs.addFile(folderMarkerPath(fs, folder), {
+      content: JSON.stringify({ folderId: knownFolderId, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    });
+
+    const result = await discoverArtifactRoot(fs, folder, knownFolderId);
 
     expect(result).toEqual({ ok: true, value: folderArtifactRoot(fs, folder) });
   });
