@@ -160,7 +160,7 @@ export const listVariants = async (
   const currentConfig = await resolvedFolderConfigIdentity(deps, target.value.folderPath);
   if (!currentConfig.ok) return currentConfig;
   const resolvedFolderDefaultConfigId = storedFolderDefault.value ?? currentConfig.value.configId;
-  const root = await discoverArtifactRoot(deps.fs, target.value.folderPath);
+  const root = await discoverArtifactRoot(deps.fs, target.value.folderPath, target.value.folderId);
   if (!root.ok) return root;
   const selectedConfigId = await selectedVariantConfigId(
     deps.globalCatalog,
@@ -454,7 +454,7 @@ const projectionContext = async (
   if (folder.value === null) {
     return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
   }
-  const root = await discoverArtifactRoot(deps.fs, folder.value.currentPath);
+  const root = await discoverArtifactRoot(deps.fs, folder.value.currentPath, folder.value.folderId);
   if (!root.ok) return root;
   return ok({
     file: file.value,

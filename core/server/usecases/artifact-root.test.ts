@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { discoverArtifactRoot, folderArtifactRoot, readOnlyArtifactRoot, readOnlyArtifactRootById } from './artifact-root.js';
+import { folderMarkerPath } from './folder-identity.js';
 import { InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
 
 const legacyDerivedFolderId = (folder: string): string => {
@@ -15,11 +16,26 @@ describe('discoverArtifactRoot', () => {
   it('returns the writable folder root when a folder marker is present', async () => {
     const fs = new InMemoryFileSystem('/work');
     const folder = '/work/videos';
-    fs.addFile(`${folder}/.ai-video-cataloger/.folder-marker.json`, {
+    fs.addFile(folderMarkerPath(fs, folder), {
       content: JSON.stringify({ folderId: 'x', schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
     });
 
     const result = await discoverArtifactRoot(fs, folder);
+
+    expect(result).toEqual({ ok: true, value: folderArtifactRoot(fs, folder) });
+  });
+
+  it('prefers the writable root over a leftover read-only mirror once the folder gained a marker', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const folder = '/work/videos';
+    const knownFolderId = 'path-11111111';
+    const staleMirror = readOnlyArtifactRootById(fs, knownFolderId);
+    fs.addDirectory(staleMirror.path);
+    fs.addFile(folderMarkerPath(fs, folder), {
+      content: JSON.stringify({ folderId: knownFolderId, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    });
+
+    const result = await discoverArtifactRoot(fs, folder, knownFolderId);
 
     expect(result).toEqual({ ok: true, value: folderArtifactRoot(fs, folder) });
   });
@@ -36,6 +52,35 @@ describe('discoverArtifactRoot', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.path).toBe(legacyMirror.path);
+  });
+
+  it('prefers the known catalog folder id mirror over the current path-derived mirror', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const knownFolderId = 'path-11111111';
+    const currentFolder = '/work/renamed-videos';
+    const knownMirror = readOnlyArtifactRootById(fs, knownFolderId);
+    const currentMirror = readOnlyArtifactRoot(fs, currentFolder);
+    expect(currentMirror.path).not.toBe(knownMirror.path);
+    fs.addDirectory(knownMirror.path);
+    fs.addDirectory(currentMirror.path);
+
+    const result = await discoverArtifactRoot(fs, currentFolder, knownFolderId);
+
+    expect(result).toEqual({ ok: true, value: knownMirror });
+  });
+
+  it('keeps using the current path-derived mirror when no catalog folder id is known', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const currentFolder = '/work/renamed-videos';
+    const unrelatedStableMirror = readOnlyArtifactRootById(fs, 'path-11111111');
+    const currentMirror = readOnlyArtifactRoot(fs, currentFolder);
+    expect(currentMirror.path).not.toBe(unrelatedStableMirror.path);
+    fs.addDirectory(unrelatedStableMirror.path);
+    fs.addDirectory(currentMirror.path);
+
+    const result = await discoverArtifactRoot(fs, currentFolder);
+
+    expect(result).toEqual({ ok: true, value: currentMirror });
   });
 
   it('falls back to the legacy mirror when the caller passes the canonical path, as every production caller now does', async () => {

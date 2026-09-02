@@ -203,7 +203,7 @@ export const resolveThumbnailPath = async (
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath);
+  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId);
   if (!root.ok) return root;
   const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
   const exists = await deps.fs.exists(thumbnailPath);
@@ -226,7 +226,7 @@ export const resolveGridThumbnailPath = async (
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath);
+  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId);
   if (!root.ok) return root;
   const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
   const exists = await deps.fs.exists(gridThumbnailPath);
@@ -299,6 +299,7 @@ export const libraryPreviewDetail = async (
   if (!online.ok) return online;
   const player = online.value
     ? await loadPreviewPlayerDetail(deps, {
+      folderId: folder.value.folderId,
       folderPath: folder.value.currentPath,
       fileName: file.value.fileName,
       finalName: analysis.value?.finalName ?? null,
@@ -349,10 +350,10 @@ interface PreviewPlayerDetail {
 // — the two players stay in sync without a schema migration.
 const loadPreviewPlayerDetail = async (
   deps: SearchDeps,
-  input: { folderPath: string; fileName: string; finalName: string | null },
+  input: { folderId: string; folderPath: string; fileName: string; finalName: string | null },
 ): Promise<PreviewPlayerDetail> => {
   const videoPath = deps.fs.join(input.folderPath, input.finalName ?? input.fileName);
-  const root = await discoverArtifactRoot(deps.fs, input.folderPath);
+  const root = await discoverArtifactRoot(deps.fs, input.folderPath, input.folderId);
   const transcriptSegments = root.ok
     ? await loadPreviewTranscriptSegments(deps.fs, root.value, videoPath, input.finalName)
     : null;
