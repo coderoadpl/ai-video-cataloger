@@ -364,6 +364,10 @@ interface MergeCandidate {
   minRank: number;
 }
 
+type NumericArray = Float64Array | Uint32Array | Uint8Array | readonly number[];
+
+const at = (array: NumericArray, index: number): number => array[index] ?? 0;
+
 class MergeHeap {
   private scores: Float64Array;
   private densities: Float64Array;
@@ -431,12 +435,12 @@ class MergeHeap {
 
   private candidateAt(index: number): MergeCandidate {
     return {
-      score: this.scores[index] ?? 0,
-      density: this.densities[index] ?? 0,
-      mergedSize: this.mergedSizes[index] ?? 0,
-      minRank: this.minRanks[index] ?? 0,
-      leftId: this.leftIds[index] ?? 0,
-      rightId: this.rightIds[index] ?? 0,
+      score: at(this.scores, index),
+      density: at(this.densities, index),
+      mergedSize: at(this.mergedSizes, index),
+      minRank: at(this.minRanks, index),
+      leftId: at(this.leftIds, index),
+      rightId: at(this.rightIds, index),
     };
   }
 
@@ -465,41 +469,35 @@ class MergeHeap {
   }
 
   private copy(from: number, to: number): void {
-    this.scores[to] = this.scores[from] ?? 0;
-    this.densities[to] = this.densities[from] ?? 0;
-    this.mergedSizes[to] = this.mergedSizes[from] ?? 0;
-    this.minRanks[to] = this.minRanks[from] ?? 0;
-    this.leftIds[to] = this.leftIds[from] ?? 0;
-    this.rightIds[to] = this.rightIds[from] ?? 0;
+    this.scores[to] = at(this.scores, from);
+    this.densities[to] = at(this.densities, from);
+    this.mergedSizes[to] = at(this.mergedSizes, from);
+    this.minRanks[to] = at(this.minRanks, from);
+    this.leftIds[to] = at(this.leftIds, from);
+    this.rightIds[to] = at(this.rightIds, from);
+  }
+
+  private swapField(field: Float64Array | Uint32Array, left: number, right: number): void {
+    const leftValue = at(field, left);
+    field[left] = at(field, right);
+    field[right] = leftValue;
   }
 
   private swap(left: number, right: number): void {
-    const leftScore = this.scores[left] ?? 0;
-    this.scores[left] = this.scores[right] ?? 0;
-    this.scores[right] = leftScore;
-    const leftDensity = this.densities[left] ?? 0;
-    this.densities[left] = this.densities[right] ?? 0;
-    this.densities[right] = leftDensity;
-    const leftSize = this.mergedSizes[left] ?? 0;
-    this.mergedSizes[left] = this.mergedSizes[right] ?? 0;
-    this.mergedSizes[right] = leftSize;
-    const leftRank = this.minRanks[left] ?? 0;
-    this.minRanks[left] = this.minRanks[right] ?? 0;
-    this.minRanks[right] = leftRank;
-    const leftId = this.leftIds[left] ?? 0;
-    this.leftIds[left] = this.leftIds[right] ?? 0;
-    this.leftIds[right] = leftId;
-    const rightId = this.rightIds[left] ?? 0;
-    this.rightIds[left] = this.rightIds[right] ?? 0;
-    this.rightIds[right] = rightId;
+    this.swapField(this.scores, left, right);
+    this.swapField(this.densities, left, right);
+    this.swapField(this.mergedSizes, left, right);
+    this.swapField(this.minRanks, left, right);
+    this.swapField(this.leftIds, left, right);
+    this.swapField(this.rightIds, left, right);
   }
 
   private compare(left: number, right: number): number {
-    return (this.scores[right] ?? 0) - (this.scores[left] ?? 0)
-      || (this.mergedSizes[right] ?? 0) - (this.mergedSizes[left] ?? 0)
-      || (this.minRanks[left] ?? 0) - (this.minRanks[right] ?? 0)
-      || (this.leftIds[left] ?? 0) - (this.leftIds[right] ?? 0)
-      || (this.rightIds[left] ?? 0) - (this.rightIds[right] ?? 0);
+    return (at(this.scores, right) - at(this.scores, left))
+      || (at(this.mergedSizes, right) - at(this.mergedSizes, left))
+      || (at(this.minRanks, left) - at(this.minRanks, right))
+      || (at(this.leftIds, left) - at(this.leftIds, right))
+      || (at(this.rightIds, left) - at(this.rightIds, right));
   }
 }
 
@@ -532,9 +530,9 @@ class FacePairSumStore {
 
   add(leftId: number, rightId: number, sum: number, count: number): void {
     const slot = this.slotFor(leftId, rightId);
-    if ((this.keyLeft[slot] ?? 0) !== 0) {
-      this.sums[slot] = (this.sums[slot] ?? 0) + sum;
-      this.counts[slot] = (this.counts[slot] ?? 0) + count;
+    if (at(this.keyLeft, slot) !== 0) {
+      this.sums[slot] = at(this.sums, slot) + sum;
+      this.counts[slot] = at(this.counts, slot) + count;
       return;
     }
     this.write(slot, leftId, rightId, sum, count);
@@ -543,7 +541,7 @@ class FacePairSumStore {
 
   set(leftId: number, rightId: number, sum: number, count: number): void {
     const slot = this.slotFor(leftId, rightId);
-    if ((this.keyLeft[slot] ?? 0) === 0) {
+    if (at(this.keyLeft, slot) === 0) {
       this.write(slot, leftId, rightId, sum, count);
       if (this.entries * 10 > this.keyLeft.length * 7) this.grow();
       return;
@@ -554,9 +552,9 @@ class FacePairSumStore {
 
   get(leftId: number, rightId: number): FacePairSum {
     const slot = this.slotFor(leftId, rightId);
-    return (this.keyLeft[slot] ?? 0) === 0
+    return at(this.keyLeft, slot) === 0
       ? { sum: 0, count: 0 }
-      : { sum: this.sums[slot] ?? 0, count: this.counts[slot] ?? 0 };
+      : { sum: at(this.sums, slot), count: at(this.counts, slot) };
   }
 
   private write(slot: number, leftId: number, rightId: number, sum: number, count: number): void {
@@ -572,9 +570,9 @@ class FacePairSumStore {
     const ids = pairIds(leftId, rightId);
     let slot = hashPair(ids.leftId, ids.rightId) & (this.keyLeft.length - 1);
     while (true) {
-      const left = this.keyLeft[slot] ?? 0;
+      const left = at(this.keyLeft, slot);
       if (left === 0) return slot;
-      if (left === ids.leftId + 1 && (this.keyRight[slot] ?? 0) === ids.rightId + 1) return slot;
+      if (left === ids.leftId + 1 && at(this.keyRight, slot) === ids.rightId + 1) return slot;
       slot = (slot + 1) & (this.keyLeft.length - 1);
     }
   }
@@ -590,9 +588,9 @@ class FacePairSumStore {
     this.counts = new Uint32Array(oldCounts.length * 2);
     this.entries = 0;
     for (let index = 0; index < oldLeft.length; index += 1) {
-      const left = oldLeft[index] ?? 0;
+      const left = at(oldLeft, index);
       if (left === 0) continue;
-      this.set(left - 1, (oldRight[index] ?? 1) - 1, oldSums[index] ?? 0, oldCounts[index] ?? 0);
+      this.set(left - 1, at(oldRight, index) - 1, at(oldSums, index), at(oldCounts, index));
     }
   }
 }
@@ -729,7 +727,7 @@ const pushMergeCandidate = (
     score,
     density: pairSum.count / denominator,
     mergedSize: left.members.length + right.members.length,
-    minRank: Math.min(left.members[0] ?? 0, right.members[0] ?? 0),
+    minRank: Math.min(at(left.members, 0), at(right.members, 0)),
   });
 };
 
@@ -772,15 +770,15 @@ export const clusterPreparedFaceObservations = (
   const pairSums = new FacePairSumStore(prepared.edges.count + ordered.length);
   const heap = new MergeHeap(prepared.edges.count + ordered.length);
   for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
-    const leftId = prepared.edges.leftIds[edgeIndex] ?? 0;
-    const rightId = prepared.edges.rightIds[edgeIndex] ?? 0;
-    const similarity = prepared.edges.similarities[edgeIndex] ?? 0;
+    const leftId = at(prepared.edges.leftIds, edgeIndex);
+    const rightId = at(prepared.edges.rightIds, edgeIndex);
+    const similarity = at(prepared.edges.similarities, edgeIndex);
     pairSums.set(leftId, rightId, similarity, 1);
     neighbours[leftId]?.push(rightId);
     neighbours[rightId]?.push(leftId);
   }
   for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
-    pushMergeCandidate(heap, clusters, pairSums, prepared.edges.leftIds[edgeIndex] ?? 0, prepared.edges.rightIds[edgeIndex] ?? 0);
+    pushMergeCandidate(heap, clusters, pairSums, at(prepared.edges.leftIds, edgeIndex), at(prepared.edges.rightIds, edgeIndex));
   }
 
   let nextClusterId = ordered.length;
@@ -789,7 +787,7 @@ export const clusterPreparedFaceObservations = (
   while (true) {
     const candidate = heap.pop();
     if (candidate === undefined || candidate.score < clusterCutSimilarity) break;
-    if ((alive[candidate.leftId] ?? 0) === 0 || (alive[candidate.rightId] ?? 0) === 0) continue;
+    if (at(alive, candidate.leftId) === 0 || at(alive, candidate.rightId) === 0) continue;
     const left = clusters.get(candidate.leftId);
     const right = clusters.get(candidate.rightId);
     if (left === undefined || right === undefined) continue;
@@ -807,14 +805,14 @@ export const clusterPreparedFaceObservations = (
       id: nextClusterId,
       members,
       minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
-      totals: left.totals.map((value, index) => value + (right.totals[index] ?? 0)),
+      totals: left.totals.map((value, index) => value + at(right.totals, index)),
     };
     nextClusterId += 1;
 
     const neighbourIds: number[] = [];
     markerToken += 1;
     for (const id of [...(neighbours[left.id] ?? []), ...(neighbours[right.id] ?? [])]) {
-      if (id === left.id || id === right.id || (alive[id] ?? 0) === 0 || (markers[id] ?? 0) === markerToken) continue;
+      if (id === left.id || id === right.id || at(alive, id) === 0 || at(markers, id) === markerToken) continue;
       markers[id] = markerToken;
       neighbourIds.push(id);
     }
