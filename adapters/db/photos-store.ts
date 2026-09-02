@@ -414,6 +414,16 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async countStalePhotoFaceIndexFiles(engineVersion: number): Promise<Result<number, AppError>> {
+    return this.read((_db, client) => {
+      const result = client.exec(
+        'SELECT COUNT(*) FROM photo_face_index_state WHERE engine_version < ?',
+        [engineVersion],
+      );
+      return numberValue(result[0]?.values[0]?.[0]);
+    });
+  }
+
   async listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>> {
     return this.read((_db, client) => {
       const scope = scopeForRoot(input.root);
@@ -1138,6 +1148,8 @@ export class SqlJsPhotosStore implements PhotosStore {
     const backfilled = ensurePhotoSearchDocuments(db, client);
     if (canPersist && (created || migrated || backfilled)) {
       persistDatabase(this.filePath, client);
+    } else if (created || migrated || backfilled) {
+      this.dirtyCount = 1;
     }
     this.state?.client.close();
     this.state = {
@@ -1184,6 +1196,10 @@ const migrate = (client: Database): boolean => {
       normalizeStoredTagNames(client, { tags: 'photo_tags', fileTags: 'photo_file_tags', tagAliases: 'photo_tag_aliases' });
       rebuildPhotoSearchIndex(drizzle(client, { schema: photosSchema }), client);
     });
+    migrated = true;
+  }
+  if (currentVersion < 6) {
+    client.run('DELETE FROM photo_face_index_state');
     migrated = true;
   }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {

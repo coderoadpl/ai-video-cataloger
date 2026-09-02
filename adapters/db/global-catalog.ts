@@ -26,6 +26,7 @@ import {
   catalogVariantSchema,
   configId,
   configDescriptorSchema,
+  faceBoxSchema,
   parseDriveRunBatchState,
   appError,
   canonicalPath,
@@ -1326,12 +1327,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.read((db) => {
       const observationRows = db.select().from(faceObservations).all();
       const stateRows = db.select().from(faceIndexState).all();
+      const videoFingerprints = new Set(observationRows.filter((row) => row.media !== 'photo').map((row) => row.fingerprint));
+      const photoFingerprints = new Set(observationRows.filter((row) => row.media === 'photo').map((row) => row.fingerprint));
       return {
         people: db.select().from(people).all().length,
         observations: observationRows.length,
         assignedObservations: observationRows.filter((row) => row.personId !== null).length,
         unassignedObservations: observationRows.filter((row) => row.personId === null).length,
         filesIndexed: new Set(observationRows.map((row) => row.fingerprint)).size,
+        videosIndexed: videoFingerprints.size,
+        photosIndexed: photoFingerprints.size,
         staleVersionFiles: stateRows.filter((row) => row.engineVersion < FACE_ENGINE_VERSION).length,
       };
     });
@@ -1427,9 +1432,11 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     const SQL = this.state?.SQL ?? await initSqlJs(sqlJsWasmConfig());
     const client = existsSync(this.filePath) ? new SQL.Database(readFileSync(this.filePath)) : new SQL.Database();
     const created = !existsSync(this.filePath);
-    const migrated = migrate(client);
+    const migrated = migrate(client, path.join(path.dirname(this.filePath), 'backups'));
     if (canPersist && (created || migrated)) {
       persistDatabase(this.filePath, client);
+    } else if (created || migrated) {
+      this.dirtyCount = 1;
     }
     this.state?.client.close();
     this.state = {
@@ -1442,7 +1449,20 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 }
 
-const migrate = (client: Database): boolean => {
+const photoObservationMigrationRowSchema = z.object({
+  obsId: z.string(),
+  fingerprint: z.string(),
+  kind: z.string(),
+  frameTsS: z.number().nullable(),
+  bboxJson: z.string().nullable(),
+  embedding: z.instanceof(Uint8Array).nullable(),
+  quality: z.number().nullable(),
+  personId: z.string().nullable(),
+  cropPath: z.string().nullable(),
+  media: z.literal('photo'),
+});
+
+const migrate = (client: Database, backupDirectory: string): boolean => {
   client.run('CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER PRIMARY KEY)');
   const currentVersion = readSchemaVersion(client);
   if (currentVersion > GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -1516,6 +1536,10 @@ const migrate = (client: Database): boolean => {
     });
     migrated = true;
   }
+  if (currentVersion < 16) {
+    backupAndDeleteImportedPhotoObservations(client, backupDirectory);
+    migrated = true;
+  }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: globalCatalogSchema });
@@ -1523,6 +1547,36 @@ const migrate = (client: Database): boolean => {
     migrated = true;
   }
   return migrated;
+};
+
+const backupAndDeleteImportedPhotoObservations = (client: Database, backupDirectory: string): void => {
+  const db = drizzle(client, { schema: globalCatalogSchema });
+  const rows = photoObservationMigrationRowSchema.array().parse(
+    db.select().from(faceObservations).where(eq(faceObservations.media, 'photo')).all(),
+  );
+  if (rows.length === 0) return;
+  mkdirSync(backupDirectory, { recursive: true });
+  const timestamp = new Date().toISOString().replaceAll(':', '-');
+  const backupPath = path.join(backupDirectory, `face-observations-photo-libra-${timestamp}.ndjson`);
+  const tempPath = `${backupPath}.tmp`;
+  const content = `${rows.map((row) => {
+    const { embedding, ...values } = row;
+    return JSON.stringify({
+      ...values,
+      embeddingBase64: embedding === null ? null : Buffer.from(embedding).toString('base64'),
+    });
+  }).join('\n')}\n`;
+  const descriptor = openSync(tempPath, 'wx');
+  try {
+    writeFileSync(descriptor, content);
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  renameSync(tempPath, backupPath);
+  runCatalogTransaction(client, () => {
+    db.delete(faceObservations).where(eq(faceObservations.media, 'photo')).run();
+  });
 };
 
 const runV9Migration = (client: Database): void => {
@@ -1759,7 +1813,7 @@ const rowToFaceObservation = (row: typeof faceObservations.$inferSelect): FaceOb
   obsId: row.obsId,
   fingerprint: row.fingerprint,
   kind: 'face',
-  frameTsS: row.frameTsS ?? 0,
+  frameTsS: row.frameTsS,
   bbox: parseBbox(row.bboxJson),
   embedding: blobToEmbedding(row.embedding),
   quality: row.quality ?? 0,
@@ -1784,21 +1838,8 @@ const faceObservationToRow = (observation: FaceObservation): typeof faceObservat
 const parseBbox = (value: string | null): FaceObservation['bbox'] => {
   if (value === null) return { x: 0, y: 0, width: 1, height: 1 };
   try {
-    const parsed: unknown = JSON.parse(value);
-    if (
-      typeof parsed === 'object'
-      && parsed !== null
-      && 'x' in parsed
-      && 'y' in parsed
-      && 'width' in parsed
-      && 'height' in parsed
-      && typeof parsed.x === 'number'
-      && typeof parsed.y === 'number'
-      && typeof parsed.width === 'number'
-      && typeof parsed.height === 'number'
-    ) {
-      return { x: parsed.x, y: parsed.y, width: parsed.width, height: parsed.height };
-    }
+    const parsed = faceBoxSchema.safeParse(JSON.parse(value));
+    if (parsed.success) return parsed.data;
   } catch {
     return { x: 0, y: 0, width: 1, height: 1 };
   }

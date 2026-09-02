@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs, { type Database } from 'sql.js';
@@ -747,8 +747,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       fingerprint: 'ph_0123456789abcdef',
       kind: 'face',
       media: 'photo',
-      frameTsS: 0,
-      bbox: { x: 1, y: 2, width: 3, height: 4 },
+      frameTsS: null,
+      bbox: { x: 1, y: 2, width: 3, height: 4, sourceWidth: 1280, sourceHeight: 720 },
       embedding: Array.from({ length: 128 }, () => 0.2),
       quality: 0.8,
       personId: 'person-1',
@@ -771,10 +771,23 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: observation.obsId,
       media: observation.media,
       frameTsS: observation.frameTsS,
+      bbox: observation.bbox,
     }))).toEqual([
-      { obsId: 'fp-abc:face:2:1', media: 'video', frameTsS: 4.5 },
-      { obsId: 'ph_0123456789abcdef:face:1:1', media: 'photo', frameTsS: 0 },
+      { obsId: 'fp-abc:face:2:1', media: 'video', frameTsS: 4.5, bbox: { x: 0, y: 0, width: 1, height: 1 } },
+      {
+        obsId: 'ph_0123456789abcdef:face:1:1',
+        media: 'photo',
+        frameTsS: null,
+        bbox: { x: 1, y: 2, width: 3, height: 4, sourceWidth: 1280, sourceHeight: 720 },
+      },
     ]);
+    const status = await reopened.faceStatus();
+    expect(status.ok && status.value).toMatchObject({
+      filesIndexed: 2,
+      videosIndexed: 1,
+      photosIndexed: 1,
+      staleVersionFiles: 0,
+    });
   });
 
   it('replaceFaceClustering rebuilds people and reassigns observations in one write', async () => {
@@ -1530,6 +1543,95 @@ describe('SqlJsGlobalCatalogStore', () => {
     const columnNames = (after.exec('PRAGMA table_info(files)')[0]?.values ?? []).map((row) => row[1]);
     expect(columnNames).toEqual(expect.arrayContaining(['width', 'height']));
     after.close();
+  });
+
+  it('backs up and drops imported photo observations when migrating v15 to v16', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFaceObservation({
+      obsId: 'fp-abc:face:1:1',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 1, y: 2, width: 80, height: 90 },
+      embedding: Array.from({ length: 128 }, (_value, index) => index / 128),
+      quality: 0.9,
+      personId: null,
+      cropPath: path.join(home, '.ai-video-cataloger', 'faces', 'obs', file.fingerprint, '1-1.jpg'),
+      media: 'video',
+    });
+    await store.upsertFaceObservation({
+      obsId: 'ph_0000000000000001:face:1:1',
+      fingerprint: 'ph_0000000000000001',
+      kind: 'face',
+      frameTsS: null,
+      bbox: { x: 3, y: 4, width: 50, height: 60 },
+      embedding: Array.from({ length: 128 }, (_value, index) => (128 - index) / 128),
+      quality: 0.8,
+      personId: null,
+      cropPath: null,
+      media: 'photo',
+    });
+    await store.flush();
+    await store.dispose();
+
+    const videoCrop = path.join(home, '.ai-video-cataloger', 'faces', 'obs', file.fingerprint, '1-1.jpg');
+    await mkdir(path.dirname(videoCrop), { recursive: true });
+    await writeFile(videoCrop, 'video-crop');
+    const SQL = await initSqlJs();
+    const seeded = new SQL.Database(await readFile(store.databasePath()));
+    const preservedTables = ['folders', 'files', 'analyses', 'analysis_configs', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_index_state', 'search_documents'];
+    const before = snapshotAllTables(seeded, preservedTables);
+    const photoEmbedding = seeded.exec("SELECT embedding FROM face_observations WHERE media = 'photo'")[0]?.values[0]?.[0];
+    seeded.run('UPDATE schema_meta SET version = 15');
+    await writeFile(store.databasePath(), Buffer.from(seeded.export()));
+    seeded.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await reopened.faceStatus()).ok).toBe(true);
+    await reopened.flush();
+
+    const migrated = new SQL.Database(await readFile(reopened.databasePath()));
+    const after = snapshotAllTables(migrated, preservedTables);
+    const observations = migrated.exec('SELECT obs_id, media, crop_path FROM face_observations ORDER BY obs_id')[0]?.values ?? [];
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    migrated.close();
+    const backupDirectory = path.join(home, '.ai-video-cataloger', 'backups');
+    const backupNames = (await readdir(backupDirectory)).filter((name) => /^face-observations-photo-libra-.+\.ndjson$/.test(name));
+    expect(backupNames).toHaveLength(1);
+    const backupText = await readFile(path.join(backupDirectory, backupNames[0] ?? ''), 'utf8');
+    const backupRows: unknown[] = backupText.trim().split('\n').map((line) => JSON.parse(line));
+    expect(backupRows).toEqual([
+      {
+        obsId: 'ph_0000000000000001:face:1:1',
+        fingerprint: 'ph_0000000000000001',
+        kind: 'face',
+        frameTsS: null,
+        bboxJson: '{"x":3,"y":4,"width":50,"height":60}',
+        quality: 0.8,
+        personId: null,
+        cropPath: null,
+        media: 'photo',
+        embeddingBase64: photoEmbedding instanceof Uint8Array ? Buffer.from(photoEmbedding).toString('base64') : null,
+      },
+    ]);
+    const backedUpEmbedding = backupRows[0] !== null && typeof backupRows[0] === 'object' && 'embeddingBase64' in backupRows[0]
+      ? Buffer.from(String(backupRows[0].embeddingBase64), 'base64')
+      : null;
+    expect(backedUpEmbedding).toEqual(photoEmbedding instanceof Uint8Array ? Buffer.from(photoEmbedding) : null);
+    expect(version).toBe(16);
+    expect(observations).toEqual([['fp-abc:face:1:1', 'video', videoCrop]]);
+    expect(after).toEqual(before);
+    expect(await readFile(videoCrop, 'utf8')).toBe('video-crop');
+    await reopened.dispose();
+    const secondOpen = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await secondOpen.faceStatus()).ok).toBe(true);
+    await secondOpen.dispose();
+    const backupNamesAfterSecondOpen = (await readdir(backupDirectory))
+      .filter((name) => /^face-observations-photo-libra-.+\.ndjson$/.test(name));
+    expect(backupNamesAfterSecondOpen).toEqual(backupNames);
   });
 
   it('adds nullable resolved-language columns without invalidating existing variants', async () => {

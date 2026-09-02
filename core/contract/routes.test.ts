@@ -1006,8 +1006,13 @@ describe('route schemas', () => {
     });
   });
 
-  it('accepts faces_file_failed as a job progress step', () => {
+  it('accepts video and photo face indexing job progress steps', () => {
     expect(jobProgressStepSchema.safeParse('faces_file_failed').success).toBe(true);
+    expect(jobProgressStepSchema.safeParse('photo-faces-scanning').success).toBe(true);
+    expect(jobProgressStepSchema.safeParse('photo-faces-detecting').success).toBe(true);
+    expect(jobProgressStepSchema.safeParse('photo-faces-file-failed').success).toBe(true);
+    expect(jobProgressStepSchema.safeParse('photo-faces-summary').success).toBe(true);
+    expect(jobProgressStepSchema.safeParse('photo-faces-skipped').success).toBe(true);
   });
 
   it('defaults the driveRunFacesSchema tolerance fields when a run predates them', () => {
@@ -1052,11 +1057,12 @@ describe('route schemas', () => {
       filesFailed: 1,
       failures: [{ path: '/videos/bad.mp4', fingerprint: 'fp-bad', code: 'processing_error', message: 'boom' }],
       aborted: false,
+      photo: { inScope: 4, scanned: 3, indexed: 2, observationsAdded: 5, failed: 1 },
     };
 
     expect(facesIndexOutputSchema.parse(output)).toMatchObject(output);
     const viaUnion = jobResultSchema.parse(output);
-    expect(viaUnion).toMatchObject({ filesFailed: 1, failures: output.failures, aborted: false });
+    expect(viaUnion).toMatchObject({ filesFailed: 1, failures: output.failures, aborted: false, photo: output.photo });
   });
 
   it('round-trips photoScanSummarySchema through jobResultSchema with the media discriminator, and every other member rejects it', () => {

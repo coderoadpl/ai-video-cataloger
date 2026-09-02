@@ -476,7 +476,7 @@ export interface Dictionary {
     subtitle: string;
     mergeSelected: string;
     indexFaces: string;
-    indexFacesNoAnalyzedVideos: string;
+    indexFacesNoIndexableMedia: string;
     localFaceGroupingOffTitle: string;
     localFaceGroupingOffBody: string;
     modelsMissingTitle: string;
@@ -1377,6 +1377,11 @@ export const en: Dictionary = {
       faces_scanning: 'Indexing faces',
       faces_done: 'Face indexing complete',
       faces_pass_skipped: 'Faces not indexed',
+      'photo-faces-scanning': 'Finding photos for face indexing',
+      'photo-faces-detecting': 'Detecting faces in photos',
+      'photo-faces-file-failed': 'Photo face indexing failed',
+      'photo-faces-summary': 'Photo face indexing complete',
+      'photo-faces-skipped': 'Photo faces not indexed',
     },
   },
   people: {
@@ -1388,7 +1393,7 @@ export const en: Dictionary = {
     subtitle: 'Local face grouping from analyzed catalog videos.',
     mergeSelected: 'Merge selected',
     indexFaces: 'Index faces',
-    indexFacesNoAnalyzedVideos: 'Analyze at least one video in this folder before indexing faces.',
+    indexFacesNoIndexableMedia: 'Analyze at least one video or generate one photo proxy in this folder before indexing faces.',
     localFaceGroupingOffTitle: 'Local face grouping is off',
     localFaceGroupingOffBody: 'Turn on local face grouping in Settings to group faces on this Mac.',
     modelsMissingTitle: 'Face grouping models are not installed',
@@ -2327,6 +2332,11 @@ export const pl: Dictionary = {
       faces_scanning: 'Indeksowanie twarzy',
       faces_done: 'Indeksowanie twarzy zakończone',
       faces_pass_skipped: 'Twarze nie zostały zindeksowane',
+      'photo-faces-scanning': 'Wyszukiwanie zdjęć do indeksowania twarzy',
+      'photo-faces-detecting': 'Wykrywanie twarzy na zdjęciach',
+      'photo-faces-file-failed': 'Indeksowanie twarzy na zdjęciu nie powiodło się',
+      'photo-faces-summary': 'Indeksowanie twarzy na zdjęciach zakończone',
+      'photo-faces-skipped': 'Twarze na zdjęciach nie zostały zindeksowane',
     },
   },
   people: {
@@ -2338,7 +2348,7 @@ export const pl: Dictionary = {
     subtitle: 'Lokalne grupowanie twarzy z przeanalizowanych filmów katalogu.',
     mergeSelected: 'Scal wybrane',
     indexFaces: 'Indeksuj twarze',
-    indexFacesNoAnalyzedVideos: 'Przeanalizuj co najmniej jeden film w tym folderze przed indeksowaniem twarzy.',
+    indexFacesNoIndexableMedia: 'Przeanalizuj co najmniej jeden film lub wygeneruj jeden plik proxy zdjęcia w tym folderze przed indeksowaniem twarzy.',
     localFaceGroupingOffTitle: 'Lokalne grupowanie twarzy jest wyłączone',
     localFaceGroupingOffBody: 'Włącz lokalne grupowanie twarzy w Ustawieniach, aby grupować twarze na tym Macu.',
     modelsMissingTitle: 'Modele grupowania twarzy nie są zainstalowane',

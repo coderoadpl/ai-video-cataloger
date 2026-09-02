@@ -7,7 +7,13 @@ import { createInterface } from 'node:readline/promises';
 import { Command, InvalidArgumentError } from 'commander';
 
 import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { EXIT_CODE_BY_ERROR_CODE, SEARCH_SORTS, gpsBackfillSummarySchema, thumbnailsSummarySchema } from '@core/contract/index.js';
+import {
+  EXIT_CODE_BY_ERROR_CODE,
+  SEARCH_SORTS,
+  facesIndexOutputSchema,
+  gpsBackfillSummarySchema,
+  thumbnailsSummarySchema,
+} from '@core/contract/index.js';
 import {
   ANALYZER_PROVIDER_IDS,
   CONFIG_KEYS,
@@ -1800,23 +1806,21 @@ const facesStatusHuman = (
 ): string =>
   `Faces: ${data.enabled ? 'enabled' : 'disabled'}, models ${data.artifactsReady ? 'ready' : 'missing'}\n`
   + `People: ${data.people}\nObservations: ${data.observations} (${data.assignedObservations} assigned, ${data.unassignedObservations} unassigned)\n`
-  + `Files indexed: ${data.filesIndexed}`
-  + (data.staleVersionFiles > 0 ? `\nStale-version files (need re-index): ${data.staleVersionFiles}` : '');
+  + `Files indexed: ${data.filesIndexed} (${data.videosIndexed} videos, ${data.photosIndexed} photos)`
+  + (data.staleVersionFiles > 0 ? `\nStale-version video files (need re-index): ${data.staleVersionFiles}` : '')
+  + (data.stalePhotoFiles > 0 ? `\nStale-version photo files (need re-index): ${data.stalePhotoFiles}` : '');
 
 const facesIndexHuman = (data: unknown): string => {
-  if (!isRecord(data)) return 'Face indexing complete';
-  const indexed = typeof data.filesIndexed === 'number' ? data.filesIndexed : 0;
-  const observations = typeof data.observationsAdded === 'number' ? data.observationsAdded : 0;
-  const people = typeof data.peopleCreated === 'number' ? data.peopleCreated : 0;
-  const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
-  const scanned = typeof data.filesScanned === 'number' ? data.filesScanned : 0;
-  if (scanned === 0) {
-    const folders = typeof data.foldersMatched === 'number' ? data.foldersMatched : 0;
-    const filesInScope = typeof data.filesInScope === 'number' ? data.filesInScope : 0;
-    return `Nothing to index: ${folders} catalog folders, ${filesInScope} analyzed files already indexed`;
+  const parsed = facesIndexOutputSchema.safeParse(data);
+  if (!parsed.success) return 'Face indexing complete';
+  const output = parsed.data;
+  if (output.filesScanned === 0 && output.photo.scanned === 0) {
+    return `Nothing to index: ${output.foldersMatched} catalog folders, ${output.filesInScope} analyzed videos and `
+      + `${output.photo.inScope} proxied photos already indexed`;
   }
-  return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`
-    + (failed > 0 ? `, ${failed} file(s) failed` : '');
+  return `Indexed ${output.filesIndexed} videos and ${output.photo.indexed} photos, added `
+    + `${output.observationsAdded + output.photo.observationsAdded} observations, created ${output.peopleCreated} people`
+    + (output.filesFailed + output.photo.failed > 0 ? `, ${output.filesFailed + output.photo.failed} file(s) failed` : '');
 };
 
 const facesReclusterHuman = (data: unknown): string => {

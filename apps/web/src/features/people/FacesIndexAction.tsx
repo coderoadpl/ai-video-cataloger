@@ -10,21 +10,21 @@ interface FacesIndexActionProps {
   folder: string | null;
   addLine: AddLogLine;
   lockReason?: string | undefined;
-  hasAnalyzedVideos: boolean;
+  hasIndexableMedia: boolean;
 }
 
-export const FacesIndexAction = ({ active, folder, addLine, lockReason, hasAnalyzedVideos }: FacesIndexActionProps) => {
+export const FacesIndexAction = ({ active, folder, addLine, lockReason, hasIndexableMedia }: FacesIndexActionProps) => {
   const dictionary = useDictionary();
   const facesIndex = useFacesIndex({ active, folder, addLine });
   const mutationsBlocked = lockReason !== undefined;
-  const analyzedVideosMissing = folder !== null && !hasAnalyzedVideos;
-  const disabledTitle = lockReason ?? (analyzedVideosMissing ? dictionary.people.indexFacesNoAnalyzedVideos : undefined);
+  const indexableMediaMissing = folder !== null && !hasIndexableMedia;
+  const disabledTitle = lockReason ?? (indexableMediaMissing ? dictionary.people.indexFacesNoIndexableMedia : undefined);
   const disabled = folder === null
     || facesIndex.isBusy
     || facesIndex.facesEnabled !== true
     || facesIndex.artifactsReady !== true
     || mutationsBlocked
-    || analyzedVideosMissing;
+    || indexableMediaMissing;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>

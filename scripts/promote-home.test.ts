@@ -12,6 +12,7 @@ import {
   InMemoryFaceEngine,
   InMemoryJobs,
   InMemoryMedia,
+  InMemoryPhotosStore,
 } from '../test/server/usecases/test-fakes.js';
 import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../adapters/db/index.js';
 import { NodeFileSystemPort } from '../adapters/fs/index.js';
@@ -57,6 +58,7 @@ const buildFacesDeps = (globalCatalog: SqlJsGlobalCatalogStore): FacesDeps => {
     globalCatalog,
     jobs: new InMemoryJobs(),
     media: new InMemoryMedia(),
+    photos: new InMemoryPhotosStore(),
   };
 };
 

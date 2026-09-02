@@ -93,7 +93,7 @@ export const boxIoU = (left: FaceBox, right: FaceBox): number => {
 
 export interface ExemplarPlanObservation extends ExemplarCandidate {
   personId: string;
-  frameTsS: number;
+  frameTsS: number | null;
   bbox: FaceBox;
 }
 
@@ -133,7 +133,7 @@ export const planExemplarBackfill = (
     for (const observation of selected) {
       if (observation.cropPath !== null) continue;
       const parsed = parseFaceObsId(observation.obsId);
-      if (parsed === null) {
+      if (parsed === null || observation.frameTsS === null) {
         observationsUnaddressable += 1;
         continue;
       }
@@ -162,6 +162,8 @@ export const faceBoxSchema = z.object({
   y: z.number(),
   width: z.number().positive(),
   height: z.number().positive(),
+  sourceWidth: z.number().int().positive().optional(),
+  sourceHeight: z.number().int().positive().optional(),
 });
 export type FaceBox = z.output<typeof faceBoxSchema>;
 
@@ -197,7 +199,7 @@ export const faceObservationSchema = z.object({
   obsId: z.string().min(1),
   fingerprint: z.string().min(1),
   kind: subjectKindSchema,
-  frameTsS: z.number().nonnegative(),
+  frameTsS: z.number().nonnegative().nullable(),
   bbox: faceBoxSchema,
   embedding: faceEmbeddingSchema,
   quality: z.number(),

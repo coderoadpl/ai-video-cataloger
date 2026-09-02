@@ -24,6 +24,7 @@ import {
   InMemoryGlobalCatalogStore,
   InMemoryJobs,
   InMemoryMedia,
+  InMemoryPhotosStore,
 } from '../../../test/server/usecases/test-fakes.js';
 import { FACE_ENGINE_VERSION, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobExecutionContext, JobProgress } from '../ports.js';
@@ -40,6 +41,7 @@ class FakeFaceEngine implements FaceEnginePort {
   readonly detectInputs: Array<FaceFrameInput | string> = [];
   readonly detectionByVideoPath = new Map<string, FaceDetection>();
   readonly detectFailureVideoPaths = new Set<string>();
+  readonly zeroDetectionImagePaths = new Set<string>();
   detection: FaceDetection = {
     bbox: { x: 0, y: 0, width: 200, height: 200 },
     landmarks: {
@@ -60,6 +62,9 @@ class FakeFaceEngine implements FaceEnginePort {
 
   detect(input: FaceFrameInput | string): Promise<Result<FaceDetection[], AppError>> {
     this.detectInputs.push(input);
+    if (typeof input === 'object' && input.kind === 'image-path' && this.zeroDetectionImagePaths.has(input.frameJpegPath)) {
+      return Promise.resolve(ok([]));
+    }
     if (typeof input === 'object' && input.kind === 'video-timestamp' && this.detectFailureVideoPaths.has(input.videoPath)) {
       return Promise.resolve({ ok: false, error: appError('processing_error', `Failed to decode ${input.videoPath}`) });
     }
@@ -163,7 +168,7 @@ const observationFixture = (overrides: Partial<FaceObservation> = {}): FaceObser
   obsId: overrides.obsId ?? 'obs-1',
   fingerprint: overrides.fingerprint ?? 'fp-1',
   kind: 'face',
-  frameTsS: overrides.frameTsS ?? 1,
+  frameTsS: overrides.frameTsS === undefined ? 1 : overrides.frameTsS,
   bbox: overrides.bbox ?? { x: 0, y: 0, width: 100, height: 100 },
   embedding: overrides.embedding ?? unit128(),
   quality: overrides.quality ?? 0.95,
@@ -176,6 +181,7 @@ const buildDeps = (): FacesDeps & {
   config: InMemoryConfig;
   downloads: InMemoryDownloads;
   globalCatalog: InMemoryGlobalCatalogStore;
+  photos: InMemoryPhotosStore;
   fs: InMemoryFileSystem;
   media: InMemoryMedia;
   faceEngine: FakeFaceEngine;
@@ -187,6 +193,7 @@ const buildDeps = (): FacesDeps & {
     config: new InMemoryConfig(),
     downloads,
     globalCatalog: new InMemoryGlobalCatalogStore(),
+    photos: new InMemoryPhotosStore(),
     fs: new InMemoryFileSystem(),
     media: new InMemoryMedia(),
     jobs: new InMemoryJobs(),
@@ -304,6 +311,38 @@ describe('faces forget and purge delete crop files', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
+  it('reports indexed files and stale completion state per medium', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-video:face:1:1',
+      fingerprint: 'fp-video',
+      media: 'video',
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'ph_0000000000000001:face:1:1',
+      fingerprint: 'ph_0000000000000001',
+      media: 'photo',
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'ph_0000000000000001:face:1:2',
+      fingerprint: 'ph_0000000000000001',
+      media: 'photo',
+    }));
+    await deps.photos.completePhotoFaceIndex('ph_0000000000000002', FACE_ENGINE_VERSION - 1);
+
+    const result = await facesStatus(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toMatchObject({
+      filesIndexed: 2,
+      videosIndexed: 1,
+      photosIndexed: 1,
+      stalePhotoFiles: 1,
+    });
+  });
+
   it('forget re-anchors a stale-home crop path before deleting it', async () => {
     const deps = buildDeps();
     deps.globalCatalog = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
@@ -418,6 +457,103 @@ describe('facesIndex', () => {
     expect(second.ok).toBe(true);
     const afterSecond = await facesStatus(deps);
     expect(afterSecond.ok && afterSecond.value.observations).toBe(6);
+  });
+
+  it('indexes photo proxies with native geometry and completes zero-face photos', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    deps.fs.addDirectory('/work/photos');
+    const firstFingerprint = 'ph_0000000000000001';
+    const secondFingerprint = 'ph_0000000000000002';
+    const firstProxy = `/home/.ai-video-cataloger/photo-artifacts/proxies/${firstFingerprint}.jpg`;
+    const secondProxy = `/home/.ai-video-cataloger/photo-artifacts/proxies/${secondFingerprint}.jpg`;
+    deps.fs.addFile(firstProxy, { content: 'proxy-one' });
+    deps.fs.addFile(secondProxy, { content: 'proxy-two' });
+    for (const [fingerprint, fileName, proxyWidth, proxyHeight] of [
+      [firstFingerprint, 'one.jpg', 1280, 720],
+      [secondFingerprint, 'two.jpg', 720, 1280],
+    ] as const) {
+      await deps.photos.upsertPhoto({
+        fingerprint,
+        folderId: 'photo-folder',
+        fileName,
+        currentPath: `/work/photos/${fileName}`,
+        ext: 'jpg',
+        size: 1,
+        width: proxyWidth,
+        height: proxyHeight,
+        orientation: null,
+        cameraMake: null,
+        cameraModel: null,
+        lens: null,
+        iso: null,
+        fNumber: null,
+        exposureTime: null,
+        exifRating: null,
+        capturedAt: null,
+        capturedAtSource: 'file_mtime',
+        gpsLat: null,
+        gpsLon: null,
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        placeName: null,
+        placeRegion: null,
+        placeCountry: null,
+        placeCountryCode: null,
+        placeDistanceM: null,
+        placeDataset: null,
+        discoveredAt: '2026-01-01T00:00:00.000Z',
+        exifReadAt: '2026-01-01T00:00:00.000Z',
+        proxyState: 'done',
+        proxyWidth,
+        proxyHeight,
+        thumbState: 'done',
+        missingAt: null,
+        selectedConfigId: null,
+      });
+      await deps.photos.upsertSighting({
+        fingerprint,
+        currentPath: `/work/photos/${fileName}`,
+        folderId: 'photo-folder',
+        size: 1,
+        mtimeMs: 1,
+        lastSeenAt: '2026-01-01T00:00:00.000Z',
+      });
+    }
+    deps.faceEngine.zeroDetectionImagePaths.add(secondProxy);
+
+    const result = await runFacesIndexPass(deps, { root: '/work/photos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.photo).toEqual({
+      inScope: 2,
+      scanned: 2,
+      indexed: 2,
+      observationsAdded: 1,
+      failed: 0,
+    });
+    expect(deps.faceEngine.detectInputs).toContainEqual({ kind: 'image-path', frameJpegPath: firstProxy });
+    expect(deps.faceEngine.detectInputs).toContainEqual({ kind: 'image-path', frameJpegPath: secondProxy });
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: firstFingerprint });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error(observations.error.message);
+    expect(observations.value).toEqual([
+      expect.objectContaining({
+        obsId: `${firstFingerprint}:face:1:1`,
+        media: 'photo',
+        frameTsS: null,
+        bbox: expect.objectContaining({ sourceWidth: 1280, sourceHeight: 720 }),
+        cropPath: expect.stringMatching(/faces\/obs\/ph_0000000000000001\/1-1\.jpg$/),
+      }),
+    ]);
+    expect(deps.photos.faceIndexState.get(firstFingerprint)).toBe(FACE_ENGINE_VERSION);
+    expect(deps.photos.faceIndexState.get(secondFingerprint)).toBe(FACE_ENGINE_VERSION);
+    expect(deps.faceEngine.cropWrites).toEqual([
+      expect.stringMatching(/faces\/obs\/ph_0000000000000001\/1-1\.jpg$/),
+    ]);
   });
 
   it('writes a crop for every detected face, including the ones no person claims yet', async () => {
@@ -603,6 +739,7 @@ const buildScriptableDeps = (): FacesDeps & { fs: InMemoryFileSystem } => {
     config: new InMemoryConfig(),
     downloads,
     globalCatalog: new InMemoryGlobalCatalogStore(),
+    photos: new InMemoryPhotosStore(),
     fs: new InMemoryFileSystem(),
     media: new InMemoryMedia(),
     jobs: new InMemoryJobs(),

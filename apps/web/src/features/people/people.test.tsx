@@ -141,6 +141,10 @@ const stubPeople = (input: {
         assignedObservations: input.observations ?? 0,
         unassignedObservations: 0,
         filesIndexed: input.observations === undefined || input.observations === 0 ? 0 : 1,
+        videosIndexed: input.observations === undefined || input.observations === 0 ? 0 : 1,
+        photosIndexed: 0,
+        staleVersionFiles: 0,
+        stalePhotoFiles: 0,
       },
     })),
     http.get('/api/faces/people', () => HttpResponse.json({
