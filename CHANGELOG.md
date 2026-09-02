@@ -63,6 +63,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Service-account key import now restores the previous Keychain value if fingerprint config persistence fails.
 - Google Drive backup listing now skips malformed sibling files and tags connection probes separately.
 - Disabled or unsupported Keychain configurations now block backup secret get/set/delete operations before invoking macOS `security`.
+- `backup status` no longer fails outright when the Keychain is structurally unavailable; it now reports `recoveryKeyStored: false` instead of surfacing a `keychain_unavailable` error.
 - Backup timestamps in Settings, restore dialogs and the bottom-bar indicator now render in the active locale instead of raw ISO strings.
 - Polish backup copy now names derived files, media scope, retention fields, Keychain storage and recovery-key confirmation accurately.
 - Recovery-key exports now use Polish text when the UI language is Polish.
