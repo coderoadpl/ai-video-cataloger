@@ -47,6 +47,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Read-only folder artifacts remain reachable after a registered source folder
+  is renamed or moved.
 - Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.
 - Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive.
 - Backup retention pruning now lists and deletes only the completed run's archive tier.
