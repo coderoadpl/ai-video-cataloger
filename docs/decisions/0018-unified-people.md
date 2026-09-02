@@ -92,7 +92,7 @@ evidence is a small pair sample the user labels by hand (D4 below).
 aligns, embeds and crops from `photo-artifacts/proxies/<fingerprint>.jpg`
 using the existing `FaceEnginePort` `{ kind: 'image-path' }` input
 (`core/server/ports.ts:936`), writes observations with `media: 'photo'`, frame
-index **1** (per ADR-0016 §5 / `parseFaceObsId`), crops under
+index **1** (per `docs/architecture-photos.md` §5 / `parseFaceObsId`), crops under
 `faces/obs/ph_<hex>/` (per ADR-0014), records the proxy dimensions on the
 observation, and marks completion through the already-existing
 `PhotosStore.completePhotoFaceIndex`. Candidate discovery uses the
@@ -208,8 +208,9 @@ that reads as videos and is documented as the union.
 - **Complete linkage.** Splits harder than the product wants and is dominated
   by single high-quality outliers within a person; average linkage with the
   non-edge-as-zero rule already carries the conservative bias.
-- **A separate photo identity pool.** Rejected in ADR-0016 §5 and nothing here
-  changes that: one person is one person across media.
+- **A separate photo identity pool.** Rejected in
+  `docs/architecture-photos.md` §5 and nothing here changes that: one person
+  is one person across media.
 
 ## Migration of existing data
 
@@ -260,7 +261,8 @@ Ordered, and the order is load-bearing:
 - `faces exemplars` gains a photo path and stops reporting healthy photo
   fingerprints as `filesUnavailable`.
 - No new `ErrorCode`, HTTP status or CLI exit code. New NDJSON progress step
-  names for the photo faces leg only, per ADR-0016 §7's precedent.
+  names for the photo faces leg only, per `docs/architecture-photos.md` §7's
+  precedent.
 - `docs/architecture-photos.md` §5's "covers both media" claim becomes true
   when F1 lands; until then the section carries the dated correction this ADR
   installs.

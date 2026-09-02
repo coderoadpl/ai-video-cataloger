@@ -72,7 +72,7 @@ crops are gone.
    `photo_face_index_state` rows; assert post-migration that the rows are
    gone, the backup file exists and round-trips, video rows and crops are
    untouched, and every other table is byte-identical (lossless-migration
-   probe, ADR-0016 D3 precedent).
+   probe, per `docs/architecture-photos.md` §5, challenge D3).
 2. `listPhotoFaceIndexCandidates` returns the previously-completed photos
    again after the migration.
 3. Photo indexing use-case test with a fake `FaceEnginePort`: asserts
@@ -313,8 +313,8 @@ non-revertible step is 1, which is why it writes the backup first.
   on-disk layout of video artifacts or the four sanctioned deviations in
   [tasks/prd-foundation-rewrite.md](prd-foundation-rewrite.md)'s Technical
   Considerations. New NDJSON steps for the photo faces leg are additive, per
-  the ADR-0016 §7 precedent that photo specificity lives in step names rather
-  than in the closed `ErrorCode` union.
+  the `docs/architecture-photos.md` §7 precedent that photo specificity lives
+  in step names rather than in the closed `ErrorCode` union.
 - **Changelog.** Each of F1–F3 lands its own `[Unreleased]` lines, quoted
   above, **in the same commit** as the behaviour they describe. F4 is an
   operational procedure and adds no line. F5's release commit moves the
