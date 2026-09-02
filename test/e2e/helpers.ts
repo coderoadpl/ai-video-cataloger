@@ -11,12 +11,11 @@ import {
   renameSync,
   rmSync,
   statSync,
-  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -89,10 +88,7 @@ export interface CliResult {
 export function isolatedHome(workdir: string): string {
   const home = join(workdir, '.avc-home');
   const appDir = join(home, '.ai-video-cataloger');
-  mkdirSync(appDir, { recursive: true });
-  const sharedModels = join(homedir(), '.ai-video-cataloger', 'models');
-  const linkedModels = join(appDir, 'models');
-  if (existsSync(sharedModels) && !existsSync(linkedModels)) symlinkSync(sharedModels, linkedModels);
+  mkdirSync(join(appDir, 'models'), { recursive: true });
   return home;
 }
 

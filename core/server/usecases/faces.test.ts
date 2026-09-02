@@ -338,7 +338,8 @@ describe('faces forget and purge delete crop files', () => {
     expect(result.value).toMatchObject({
       filesIndexed: 2,
       videosIndexed: 1,
-      photosIndexed: 1,
+      photosWithFaces: 1,
+      photosProcessed: 1,
       stalePhotoFiles: 1,
     });
   });
@@ -430,6 +431,64 @@ describe('facesIndex', () => {
       language: null,
       tags: [],
     });
+  };
+
+  const seedProxyPhoto = async (
+    deps: FacesDeps & { fs: InMemoryFileSystem },
+    fingerprint = 'ph_0000000000000001',
+  ): Promise<string> => {
+    deps.fs.addDirectory('/work/photos');
+    const proxyPath = `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`;
+    deps.fs.addFile(proxyPath, { content: 'proxy' });
+    await deps.photos.upsertPhoto({
+      fingerprint,
+      folderId: 'photo-folder',
+      fileName: 'one.jpg',
+      currentPath: '/work/photos/one.jpg',
+      ext: 'jpg',
+      size: 1,
+      width: 640,
+      height: 480,
+      orientation: null,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: null,
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: '2026-01-01T00:00:00.000Z',
+      exifReadAt: '2026-01-01T00:00:00.000Z',
+      proxyState: 'done',
+      proxyWidth: 640,
+      proxyHeight: 480,
+      thumbState: 'done',
+      missingAt: null,
+      selectedConfigId: null,
+    });
+    await deps.photos.upsertSighting({
+      fingerprint,
+      currentPath: '/work/photos/one.jpg',
+      folderId: 'photo-folder',
+      size: 1,
+      mtimeMs: 1,
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    return proxyPath;
   };
 
   it('indexes candidate files, clusters a person, and is idempotent on re-run', async () => {
@@ -533,6 +592,7 @@ describe('facesIndex', () => {
       scanned: 2,
       indexed: 2,
       observationsAdded: 1,
+      rejectedLowQuality: 0,
       failed: 0,
     });
     expect(deps.faceEngine.detectInputs).toContainEqual({ kind: 'image-path', frameJpegPath: firstProxy });
@@ -556,6 +616,76 @@ describe('facesIndex', () => {
     ]);
   });
 
+  it('reconciles photo observations without a completion row on resume', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    deps.fs.addDirectory('/work/photos');
+    const fingerprint = 'ph_0000000000000001';
+    deps.fs.addFile(`/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`, { content: 'proxy' });
+    await deps.photos.upsertPhoto({
+      fingerprint,
+      folderId: 'photo-folder',
+      fileName: 'one.jpg',
+      currentPath: '/work/photos/one.jpg',
+      ext: 'jpg',
+      size: 1,
+      width: 640,
+      height: 480,
+      orientation: null,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: null,
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: '2026-01-01T00:00:00.000Z',
+      exifReadAt: '2026-01-01T00:00:00.000Z',
+      proxyState: 'done',
+      proxyWidth: 640,
+      proxyHeight: 480,
+      thumbState: 'done',
+      missingAt: null,
+      selectedConfigId: null,
+    });
+    await deps.photos.upsertSighting({
+      fingerprint,
+      currentPath: '/work/photos/one.jpg',
+      folderId: 'photo-folder',
+      size: 1,
+      mtimeMs: 1,
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      media: 'photo',
+      frameTsS: null,
+    }));
+
+    const result = await runFacesIndexPass(deps, { root: '/work/photos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.photo).toMatchObject({ indexed: 1, observationsAdded: 0 });
+    expect(deps.faceEngine.detectInputs).toEqual([]);
+    expect(deps.photos.faceIndexState.get(fingerprint)).toBe(FACE_ENGINE_VERSION);
+  });
+
   it('writes a crop for every detected face, including the ones no person claims yet', async () => {
     const deps = buildDeps();
     await enableFaces(deps);
@@ -570,6 +700,47 @@ describe('facesIndex', () => {
     if (!observations.ok) throw new Error(observations.error.message);
     expect(observations.value).toHaveLength(6);
     expect(observations.value.every((observation) => observation.cropPath !== null)).toBe(true);
+  });
+
+  it('counts low-quality rejected detections in the face summaries', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+    deps.faceEngine.detection = {
+      ...deps.faceEngine.detection,
+      score: FACE_QUALITY.minScore - 0.01,
+    };
+    const progress: JobProgress[] = [];
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' }, events(progress));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.rejectedLowQuality).toBe(6);
+    expect(result.value.observationsAdded).toBe(0);
+    expect(progress.find((event) => event.step === 'faces_done')?.data).toMatchObject({
+      rejectedLowQuality: 6,
+    });
+  });
+
+  it('counts low-quality rejected photo detections in the photo summary', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedProxyPhoto(deps);
+    deps.faceEngine.detection = {
+      ...deps.faceEngine.detection,
+      bbox: { ...deps.faceEngine.detection.bbox, width: FACE_QUALITY.minBoxPx - 1 },
+    };
+    const progress: JobProgress[] = [];
+
+    const result = await runFacesIndexPass(deps, { root: '/work/photos' }, events(progress));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.photo).toMatchObject({ rejectedLowQuality: 1, observationsAdded: 0 });
+    expect(progress.find((event) => event.step === 'photo-faces-summary')?.data).toMatchObject({
+      rejectedLowQuality: 1,
+    });
   });
 
   it('stores crops per observation, not per person', async () => {
@@ -1042,6 +1213,8 @@ describe('facesIndex single-file tolerance', () => {
     });
 
     expect(result).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
+    expect(deps.globalCatalog.flushCount).toBeGreaterThan(0);
+    expect(deps.photos.persistCount).toBeGreaterThan(0);
     expect(progress.some((event) => event.step === 'faces_file_failed')).toBe(false);
   });
 });

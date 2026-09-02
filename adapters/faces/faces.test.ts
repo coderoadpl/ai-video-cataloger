@@ -11,7 +11,7 @@ import {
   type FileArtifact,
   type Result,
 } from '@core/domain/index.js';
-import type { AlignedFaceCrop, FaceDetection, ModelDownloadPort } from '@core/server/index.js';
+import type { AlignedFaceCrop, FaceDetection, FileArtifactStatus, ModelDownloadPort } from '@core/server/index.js';
 import type { RgbFrame } from '@adapters/ffmpeg/index.js';
 import type { WhisperModelName } from '@core/domain/index.js';
 
@@ -140,6 +140,17 @@ class StubDownloads implements ModelDownloadPort {
     return Promise.resolve(ok(true));
   }
 
+  fileArtifactStatus(artifact: FileArtifact): Promise<Result<FileArtifactStatus, AppError>> {
+    return Promise.resolve(ok({
+      downloaded: true,
+      valid: true,
+      sizeBytes: artifact.bytes,
+      sha256: artifact.sha256,
+      reason: null,
+      remedy: null,
+    }));
+  }
+
   downloadFileArtifact(
     artifact: FileArtifact,
   ): Promise<Result<{ artifactId: FileArtifact['id']; path: string; downloaded: boolean; skipped: boolean }, AppError>> {
@@ -166,8 +177,9 @@ describe('registry entries are pinned', () => {
     });
   });
 
-  it('pins the SFace embedder artifact by sha256 without a fabricated byte size', () => {
+  it('pins the SFace embedder artifact by sha256 and byte size', () => {
     const embedder = FILE_ARTIFACTS['face-embedder/sface-2021dec'];
+    expect(embedder.bytes).toBe(38696353);
     expect(embedder.sha256).toBe('0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79');
     expect(embedder.url).toBe('https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx');
     expect(embedder.license).toBe('Apache-2.0');

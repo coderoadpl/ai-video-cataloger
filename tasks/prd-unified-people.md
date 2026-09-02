@@ -63,8 +63,8 @@ crops are gone.
   semantics: skip event, never a failed run).
 - New NDJSON steps for the photo leg only; **no new `ErrorCode`, HTTP status
   or exit code.**
-- `facesStatus` gains additive `videosIndexed`, `photosIndexed`,
-  `stalePhotoFiles`; existing fields keep their meaning.
+- `facesStatus` gains additive `videosIndexed`, `photosWithFaces`,
+  `photosProcessed`, `stalePhotoFiles`; existing fields keep their meaning.
 
 **RED-first tests.**
 
@@ -91,7 +91,8 @@ writing one crop per observation like the video pass; photo face observations
 that arrived through `photos import-libra` are dropped on first open (backed
 up under `~/.ai-video-cataloger/backups/`) because they carry no crops and
 foreign geometry" + "`GET /api/faces/status` reports `videosIndexed`,
-`photosIndexed` and `stalePhotoFiles` alongside the existing counters".
+`photosWithFaces`, `photosProcessed` and `stalePhotoFiles` alongside the
+existing counters".
 
 **Exit criteria.** `check` + `smoke` green; a real photo root indexes end to
 end with crops on disk.
@@ -240,7 +241,7 @@ adds no changelog line.
    the backup file exists and round-trips, and that the `media='photo'`
    observation count drops to zero.
 2. `avc faces index <photo root>` (or Analiza → Zdjęcia). Watch
-   `photosIndexed` climb. A catalog whose photos and videos live under
+   `photosProcessed` climb. A catalog whose photos and videos live under
    different roots needs one run per root (see risk 6).
 3. `scripts/faces-benchmark.ts` in real-data mode over the freshly-indexed
    catalog, pointed at the operator's reference-partition directory outside

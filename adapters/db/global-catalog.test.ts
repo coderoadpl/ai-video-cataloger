@@ -665,17 +665,52 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
   });
 
-  it('auto-flushes once the batched mutation count is reached', async () => {
+  it('does not auto-flush from mutation count alone during rapid writes', async () => {
     const home = await tempHome();
-    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    let persistCount = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => 1_000, onPersist: () => { persistCount += 1; } });
     await store.upsertFolder(folder);
     for (let index = 0; index < 25; index += 1) {
       await store.upsertFile({ ...file, fingerprint: `fp-${String(index)}`, fileName: `clip-${String(index)}.mp4` });
     }
 
+    expect(persistCount).toBe(0);
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const counts = await reopened.counts();
-    expect(counts.ok && counts.value.files).toBeGreaterThanOrEqual(24);
+    expect(counts.ok && counts.value.files).toBe(0);
+    expect((await store.flush()).ok).toBe(true);
+  });
+
+  it('auto-flushes after enough writes and elapsed time', async () => {
+    const home = await tempHome();
+    let nowMs = 1_000;
+    let persistCount = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => nowMs, onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 24; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-${String(index)}`, fileName: `clip-${String(index)}.mp4` });
+    }
+    nowMs = 31_000;
+    await store.upsertFile({ ...file, fingerprint: 'fp-24', fileName: 'clip-24.mp4' });
+
+    expect(persistCount).toBe(1);
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value.files).toBe(25);
+  });
+
+  it('explicit flush persists writes below the auto-flush threshold', async () => {
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => 1_000, onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    expect((await store.flush()).ok).toBe(true);
+    expect(persistCount).toBe(1);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
   });
 
   it('forgetPerson deletes the person and its face observations including embeddings', async () => {
@@ -785,7 +820,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value).toMatchObject({
       filesIndexed: 2,
       videosIndexed: 1,
-      photosIndexed: 1,
+      photosWithFaces: 1,
       staleVersionFiles: 0,
     });
   });

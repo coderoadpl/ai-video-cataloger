@@ -11,8 +11,11 @@ export const driveFacesSummaryLine = (value: unknown): string | null => {
     const abortedSuffix = faces.aborted
       ? ' — faces pass aborted after 5 consecutive failures; re-run "ai-video-cataloger faces index <root>"'
       : '';
+    const rejectedSuffix = faces.rejectedLowQuality > 0
+      ? `, ${String(faces.rejectedLowQuality)} low-quality detection(s) rejected`
+      : '';
     return `faces: indexed ${String(faces.filesIndexed)} file(s), ${String(faces.observationsAdded)} observation(s), `
-      + `${String(faces.peopleCreated)} new person(s)${failedSuffix}${abortedSuffix}`;
+      + `${String(faces.peopleCreated)} new person(s)${rejectedSuffix}${failedSuffix}${abortedSuffix}`;
   }
   switch (faces.skippedReason) {
     case 'flag':

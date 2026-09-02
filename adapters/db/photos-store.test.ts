@@ -346,21 +346,59 @@ describe('SqlJsPhotosStore', () => {
     expect(mtimeAfterBatch).not.toBe(mtimesBeforeBatch[0]);
   });
 
-  it('applies the per-write auto-flush outside a batch', async () => {
+  it('does not auto-flush from mutation count alone during rapid writes', async () => {
     const home = await tempHome();
-    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    let persistCount = 0;
+    const store = new SqlJsPhotosStore({ homeDirectory: home, nowMs: () => 1_000, onPersist: () => { persistCount += 1; } });
     await store.upsertFolder(folder);
-    await store.flush();
-    const mtimeBefore = fs.statSync(store.databasePath()).mtimeMs;
+    await store.upsertPhoto(photo());
 
     for (let index = 0; index < 26; index += 1) {
       const result = await store.upsertSighting(sighting({ currentPath: `/media/photos/${String(index)}.jpg` }));
       expect(result.ok).toBe(true);
-      await new Promise((resolve) => setTimeout(resolve, 2));
     }
 
-    const mtimeAfter = fs.statSync(store.databasePath()).mtimeMs;
-    expect(mtimeAfter).not.toBe(mtimeBefore);
+    expect(persistCount).toBe(0);
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const counts = await reopened.counts(null);
+    expect(counts.ok && counts.value.paths).toBe(0);
+    expect((await store.flush()).ok).toBe(true);
+  });
+
+  it('auto-flushes after enough writes and elapsed time', async () => {
+    const home = await tempHome();
+    let nowMs = 1_000;
+    let persistCount = 0;
+    const store = new SqlJsPhotosStore({ homeDirectory: home, nowMs: () => nowMs, onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    for (let index = 0; index < 23; index += 1) {
+      const result = await store.upsertSighting(sighting({ currentPath: `/media/photos/${String(index)}.jpg` }));
+      expect(result.ok).toBe(true);
+    }
+    nowMs = 31_000;
+    const result = await store.upsertSighting(sighting({ currentPath: '/media/photos/23.jpg' }));
+    expect(result.ok).toBe(true);
+
+    expect(persistCount).toBe(1);
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const counts = await reopened.counts(null);
+    expect(counts.ok && counts.value.paths).toBe(24);
+  });
+
+  it('explicit flush persists writes below the auto-flush threshold', async () => {
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsPhotosStore({ homeDirectory: home, nowMs: () => 1_000, onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertSighting(sighting());
+    expect((await store.flush()).ok).toBe(true);
+    expect(persistCount).toBe(1);
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const counts = await reopened.counts(null);
+    expect(counts.ok && counts.value.paths).toBe(1);
   });
 
   it('deletes a photo and every dependent row in order', async () => {

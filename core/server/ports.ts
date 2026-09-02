@@ -326,7 +326,7 @@ export interface FaceStatusCounts {
   unassignedObservations: number;
   filesIndexed: number;
   videosIndexed: number;
-  photosIndexed: number;
+  photosWithFaces: number;
   staleVersionFiles: number;
 }
 
@@ -669,6 +669,7 @@ export interface PhotosStore {
   listPhotoFaceIndexCandidates(root: string):
     Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>>;
   completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
+  countPhotoFaceIndexFiles(): Promise<Result<number, AppError>>;
   countStalePhotoFaceIndexFiles(engineVersion: number): Promise<Result<number, AppError>>;
   listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>>;
   applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
@@ -1302,10 +1303,20 @@ export interface ModelDownloadPort {
   ): Promise<Result<{ model: WhisperModelName; path: string; deleted: boolean }, AppError>>;
   fileArtifactPath(artifact: FileArtifact): string;
   isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>>;
+  fileArtifactStatus(artifact: FileArtifact): Promise<Result<FileArtifactStatus, AppError>>;
   downloadFileArtifact(
     artifact: FileArtifact,
     options: { force: boolean; onProgress?: (progress: FileArtifactDownloadProgress) => void; signal?: AbortSignal | undefined },
   ): Promise<Result<{ artifactId: FileArtifactId; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>>;
+}
+
+export interface FileArtifactStatus {
+  downloaded: boolean;
+  valid: boolean;
+  sizeBytes: number | null;
+  sha256: string | null;
+  reason: string | null;
+  remedy: string | null;
 }
 
 export type JobKind =

@@ -429,6 +429,7 @@ export const driveRunFacesSchema = z.object({
   skippedReason: z.enum(['flag', 'artifacts_missing', 'unavailable', 'cancelled', 'failed']).nullable(),
   filesIndexed: z.number().int().nonnegative(),
   observationsAdded: z.number().int().nonnegative(),
+  rejectedLowQuality: z.number().int().nonnegative().default(0),
   peopleCreated: z.number().int().nonnegative(),
   filesFailed: z.number().int().nonnegative().default(0),
   failureCodes: z.array(z.object({ code: z.enum(ERROR_CODES), count: z.number().int().positive() })).default([]),
@@ -1378,6 +1379,11 @@ export const faceArtifactEntrySchema = z.object({
   license: z.string().min(1),
   path: z.string().min(1),
   downloaded: z.boolean(),
+  valid: z.boolean(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  actualSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  reason: z.string().min(1).nullable(),
+  remedy: z.string().min(1).nullable(),
 });
 
 export const faceArtifactsStatusOutputSchema = z.object({
@@ -1637,6 +1643,7 @@ export const facesIndexOutputSchema = z.object({
   filesScanned: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
   observationsAdded: z.number().int().nonnegative(),
+  rejectedLowQuality: z.number().int().nonnegative().default(0),
   peopleCreated: z.number().int().nonnegative(),
   filesFailed: z.number().int().nonnegative().default(0),
   failures: z.array(facesIndexFailureSchema).default([]),
@@ -1646,8 +1653,9 @@ export const facesIndexOutputSchema = z.object({
     scanned: z.number().int().nonnegative(),
     indexed: z.number().int().nonnegative(),
     observationsAdded: z.number().int().nonnegative(),
+    rejectedLowQuality: z.number().int().nonnegative().default(0),
     failed: z.number().int().nonnegative(),
-  }).default({ inScope: 0, scanned: 0, indexed: 0, observationsAdded: 0, failed: 0 }),
+  }).default({ inScope: 0, scanned: 0, indexed: 0, observationsAdded: 0, rejectedLowQuality: 0, failed: 0 }),
 });
 
 export const jobResultSchema = z.union([
@@ -2211,7 +2219,8 @@ export const facesStatusOutputSchema = z.object({
   unassignedObservations: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
   videosIndexed: z.number().int().nonnegative(),
-  photosIndexed: z.number().int().nonnegative(),
+  photosWithFaces: z.number().int().nonnegative(),
+  photosProcessed: z.number().int().nonnegative(),
   staleVersionFiles: z.number().int().nonnegative(),
   stalePhotoFiles: z.number().int().nonnegative(),
 });

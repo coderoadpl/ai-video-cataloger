@@ -62,6 +62,7 @@ import type {
   FaceFrameInput,
   FaceStatusCounts,
   AlignedFaceCrop,
+  FileArtifactStatus,
   FileArtifactDownloadProgress,
   ForgetEntryResult,
   GeoBackfillCandidate,
@@ -939,6 +940,8 @@ export class InMemoryLocalAi implements LocalAiRuntimePort {
 export class InMemoryDownloads implements ModelDownloadPort {
   readonly downloaded = new Set<WhisperModelName>();
   readonly downloadedArtifacts = new Set<string>();
+  readonly fileArtifactSizes = new Map<string, number>();
+  readonly fileArtifactHashes = new Map<string, string>();
 
   whisperModelPath(model: WhisperModelName): string {
     return `/models/${model}.bin`;
@@ -948,8 +951,53 @@ export class InMemoryDownloads implements ModelDownloadPort {
     return `/models/artifacts/${artifact.filename}`;
   }
 
-  isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
-    return Promise.resolve(ok(this.downloadedArtifacts.has(artifact.id)));
+  async isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    const status = await this.fileArtifactStatus(artifact);
+    if (!status.ok) return status;
+    return ok(status.value.valid);
+  }
+
+  fileArtifactStatus(artifact: FileArtifact): Promise<Result<FileArtifactStatus, AppError>> {
+    if (!this.downloadedArtifacts.has(artifact.id)) {
+      return Promise.resolve(ok({
+        downloaded: false,
+        valid: false,
+        sizeBytes: null,
+        sha256: null,
+        reason: 'File is missing.',
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    const sizeBytes = this.fileArtifactSizes.get(artifact.id) ?? artifact.bytes;
+    if (artifact.bytes !== null && sizeBytes !== artifact.bytes) {
+      return Promise.resolve(ok({
+        downloaded: true,
+        valid: false,
+        sizeBytes,
+        sha256: null,
+        reason: `Expected ${String(artifact.bytes)} bytes but found ${String(sizeBytes)}.`,
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    const sha256 = this.fileArtifactHashes.get(artifact.id) ?? artifact.sha256;
+    if (sha256 !== artifact.sha256) {
+      return Promise.resolve(ok({
+        downloaded: true,
+        valid: false,
+        sizeBytes,
+        sha256,
+        reason: 'SHA-256 checksum does not match the face model manifest.',
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    return Promise.resolve(ok({
+      downloaded: true,
+      valid: true,
+      sizeBytes,
+      sha256,
+      reason: null,
+      remedy: null,
+    }));
   }
 
   downloadFileArtifact(
@@ -961,6 +1009,8 @@ export class InMemoryDownloads implements ModelDownloadPort {
       return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: false, skipped: true }));
     }
     this.downloadedArtifacts.add(artifact.id);
+    if (artifact.bytes !== null) this.fileArtifactSizes.set(artifact.id, artifact.bytes);
+    this.fileArtifactHashes.set(artifact.id, artifact.sha256);
     options.onProgress?.({ artifactId: artifact.id, downloadedBytes: artifact.bytes ?? 0, totalBytes: artifact.bytes, percentage: 100, speed: 0 });
     return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false }));
   }
@@ -1954,7 +2004,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       unassignedObservations: observationRows.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observationRows.map((observation) => observation.fingerprint)).size,
       videosIndexed: new Set(observationRows.filter((observation) => observation.media === 'video').map((observation) => observation.fingerprint)).size,
-      photosIndexed: new Set(observationRows.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
+      photosWithFaces: new Set(observationRows.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
       staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
     }));
   }
@@ -2690,6 +2740,10 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   countStalePhotoFaceIndexFiles(engineVersion: number): Promise<Result<number, AppError>> {
     return Promise.resolve(ok([...this.faceIndexState.values()].filter((version) => version < engineVersion).length));
+  }
+
+  countPhotoFaceIndexFiles(): Promise<Result<number, AppError>> {
+    return Promise.resolve(ok(this.faceIndexState.size));
   }
 
   private isPhotoScoped(fingerprint: string, currentPath: string, root: string | null): boolean {

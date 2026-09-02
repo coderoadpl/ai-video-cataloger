@@ -56,7 +56,7 @@ export const FILE_ARTIFACTS: Record<FileArtifactId, FileArtifact> = {
   'face-embedder/sface-2021dec': {
     id: 'face-embedder/sface-2021dec',
     filename: 'face_recognition_sface_2021dec.onnx',
-    bytes: null,
+    bytes: 38696353,
     sha256: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79',
     url: 'https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx',
     license: 'Apache-2.0',

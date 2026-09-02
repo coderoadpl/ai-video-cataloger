@@ -93,7 +93,9 @@ import { normalizeStoredTagNames } from './tag-normalization-migration.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'photos.db';
-const AUTO_FLUSH_MUTATION_COUNT = 25;
+const AUTO_FLUSH_MIN_MUTATION_COUNT = 25;
+const AUTO_FLUSH_MAX_MUTATION_COUNT = 1000;
+const AUTO_FLUSH_INTERVAL_MS = 30_000;
 
 export const photosDbPath = (home: string): string => path.join(home, dbDirectoryName, dbFileName);
 
@@ -112,12 +114,17 @@ export interface PhotosAdapterOptions {
   isProcessAlive?: ((pid: number) => boolean) | undefined;
   lockFs?: CatalogLockFs | undefined;
   lock?: HomeLock | undefined;
+  nowMs?: (() => number) | undefined;
+  onPersist?: (() => void) | undefined;
 }
 
 export class SqlJsPhotosStore implements PhotosStore {
   private readonly filePath: string;
   private readonly lock: HomeLock;
+  private readonly nowMs: () => number;
+  private readonly onPersist: () => void;
   private dirtyCount = 0;
+  private lastPersistedAtMs: number;
   private batchDepth = 0;
   private state: {
     SQL: SqlJsStatic;
@@ -129,6 +136,9 @@ export class SqlJsPhotosStore implements PhotosStore {
   constructor(options: PhotosAdapterOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir();
     this.filePath = photosDbPath(homeDirectory);
+    this.nowMs = options.nowMs ?? Date.now;
+    this.onPersist = options.onPersist ?? (() => {});
+    this.lastPersistedAtMs = this.nowMs();
     const lockMode = options.lockMode ?? (options.processName === undefined ? 'none' : 'lazy');
     this.lock = options.lock ?? new HomeLock({
       homeDirectory,
@@ -456,6 +466,13 @@ export class SqlJsPhotosStore implements PhotosStore {
         'SELECT COUNT(*) FROM photo_face_index_state WHERE engine_version < ?',
         [engineVersion],
       );
+      return numberValue(result[0]?.values[0]?.[0]);
+    });
+  }
+
+  async countPhotoFaceIndexFiles(): Promise<Result<number, AppError>> {
+    return this.read((_db, client) => {
+      const result = client.exec('SELECT COUNT(*) FROM photo_face_index_state');
       return numberValue(result[0]?.values[0]?.[0]);
     });
   }
@@ -1157,7 +1174,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
-      if (this.batchDepth === 0 && this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
+      if (this.batchDepth === 0 && this.shouldAutoFlush()) this.persist(state);
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
@@ -1170,8 +1187,16 @@ export class SqlJsPhotosStore implements PhotosStore {
 
   private persist(state: NonNullable<SqlJsPhotosStore['state']>): void {
     persistDatabase(this.filePath, state.client);
+    this.onPersist();
     state.fileState = fileStateOf(this.filePath);
     this.dirtyCount = 0;
+    this.lastPersistedAtMs = this.nowMs();
+  }
+
+  private shouldAutoFlush(): boolean {
+    if (this.dirtyCount >= AUTO_FLUSH_MAX_MUTATION_COUNT) return true;
+    return this.dirtyCount >= AUTO_FLUSH_MIN_MUTATION_COUNT
+      && this.nowMs() - this.lastPersistedAtMs >= AUTO_FLUSH_INTERVAL_MS;
   }
 
   private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsPhotosStore['state']>> {
@@ -1280,7 +1305,7 @@ const persistDatabase = (databasePath: string, client: Database): void => {
   const tempPath = `${databasePath}.tmp`;
   const descriptor = openSync(tempPath, 'w');
   try {
-    writeFileSync(descriptor, Buffer.from(client.export()));
+    writeFileSync(descriptor, client.export());
     fsyncSync(descriptor);
   } finally {
     closeSync(descriptor);

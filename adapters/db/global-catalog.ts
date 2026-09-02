@@ -115,7 +115,9 @@ import { normalizeStoredTagNames } from './tag-normalization-migration.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
-const AUTO_FLUSH_MUTATION_COUNT = 25;
+const AUTO_FLUSH_MIN_MUTATION_COUNT = 25;
+const AUTO_FLUSH_MAX_MUTATION_COUNT = 1000;
+const AUTO_FLUSH_INTERVAL_MS = 30_000;
 const analyzedFileLocationSchema = z.object({
   fingerprint: z.string(),
   folderId: z.string(),
@@ -142,13 +144,18 @@ export interface GlobalCatalogAdapterOptions {
   isProcessAlive?: ((pid: number) => boolean) | undefined;
   lockFs?: CatalogLockFs | undefined;
   lock?: HomeLock | undefined;
+  nowMs?: (() => number) | undefined;
+  onPersist?: (() => void) | undefined;
 }
 
 export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly filePath: string;
   private readonly lockMode: 'none' | 'lazy' | 'eager';
   private readonly lock: HomeLock;
+  private readonly nowMs: () => number;
+  private readonly onPersist: () => void;
   private dirtyCount = 0;
+  private lastPersistedAtMs: number;
   private batchDepth = 0;
   private readonly pendingSearchDocuments = new Set<string>();
   private state: {
@@ -161,6 +168,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   constructor(options: GlobalCatalogAdapterOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir();
     this.filePath = globalCatalogPath(homeDirectory);
+    this.nowMs = options.nowMs ?? Date.now;
+    this.onPersist = options.onPersist ?? (() => {});
+    this.lastPersistedAtMs = this.nowMs();
     this.lockMode = options.lockMode ?? (options.processName === undefined ? 'none' : 'lazy');
     this.lock = options.lock ?? new HomeLock({
       homeDirectory,
@@ -1394,7 +1404,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         unassignedObservations: observationRows.filter((row) => row.personId === null).length,
         filesIndexed: new Set(observationRows.map((row) => row.fingerprint)).size,
         videosIndexed: videoFingerprints.size,
-        photosIndexed: photoFingerprints.size,
+        photosWithFaces: photoFingerprints.size,
         staleVersionFiles: stateRows.filter((row) => row.engineVersion < FACE_ENGINE_VERSION).length,
       };
     });
@@ -1453,7 +1463,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
-      if (this.batchDepth === 0 && this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
+      if (this.batchDepth === 0 && this.shouldAutoFlush()) this.persist(state);
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
@@ -1478,8 +1488,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   private persist(state: NonNullable<SqlJsGlobalCatalogStore['state']>): void {
     persistDatabase(this.filePath, state.client);
+    this.onPersist();
     state.fileState = fileStateOf(this.filePath);
     this.dirtyCount = 0;
+    this.lastPersistedAtMs = this.nowMs();
+  }
+
+  private shouldAutoFlush(): boolean {
+    if (this.dirtyCount >= AUTO_FLUSH_MAX_MUTATION_COUNT) return true;
+    return this.dirtyCount >= AUTO_FLUSH_MIN_MUTATION_COUNT
+      && this.nowMs() - this.lastPersistedAtMs >= AUTO_FLUSH_INTERVAL_MS;
   }
 
   private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {
@@ -1668,7 +1686,7 @@ const persistDatabase = (databasePath: string, client: Database): void => {
   const tempPath = `${databasePath}.tmp`;
   const descriptor = openSync(tempPath, 'w');
   try {
-    writeFileSync(descriptor, Buffer.from(client.export()));
+    writeFileSync(descriptor, client.export());
     fsyncSync(descriptor);
   } finally {
     closeSync(descriptor);
