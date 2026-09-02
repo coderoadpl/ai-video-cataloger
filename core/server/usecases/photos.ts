@@ -243,7 +243,7 @@ export const runPhotoScan = async (
   const flushed = await deps.photos.flush();
   if (!flushed.ok) return flushed;
 
-  await report(progress, 'photo-run-summary', { root, runId });
+  await report(progress, 'photo-run-summary', { root, runId, filesTotal: candidatePaths.length, ...counters });
 
   const proxies = await runChainedProxiesPass(deps, root, progress);
 
@@ -314,9 +314,7 @@ const processCandidate = async (
 ): Promise<Result<CandidateOutcome, AppError>> => {
   const stat = await deps.fs.stat(filePath);
   if (!stat.ok) {
-    counters.readFailed += 1;
-    await report(progress, 'photo-file-skipped', { path: filePath, reason: 'read_failed' });
-    return ok('failed');
+    return recordCandidateReadFailure(filePath, counters, progress);
   }
 
   const existingSighting = await deps.photos.getSightingByPath(filePath);
@@ -336,11 +334,12 @@ const processCandidate = async (
   }
 
   const hash = await deps.fs.fullContentHash(filePath);
-  if (!hash.ok) return hash;
+  if (!hash.ok) {
+    if (hash.error.code !== 'read_error') return hash;
+    return recordCandidateReadFailure(filePath, counters, progress);
+  }
   if (hash.value === null) {
-    counters.readFailed += 1;
-    await report(progress, 'photo-file-skipped', { path: filePath, reason: 'read_failed' });
-    return ok('failed');
+    return recordCandidateReadFailure(filePath, counters, progress);
   }
   const fingerprint = photoFingerprintFromSha256(hash.value);
 
@@ -459,6 +458,16 @@ const processCandidate = async (
   if (!upsertedSighting.ok) return upsertedSighting;
   counters.pathsSeen += 1;
   return ok('done');
+};
+
+const recordCandidateReadFailure = async (
+  filePath: string,
+  counters: ScanCounters,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<CandidateOutcome, AppError>> => {
+  counters.readFailed += 1;
+  await report(progress, 'photo-file-skipped', { path: filePath, reason: 'read_failed' });
+  return ok('failed');
 };
 
 const isUnderUnreadableFolder = (currentPath: string, unreadableFolders: readonly string[]): boolean =>
