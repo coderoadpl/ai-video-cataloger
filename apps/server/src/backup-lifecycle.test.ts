@@ -49,4 +49,31 @@ describe('backup application lifecycle', () => {
     expect(calls).toEqual(['cleanup', 'evaluate', 'evaluate']);
     await app.dispose();
   });
+
+  it('does not evaluate backup scheduling when an analysis job completes', async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    const app = createApp({ dbDriver: 'memory', processName: 'gui' }, (config) => ({
+      ...createInMemoryDeps(config),
+      cleanupBackupStaging: () => {
+        calls.push('cleanup');
+        return Promise.resolve(ok(undefined));
+      },
+      evaluateScheduledBackup: () => {
+        calls.push('evaluate');
+        return Promise.resolve(ok(undefined));
+      },
+    }));
+    await vi.advanceTimersByTimeAsync(0);
+    const enqueued = await app.jobs.enqueue({
+      kind: 'process',
+      payload: {},
+      run: () => Promise.resolve(ok({ processed: true })),
+    });
+    expect(enqueued).toMatchObject({ ok: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(calls).toEqual(['cleanup', 'evaluate']);
+    await app.dispose();
+  });
 });

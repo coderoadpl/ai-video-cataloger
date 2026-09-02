@@ -38,6 +38,7 @@ import {
   type Result,
   type TimelineIntervalKind,
 } from '@core/domain/index.js';
+import { JOB_CANCELLED_ERROR_MESSAGE } from '@core/server/index.js';
 import type {
   ApplyGeoBackfillResult,
   ApplyPhotoGeoBackfillInput,
@@ -142,11 +143,11 @@ export class SqlJsPhotosStore implements PhotosStore {
     return this.filePath;
   }
 
-  async snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
+  async snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
     const wasOpen = this.state !== null;
     let leased = false;
     try {
-      await acquireSnapshotLease(this.lock);
+      await acquireSnapshotLease(this.lock, signal);
       leased = true;
       const flushed = await this.flush();
       if (!flushed.ok) return flushed;
@@ -1284,17 +1285,43 @@ const persistDatabase = (databasePath: string, client: Database): void => {
   renameSync(tempPath, databasePath);
 };
 
-const acquireSnapshotLease = async (lock: HomeLock): Promise<void> => {
+const SNAPSHOT_LEASE_RETRY_MS = 10;
+const SNAPSHOT_LEASE_TIMEOUT_MS = 30_000;
+
+const acquireSnapshotLease = async (lock: HomeLock, signal?: AbortSignal | undefined): Promise<void> => {
+  const deadline = Date.now() + SNAPSHOT_LEASE_TIMEOUT_MS;
   for (;;) {
+    if (signal?.aborted === true) throw cancelledError();
     try {
       lock.acquireLease();
       return;
     } catch (cause) {
       if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      if (Date.now() >= deadline) throw cause;
+      await sleepUntilRetry(signal);
     }
   }
 };
+
+const sleepUntilRetry = (signal?: AbortSignal | undefined): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted === true) {
+    reject(cancelledError());
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const onAbort = (): void => {
+    if (timer !== null) clearTimeout(timer);
+    reject(cancelledError());
+  };
+  timer = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, SNAPSHOT_LEASE_RETRY_MS);
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
+
+const cancelledError = (): CatalogAppError =>
+  new CatalogAppError(appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE));
 
 const verifySnapshotIntegrity = (SQL: SqlJsStatic, targetPath: string): void => {
   const client = new SQL.Database(readFileSync(targetPath));

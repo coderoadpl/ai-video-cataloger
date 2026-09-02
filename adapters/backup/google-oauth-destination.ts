@@ -52,6 +52,11 @@ const tokenSchema = z.object({
 
 const filesSchema = z.object({ files: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()) }).passthrough();
 const folderSchema = z.object({ id: z.string().min(1), name: z.string().min(1) }).passthrough();
+const folderHealthSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  trashed: z.boolean(),
+}).passthrough();
 const aboutSchema = z.object({
   user: z.object({ emailAddress: z.string().min(1) }),
   storageQuota: z.object({ limit: z.string().regex(/^\d+$/).optional(), usage: z.string().regex(/^\d+$/).optional() }),
@@ -177,7 +182,9 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     const configured = await this.config.get({ kind: 'home' }, 'backup_folder_id');
     if (!configured.ok) return configured;
     if (configured.value !== null && configured.value.length > 0) {
-      return ok({ folderId: configured.value, name: BACKUP_FOLDER_NAME });
+      const stored = await this.storedFolder(configured.value, signal);
+      if (!stored.ok) return stored;
+      if (stored.value !== null) return ok(stored.value);
     }
     const query = new URL(`${this.driveBaseUrl}/files`);
     query.searchParams.set('q', `mimeType='application/vnd.google-apps.folder' and name='${BACKUP_FOLDER_NAME}' and trashed=false`);
@@ -193,6 +200,21 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     const stored = await this.config.set({ kind: 'home' }, 'backup_folder_id', folder.value.id);
     if (!stored.ok) return stored;
     return ok({ folderId: folder.value.id, name: folder.value.name });
+  }
+
+  private async storedFolder(
+    folderId: string,
+    signal: AbortSignal,
+  ): Promise<Result<{ folderId: string; name: string } | null, AppError>> {
+    const url = new URL(`${this.driveBaseUrl}/files/${encodeURIComponent(folderId)}`);
+    url.searchParams.set('fields', 'id,name,trashed');
+    const response = await this.request(url.toString(), {}, signal, [404]);
+    if (!response.ok) return response;
+    if (response.value.status === 404) return ok(null);
+    const parsed = await parseGoogleResponse(response.value, folderHealthSchema, 'folder lookup');
+    if (!parsed.ok) return parsed;
+    if (parsed.value.trashed) return ok(null);
+    return ok({ folderId: parsed.value.id, name: parsed.value.name });
   }
 
   async list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
@@ -299,7 +321,12 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     });
   }
 
-  private async request(url: string, init: RequestInit, signal: AbortSignal): Promise<Result<Response, AppError>> {
+  private async request(
+    url: string,
+    init: RequestInit,
+    signal: AbortSignal,
+    acceptedErrorStatuses: readonly number[] = [],
+  ): Promise<Result<Response, AppError>> {
     const token = await this.token(signal);
     if (!token.ok) return token;
     let usedToken = token.value;
@@ -316,7 +343,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     } catch (cause) {
       return { ok: false, error: appError('backup_destination_error', cause instanceof Error ? cause.message : 'Google Drive request failed') };
     }
-    if (!response.ok) return googleResponseFailure(response, [token.value, usedToken]);
+    if (!response.ok && !acceptedErrorStatuses.includes(response.status)) return googleResponseFailure(response, [token.value, usedToken]);
     return ok(response);
   }
 

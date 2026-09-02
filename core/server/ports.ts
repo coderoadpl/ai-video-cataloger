@@ -603,7 +603,7 @@ export interface PhotoMediaPort {
 
 export interface PhotosStore {
   databasePath(): string;
-  snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
+  snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   checkpoint(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
@@ -690,7 +690,7 @@ export interface DriveRunRecord {
 
 export interface GlobalCatalogStore {
   databasePath(): string;
-  snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
+  snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
   withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;

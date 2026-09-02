@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdtempSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { zstdCompressSync, zstdDecompressSync } from 'node:zlib';
 
 import { describe, expect, it } from 'vitest';
@@ -49,6 +50,30 @@ describe('deterministic tar and zstd archive', () => {
     writeFileSync(rawArchive, zstdDecompressSync(readFileSync(archive)));
     const listed = execFileSync('tar', ['-tf', rawArchive], { encoding: 'utf8' });
     expect(listed.trim()).toBe('folder/file.txt');
+  });
+
+  it('fails when a file changes size after its tar header is written', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-tar-race-'));
+    const source = path.join(root, 'crop.bin');
+    writeFileSync(source, Buffer.alloc(1024, 1));
+    let changed = false;
+    const originalCreateReadStream = createReadStream;
+    const streamFactory = (sourcePath: string, signal: AbortSignal | undefined): Readable => {
+      if (sourcePath === source && !changed) {
+        changed = true;
+        writeFileSync(source, Buffer.alloc(2048, 2));
+      }
+      return originalCreateReadStream(sourcePath, { signal });
+    };
+
+    const result = await writeTarZstd(
+      [{ archivePath: 'faces/obs/crop.bin', sourcePath: source, kind: 'file' }],
+      path.join(root, 'race.tar.zst'),
+      createdAt,
+      { streamFactory },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed' } });
   });
 
   it('keeps RSS growth bounded while streaming a 5 GB sparse input', async () => {

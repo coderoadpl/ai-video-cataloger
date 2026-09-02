@@ -40,6 +40,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.
+- Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive.
+- Backup retention pruning now lists and deletes only the completed run's archive tier.
+- Google OAuth backup now verifies a saved Drive folder id and recreates the app backup folder when the saved folder is missing or trashed.
+- Google Drive resumable uploads now retry `rateLimitExceeded` and `userRateLimitExceeded` 403 responses consistently with Drive error mapping.
 - Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files.
 - PHOTO LIBRA geo imports now join through manifest md5 values when artifact paths no longer match scanned paths.
 

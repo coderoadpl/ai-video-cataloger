@@ -8,6 +8,18 @@ const DEV_PORT = 9473;
 const API_PROXY_TARGET = 'http://127.0.0.1:9411';
 
 const NODE_BUILTINS = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
+const GOOGLE_CLIENT_MODULES = [/^googleapis(?:\/|$)/, /^@googleapis\//, /^@google-cloud\/local-auth(?:\/|$)/];
+
+export const forbiddenRendererDependencyReason = (source: string, importer: string | undefined): string | null => {
+  if (NODE_BUILTINS.has(source)) {
+    return `The renderer bundle graph reached the Node builtin "${source}" via ${importer ?? 'the entry'}. ` +
+      'Renderer-reachable modules must be browser-safe — core/domain is in this graph.';
+  }
+  if (GOOGLE_CLIENT_MODULES.some((pattern) => pattern.test(source))) {
+    return `The renderer bundle graph reached the Google client module "${source}" via ${importer ?? 'the entry'}.`;
+  }
+  return null;
+};
 
 // vite silently externalizes a Node builtin unless it is imported by name, so a
 // default or side-effect import ships a bundle that throws in the browser
@@ -17,11 +29,9 @@ const rendererIsBrowserOnly = (): Plugin => ({
   apply: 'build',
   enforce: 'pre',
   resolveId: (source: string, importer: string | undefined): null => {
-    if (!NODE_BUILTINS.has(source)) return null;
-    throw new Error(
-      `The renderer bundle graph reached the Node builtin "${source}" via ${importer ?? 'the entry'}. ` +
-        'Renderer-reachable modules must be browser-safe — core/domain is in this graph.',
-    );
+    const reason = forbiddenRendererDependencyReason(source, importer);
+    if (reason === null) return null;
+    throw new Error(reason);
   },
 });
 
