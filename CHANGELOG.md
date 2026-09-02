@@ -27,7 +27,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `backup now` runs a backup immediately (exit code 47 while backup is off) and `backup status [--test-connection]` prints enablement, provider, connected account, last success, next due date, last error, retention and indicator state.
 - Settings gained a Backup section: a one-time enablement stepper (destination choice, Google sign-in or service-account key import with a Shared Drive id, connection test, mandatory recovery-key export plus confirmation), the optional-tier toggle, the two retention fields, "Kopia teraz", the last-backup and next-evaluation readout, and the list of remote backups with a two-step restore confirmation that names the pre-restore copy and the relaunch.
 - The bottom bar shows a backup indicator next to the terminal controls — hidden while backup is off, a check glyph with the last backup date in its tooltip when idle, a spinner with the current phase while a backup runs, and a warning that opens Settings > Backup after a failure.
-- New contract routes `POST /api/backup/run`, `GET /api/backup/status`, `POST /api/backup/connect`, `POST /api/backup/test`, `POST /api/backup/enable`, `POST /api/backup/disable`, `POST /api/backup/recovery-key/export` and `POST /api/backup/recovery-key/confirm`.
+- New contract routes `POST /api/backup/run`, `GET /api/backup/status`, `POST /api/backup/connect`, `POST /api/backup/test`, `POST /api/backup/enable`, `POST /api/backup/disable`, `POST /api/backup/recovery-key/export`, `POST /api/backup/recovery-key/confirm`, `POST /api/backup/recovery-key/import` and `POST /api/backup/connect/cancel`.
 - Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
 - `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
 - `faces index` and `photos process` now detect faces in photos themselves,
@@ -66,6 +66,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.
 - Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive.
 - Backup retention pruning now lists and deletes only the completed run's archive tier.
+- Backup archives are encrypted with a per-archive subkey derived from a random 16-byte salt (envelope format version 2), so two archives can no longer share an AES-GCM nonce; archives written in format version 1 still decrypt.
+- Backup retention only prunes archives written under the recovery key this Mac holds, so a reinstalled Mac can no longer delete the archives it cannot read.
+- Settings > Backup restore accepts a recovery key from another Mac, and the enablement stepper detects archives already in the destination before minting a new key, offering to import that key or requiring an explicit acknowledgement that the old archives stay unreadable; `POST /api/backup/enable` refuses without one.
+- A build without a Google OAuth client id now fails `Settings > Backup > Google account` with `backup_destination_error` before opening a browser, instead of showing a Google error page and hanging for five minutes.
+- Connecting a Google account shows a waiting state and can be cancelled: closing the stepper or the new `POST /api/backup/connect/cancel` aborts the loopback listener, and a second concurrent connect is refused with `conflict`.
+- `avc backup restore --recovery-key` no longer takes the key as a command-line argument; it reads it from `AVC_BACKUP_RECOVERY_KEY` or a hidden terminal prompt.
 - Google OAuth backup now verifies a saved Drive folder id and recreates the app backup folder when the saved folder is missing or trashed.
 - Google Drive resumable uploads now retry `rateLimitExceeded` and `userRateLimitExceeded` 403 responses consistently with Drive error mapping.
 - Filtering Kolekcja by a person no longer hides every photo, so the person

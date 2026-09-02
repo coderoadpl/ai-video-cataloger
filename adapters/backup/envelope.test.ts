@@ -1,3 +1,4 @@
+import { createCipheriv, createDecipheriv } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
 import {
   ENVELOPE_FRAME_SIZE,
   ENVELOPE_HEADER_SIZE,
+  backupKeyFingerprint,
   createBackupEncryptionKey,
   decryptBackupEnvelope,
   ensureBackupRecoveryKey,
@@ -164,3 +166,82 @@ describe('backup encryption envelope', () => {
     expect(parseRecoveryKey(typo)).toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
   });
 });
+
+describe('backup envelope format version 2', () => {
+  it('never reuses the archive salt or the frame nonces across two encryptions of the same input', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-envelope-salt-'));
+    const plain = path.join(root, 'plain.bin');
+    writeFileSync(plain, Buffer.alloc(64, 3));
+    const key = Buffer.alloc(32, 11);
+
+    const first = path.join(root, 'first.avcbak');
+    const second = path.join(root, 'second.avcbak');
+    expect(await encryptBackupEnvelope(plain, first, key)).toMatchObject({ ok: true });
+    expect(await encryptBackupEnvelope(plain, second, key)).toMatchObject({ ok: true });
+
+    const firstHeader = readFileSync(first).subarray(0, ENVELOPE_HEADER_SIZE);
+    const secondHeader = readFileSync(second).subarray(0, ENVELOPE_HEADER_SIZE);
+    expect(firstHeader[7]).toBe(2);
+    expect(firstHeader.subarray(24, 40).equals(secondHeader.subarray(24, 40))).toBe(false);
+    expect(firstHeader.subarray(8, 12).equals(secondHeader.subarray(8, 12))).toBe(false);
+    expect(readFileSync(first).equals(readFileSync(second))).toBe(false);
+  });
+
+  it('derives the frame key from the archive salt so the stored key alone cannot decrypt a frame', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-envelope-subkey-'));
+    const plain = path.join(root, 'plain.bin');
+    const encrypted = path.join(root, 'archive.avcbak');
+    const decrypted = path.join(root, 'decrypted.bin');
+    const bytes = Buffer.alloc(4096, 8);
+    writeFileSync(plain, bytes);
+    const key = Buffer.alloc(32, 13);
+    expect(await encryptBackupEnvelope(plain, encrypted, key)).toMatchObject({ ok: true });
+    const archive = readFileSync(encrypted);
+    const salt = archive.subarray(24, 40);
+    const nonce = Buffer.alloc(12);
+    archive.subarray(8, 12).copy(nonce, 0);
+    const masterAttempt = createDecipheriv('aes-256-gcm', key, nonce);
+    masterAttempt.setAuthTag(archive.subarray(archive.length - 16));
+
+    expect(() => {
+      masterAttempt.update(archive.subarray(ENVELOPE_HEADER_SIZE, archive.length - 16));
+      masterAttempt.final();
+    }).toThrow();
+    expect(backupKeyFingerprint(key)).toMatch(/^sha256:[0-9a-f]{12}$/);
+    expect(salt).toHaveLength(16);
+    expect(await decryptBackupEnvelope(encrypted, decrypted, key)).toMatchObject({ ok: true });
+    expect(readFileSync(decrypted).equals(bytes)).toBe(true);
+  });
+
+  it('still decrypts a version 1 envelope written before the per-archive salt', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-envelope-v1-'));
+    const legacy = path.join(root, 'legacy.avcbak');
+    const decrypted = path.join(root, 'decrypted.bin');
+    const bytes = Buffer.alloc(1024, 21);
+    const key = Buffer.alloc(32, 17);
+    writeFileSync(legacy, writeLegacyEnvelope(bytes, key));
+
+    expect(await decryptBackupEnvelope(legacy, decrypted, key)).toMatchObject({ ok: true, value: { frameCount: 1 } });
+    expect(readFileSync(decrypted).equals(bytes)).toBe(true);
+  });
+});
+
+const writeLegacyEnvelope = (plain: Buffer, key: Buffer): Buffer => {
+  const header = Buffer.alloc(24);
+  Buffer.from('AVCBAK1', 'ascii').copy(header, 0);
+  header[7] = 1;
+  const noncePrefix = Buffer.alloc(4, 2);
+  noncePrefix.copy(header, 8);
+  header.writeUInt32BE(ENVELOPE_FRAME_SIZE, 12);
+  header.writeBigUInt64BE(1n, 16);
+  const nonce = Buffer.alloc(12);
+  noncePrefix.copy(nonce, 0);
+  const aad = Buffer.alloc(17);
+  Buffer.from('AVCBAK1', 'ascii').copy(aad, 0);
+  aad[7] = 1;
+  aad.writeBigUInt64BE(0n, 8);
+  aad[16] = 1;
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  cipher.setAAD(aad);
+  return Buffer.concat([header, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
+};

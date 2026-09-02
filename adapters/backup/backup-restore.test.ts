@@ -28,7 +28,7 @@ import {
 } from '@core/server/index.js';
 import type { JobExecutionContext, JobProgress, JobRecord } from '@core/server/index.js';
 
-import { encryptBackupEnvelope, parseRecoveryKey, renderRecoveryKey } from './envelope.js';
+import { backupKeyFingerprint, encryptBackupEnvelope, parseRecoveryKey, renderRecoveryKey } from './envelope.js';
 import { MemoryBackupDestination } from './memory-destination.js';
 import { BackupStateFile } from './state-store.js';
 import { extractTarZstd, writeTarZstd } from './tar.js';
@@ -350,6 +350,7 @@ const createRestoreFixture = async (): Promise<{
     state,
     now: () => new Date('2026-09-02T12:00:00.000Z'),
     loadEncryptionKey: () => Promise.resolve(ok(key)),
+    fingerprintKey: backupKeyFingerprint,
     archive: (entries, targetPath, createdAt, signal) => writeTarZstd(entries, targetPath, createdAt, { signal }),
     encrypt: encryptBackupEnvelope,
   };

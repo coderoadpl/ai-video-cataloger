@@ -87,6 +87,7 @@ const exerciseDestination = async (destination: BackupDestinationPort): Promise<
       totalBytes: 17,
       files: [],
       folders: [],
+      keyFingerprint: 'sha256:0123456789ab',
     } satisfies BackupManifest;
     expect(await destination.list('critical', new AbortController().signal)).toMatchObject({
       ok: true,

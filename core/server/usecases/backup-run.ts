@@ -60,6 +60,7 @@ export interface BackupRunDeps extends BackupPreparationDeps {
   state: BackupStatePort;
   now(): Date;
   loadEncryptionKey(): Promise<Result<Buffer, AppError>>;
+  fingerprintKey(key: Buffer): string;
   archive(
     entries: readonly BackupScopeEntry[],
     targetPath: string,
@@ -120,6 +121,9 @@ const runBackupAttempt = async (
     const prepared = await prepareBackupScope(deps, input.tier, stagingDirectory, context.signal, resources);
     if (!prepared.ok) return prepared;
     const createdAt = deps.now().toISOString();
+    const key = await deps.loadEncryptionKey();
+    if (!key.ok) return key;
+    const keyFingerprint = deps.fingerprintKey(key.value);
     const manifest = await createManifest(
       deps,
       input.tier,
@@ -128,6 +132,7 @@ const runBackupAttempt = async (
       prepared.value.entries,
       prepared.value.folders,
       prepared.value.snapshots,
+      keyFingerprint,
     );
     if (!manifest.ok) return manifest;
     const manifestPath = deps.fs.join(stagingDirectory, 'manifest.json');
@@ -144,8 +149,6 @@ const runBackupAttempt = async (
     if (!archived.ok) return archived;
     const encrypting = await report(context, 'encrypting', 55);
     if (!encrypting.ok) return encrypting;
-    const key = await deps.loadEncryptionKey();
-    if (!key.ok) return key;
     const encryptedPath = deps.fs.join(stagingDirectory, archiveName(input.tier, createdAt));
     const encrypted = await deps.encrypt(archivePath, encryptedPath, key.value, context.signal);
     if (!encrypted.ok) return encrypted;
@@ -160,7 +163,7 @@ const runBackupAttempt = async (
     }, context.signal);
     if (!uploadedResult.ok) return uploadedResult;
     uploaded = uploadedResult.value;
-    const pruneWarning = await pruneBestEffort(deps.destination, input, deps.now(), context.signal);
+    const pruneWarning = await pruneBestEffort(deps.destination, input, deps.now(), keyFingerprint, context.signal);
     const pruning = await report(
       context,
       'pruning',
@@ -308,6 +311,7 @@ const createManifest = async (
   entries: readonly BackupScopeEntry[],
   folders: readonly { folderId: string; path: string }[],
   snapshots: { globalSchema: number; photosSchema: number },
+  keyFingerprint: string,
 ): Promise<Result<BackupManifest, AppError>> => {
   const files: BackupManifest['files'] = [];
   let totalBytes = 0;
@@ -332,6 +336,7 @@ const createManifest = async (
     totalBytes,
     files,
     folders,
+    keyFingerprint,
   });
   return parsed.success
     ? ok(parsed.data)
@@ -342,11 +347,12 @@ const pruneBestEffort = async (
   destination: BackupDestinationPort,
   input: BackupRunInput,
   now: Date,
+  keyFingerprint: string,
   signal: AbortSignal,
 ): Promise<string | null> => {
   const listed = await destination.list(input.tier, signal);
   if (!listed.ok) return listed.error.message;
-  for (const backup of selectForDeletion(listed.value, input, now)) {
+  for (const backup of selectForDeletion(listed.value, input, now, keyFingerprint)) {
     const removed = await destination.remove(backup.remoteId, signal);
     if (!removed.ok) return removed.error.message;
   }

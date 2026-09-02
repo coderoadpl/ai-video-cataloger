@@ -1213,6 +1213,23 @@ the backup PRD's US-003 wording, which asks 26 base32 characters to round-trip
 32 bytes; 26 base32 characters can encode only 130 bits and cannot satisfy the
 same story's 256-bit key requirement.
 
+The archive envelope is format version 2: the 40-byte header carries a
+16-byte random salt, and every frame is encrypted under
+`HKDF-SHA256(masterKey, salt, info='AVCBAK2')` rather than under the Keychain
+key itself, so the 4-byte random nonce prefix plus frame counter can never
+repeat a (key, nonce) pair across archives. `decryptBackupEnvelope` still reads
+the 24-byte version 1 header, whose frames are keyed with the master key
+directly.
+
+Every archive records the fingerprint of the key that encrypted it, in the
+manifest and in the destination's `appProperties`. Retention only ever prunes
+archives carrying the current key's fingerprint, so a reinstalled Mac with a
+freshly minted key can never delete the archives it cannot read; enablement
+refuses with `recovery_key_required` when the destination already holds
+archives written under another key, unless the caller imported that key
+(`POST /api/backup/recovery-key/import`) or acknowledged that they stay
+unreadable.
+
 Backup surfaces deviate from the PRD in six recorded places. (a) The
 enablement flow reaches the destination through
 `BackupDestinationPort.connect`, and the service-account path resolves — or
@@ -1230,8 +1247,16 @@ the in-process server. (e) `AVC_GOOGLE_DRIVE_BASE_URL` and
 `AVC_GOOGLE_UPLOAD_BASE_URL` override the Drive endpoints so e2e can drive a
 local fake Google; unset, the real endpoints apply. (f) The status route
 carries the whole Settings > Backup readout (enablement, provider, retention,
-last success, next due, indicator state), which is what both the bottom-bar
-indicator and `avc backup status` render.
+last success, next due, indicator state, and whether this Mac holds a recovery
+key), which is what both the bottom-bar indicator and `avc backup status`
+render.
+
+A Google-account connection is a single in-flight operation per server:
+`POST /api/backup/connect` refuses a second concurrent call with `conflict`,
+aborts on client disconnect, and `POST /api/backup/connect/cancel` aborts the
+loopback listener so closing the stepper cannot leave a five-minute pending
+request behind. A build without a Google OAuth client id fails
+`connect` with `backup_destination_error` before any browser opens.
 
 The Electron main process (and the CLI process, for its lifetime) is a
 resident executor. The foundation's `JobsPort` pattern applies **in-process**

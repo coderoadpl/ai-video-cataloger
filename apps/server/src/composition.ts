@@ -135,6 +135,7 @@ export interface AppDeps {
   disableBackup(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
   exportBackupRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
   confirmBackupRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  importBackupRecoveryKey(request: { recoveryKey: string }): Promise<Result<{ fingerprint: string }, AppError>>;
   runBackup(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
   readiness: ReadinessCache;
 }
@@ -278,6 +279,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     disableBackup: backupLifecycle.disable,
     exportBackupRecoveryKey: backupLifecycle.exportRecoveryKey,
     confirmBackupRecoveryKey: backupLifecycle.confirmRecoveryKey,
+    importBackupRecoveryKey: backupLifecycle.importRecoveryKey,
     runBackup: backupLifecycle.run,
     readiness,
   };

@@ -157,6 +157,7 @@ export const handleUnhandledError: ErrorHandler = (error) =>
 export const buildApp = (deps: AppDeps): Hono => {
   const app = new Hono();
   const tracer = trace.getTracer('ai-video-cataloger');
+  let pendingBackupConnect: AbortController | null = null;
 
   app.onError(handleUnhandledError);
 
@@ -504,8 +505,28 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.backupConnect.output);
     const input = parseInput(API_ROUTES.backupConnect.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.backupConnect.output);
+    if (pendingBackupConnect !== null) {
+      return respond(
+        { ok: false, error: appError('conflict', 'A backup destination connection is already waiting for the browser') },
+        API_ROUTES.backupConnect.output,
+      );
+    }
     const controller = new AbortController();
-    return respond(await deps.connectBackup(input.value, controller.signal), API_ROUTES.backupConnect.output);
+    pendingBackupConnect = controller;
+    const abort = (): void => controller.abort();
+    context.req.raw.signal.addEventListener('abort', abort, { once: true });
+    try {
+      return respond(await deps.connectBackup(input.value, controller.signal), API_ROUTES.backupConnect.output);
+    } finally {
+      context.req.raw.signal.removeEventListener('abort', abort);
+      pendingBackupConnect = null;
+    }
+  });
+
+  app.post(API_ROUTES.backupConnectCancel.path, () => {
+    const pending = pendingBackupConnect;
+    pending?.abort();
+    return respond(ok({ cancelled: pending !== null }), API_ROUTES.backupConnectCancel.output);
   });
 
   app.post(API_ROUTES.backupTest.path, async () => {
@@ -536,6 +557,14 @@ export const buildApp = (deps: AppDeps): Hono => {
   app.post(API_ROUTES.backupRecoveryKeyConfirm.path, async () =>
     respond(await deps.confirmBackupRecoveryKey(), API_ROUTES.backupRecoveryKeyConfirm.output),
   );
+
+  app.post(API_ROUTES.backupRecoveryKeyImport.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupRecoveryKeyImport.output);
+    const input = parseInput(API_ROUTES.backupRecoveryKeyImport.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupRecoveryKeyImport.output);
+    return respond(await deps.importBackupRecoveryKey(input.value), API_ROUTES.backupRecoveryKeyImport.output);
+  });
 
   app.get(API_ROUTES.indexStatus.path, async () =>
     respond(await indexStatus(deps), API_ROUTES.indexStatus.output),

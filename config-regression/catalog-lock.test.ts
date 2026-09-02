@@ -57,6 +57,8 @@ const NO_LOCK_REASON: Record<string, string> = {
   backupDisable: 'writes backup settings and clears keychain items, not the global catalog',
   backupRecoveryKeyExport: 'writes the recovery-key file through the native save dialog, not the global catalog',
   backupRecoveryKeyConfirm: 'records the in-session recovery-key confirmation, performs no write',
+  backupRecoveryKeyImport: 'stores the pasted recovery key in the OS keychain, not the global catalog',
+  backupConnectCancel: 'aborts the pending destination connection, performs no write',
 };
 
 describe('catalog write-lock funnel (hotspot 4)', () => {

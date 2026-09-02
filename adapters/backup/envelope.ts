@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  hkdfSync,
   randomBytes,
 } from 'node:crypto';
 import {
@@ -26,10 +27,14 @@ import {
 import type { SecretsStore } from '@core/server/index.js';
 
 export const ENVELOPE_FRAME_SIZE = 8 * 1024 * 1024;
-export const ENVELOPE_HEADER_SIZE = 24;
+export const ENVELOPE_HEADER_SIZE = 40;
 
 const MAGIC = Buffer.from('AVCBAK1', 'ascii');
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
+const LEGACY_FORMAT_VERSION = 1;
+const LEGACY_HEADER_SIZE = 24;
+const SALT_SIZE = 16;
+const SUBKEY_INFO = Buffer.from('AVCBAK2', 'ascii');
 const AUTH_TAG_SIZE = 16;
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -71,10 +76,13 @@ export const ensureBackupRecoveryKey = async (
     if (!written.ok) return written;
   }
   return ok({
-    fingerprint: `sha256:${createHash('sha256').update(key).digest('hex').slice(0, 12)}`,
+    fingerprint: backupKeyFingerprint(key),
     document: recoveryKeyDocument(renderRecoveryKey(key)),
   });
 };
+
+export const backupKeyFingerprint = (key: Buffer): string =>
+  `sha256:${createHash('sha256').update(key).digest('hex').slice(0, 12)}`;
 
 const recoveryKeyDocument = (recoveryKey: string): string => [
   'AI Video Cataloger — backup recovery key',
@@ -126,7 +134,9 @@ export const encryptBackupEnvelope = async (
     const sourceSize = fstatSync(source).size;
     const frameCount = Math.max(1, Math.ceil(sourceSize / ENVELOPE_FRAME_SIZE));
     const noncePrefix = randomBytes(4);
-    writeSync(output, createHeader(noncePrefix, 0));
+    const salt = randomBytes(SALT_SIZE);
+    const frameKey = deriveFrameKey(key, salt);
+    writeSync(output, createHeader(noncePrefix, salt, 0));
     let sourceOffset = 0;
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       throwIfAborted(signal);
@@ -135,8 +145,8 @@ export const encryptBackupEnvelope = async (
       const plain = Buffer.alloc(plainSize);
       if (plainSize > 0) readExactly(source, plain, sourceOffset);
       sourceOffset += plainSize;
-      const cipher = createCipheriv('aes-256-gcm', key, frameNonce(noncePrefix, frameIndex));
-      cipher.setAAD(frameAad(frameIndex, isLastFrame));
+      const cipher = createCipheriv('aes-256-gcm', frameKey, frameNonce(noncePrefix, frameIndex));
+      cipher.setAAD(frameAad(FORMAT_VERSION, frameIndex, isLastFrame));
       const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
       writeSync(output, encrypted);
       writeSync(output, cipher.getAuthTag());
@@ -170,17 +180,16 @@ export const decryptBackupEnvelope = async (
   try {
     source = openSync(sourcePath, 'r');
     const sourceSize = fstatSync(source).size;
-    const header = Buffer.alloc(ENVELOPE_HEADER_SIZE);
-    readExactly(source, header, 0);
-    const parsed = parseHeader(header);
-    const encryptedPayloadSize = sourceSize - ENVELOPE_HEADER_SIZE;
+    const parsed = readHeader(source);
+    const frameKey = parsed.version === LEGACY_FORMAT_VERSION ? key : deriveFrameKey(key, parsed.salt);
+    const encryptedPayloadSize = sourceSize - parsed.headerSize;
     const plainSize = encryptedPayloadSize - parsed.frameCount * AUTH_TAG_SIZE;
     if (plainSize < 0 || plainSize > parsed.frameCount * ENVELOPE_FRAME_SIZE) throw new Error('Invalid envelope length');
     const lastFrameSize = plainSize - (parsed.frameCount - 1) * ENVELOPE_FRAME_SIZE;
     if (lastFrameSize < 0 || lastFrameSize > ENVELOPE_FRAME_SIZE) throw new Error('Invalid final frame length');
     if (parsed.frameCount > 1 && lastFrameSize === 0) throw new Error('Invalid empty final frame');
     output = openSync(tempPath, 'w', 0o600);
-    let sourceOffset = ENVELOPE_HEADER_SIZE;
+    let sourceOffset = parsed.headerSize;
     let written = 0;
     for (let frameIndex = 0; frameIndex < parsed.frameCount; frameIndex += 1) {
       throwIfAborted(signal);
@@ -192,8 +201,8 @@ export const decryptBackupEnvelope = async (
       sourceOffset += cipherSize;
       readExactly(source, tag, sourceOffset);
       sourceOffset += AUTH_TAG_SIZE;
-      const decipher = createDecipheriv('aes-256-gcm', key, frameNonce(parsed.noncePrefix, frameIndex));
-      decipher.setAAD(frameAad(frameIndex, isLastFrame));
+      const decipher = createDecipheriv('aes-256-gcm', frameKey, frameNonce(parsed.noncePrefix, frameIndex));
+      decipher.setAAD(frameAad(parsed.version, frameIndex, isLastFrame));
       decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(encrypted), decipher.final()]);
       writeSync(output, plain);
@@ -216,24 +225,48 @@ export const decryptBackupEnvelope = async (
   }
 };
 
-const createHeader = (noncePrefix: Buffer, frameCount: number): Buffer => {
+const createHeader = (noncePrefix: Buffer, salt: Buffer, frameCount: number): Buffer => {
   const header = Buffer.alloc(ENVELOPE_HEADER_SIZE);
   MAGIC.copy(header, 0);
   header[7] = FORMAT_VERSION;
   noncePrefix.copy(header, 8);
   header.writeUInt32BE(ENVELOPE_FRAME_SIZE, 12);
   frameCountBuffer(frameCount).copy(header, 16);
+  salt.copy(header, 24);
   return header;
 };
 
-const parseHeader = (header: Buffer): { noncePrefix: Buffer; frameCount: number } => {
-  if (!header.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('Invalid backup envelope magic');
-  if (header[7] !== FORMAT_VERSION) throw new Error('Unsupported backup envelope version');
+interface EnvelopeHeader {
+  version: number;
+  headerSize: number;
+  noncePrefix: Buffer;
+  salt: Buffer;
+  frameCount: number;
+}
+
+const readHeader = (descriptor: number): EnvelopeHeader => {
+  const prelude = Buffer.alloc(MAGIC.length + 1);
+  readExactly(descriptor, prelude, 0);
+  if (!prelude.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('Invalid backup envelope magic');
+  const version = prelude[MAGIC.length] ?? 0;
+  if (version !== FORMAT_VERSION && version !== LEGACY_FORMAT_VERSION) throw new Error('Unsupported backup envelope version');
+  const headerSize = version === LEGACY_FORMAT_VERSION ? LEGACY_HEADER_SIZE : ENVELOPE_HEADER_SIZE;
+  const header = Buffer.alloc(headerSize);
+  readExactly(descriptor, header, 0);
   if (header.readUInt32BE(12) !== ENVELOPE_FRAME_SIZE) throw new Error('Unsupported backup envelope frame size');
   const count = header.readBigUInt64BE(16);
   if (count < 1n || count > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Invalid backup envelope frame count');
-  return { noncePrefix: Buffer.from(header.subarray(8, 12)), frameCount: Number(count) };
+  return {
+    version,
+    headerSize,
+    noncePrefix: Buffer.from(header.subarray(8, 12)),
+    salt: Buffer.from(header.subarray(24, 24 + SALT_SIZE)),
+    frameCount: Number(count),
+  };
 };
+
+const deriveFrameKey = (key: Buffer, salt: Buffer): Buffer =>
+  Buffer.from(hkdfSync('sha256', key, salt, SUBKEY_INFO, 32));
 
 const frameNonce = (prefix: Buffer, frameIndex: number): Buffer => {
   const nonce = Buffer.alloc(12);
@@ -242,10 +275,10 @@ const frameNonce = (prefix: Buffer, frameIndex: number): Buffer => {
   return nonce;
 };
 
-const frameAad = (frameIndex: number, isLastFrame: boolean): Buffer => {
+const frameAad = (version: number, frameIndex: number, isLastFrame: boolean): Buffer => {
   const aad = Buffer.alloc(MAGIC.length + 1 + 8 + 1);
   MAGIC.copy(aad, 0);
-  aad[MAGIC.length] = FORMAT_VERSION;
+  aad[MAGIC.length] = version;
   aad.writeBigUInt64BE(BigInt(frameIndex), MAGIC.length + 1);
   aad[aad.length - 1] = isLastFrame ? 1 : 0;
   return aad;

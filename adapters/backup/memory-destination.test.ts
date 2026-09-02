@@ -46,4 +46,5 @@ const manifest = (): BackupManifest => ({
   totalBytes: 1,
   files: [{ path: 'catalog.db', sizeBytes: 1, sha256: 'b'.repeat(64) }],
   folders: [],
+  keyFingerprint: 'sha256:0123456789ab',
 });

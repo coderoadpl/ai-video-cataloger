@@ -216,6 +216,7 @@ describe('Google service-account backup destination', () => {
         totalBytes: 17,
         files: [],
         folders: [],
+        keyFingerprint: 'sha256:0123456789ab',
       } satisfies BackupManifest;
       expect(await destination.upload({ sourcePath, name: 'archive.avcbak', manifest }, new AbortController().signal)).toMatchObject({ ok: true });
       expect(await destination.list('critical', new AbortController().signal)).toMatchObject({ ok: true });

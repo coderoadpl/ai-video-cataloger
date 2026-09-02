@@ -105,6 +105,44 @@ describe('Google OAuth backup destination', () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
+  it('refuses to connect a build without a Google client id before opening the browser', async () => {
+    const openExternal = vi.fn(() => Promise.resolve());
+    const destination = new GoogleOAuthBackupDestination({
+      config: new InMemoryConfig(),
+      secrets: new MemorySecrets(),
+      clientId: '',
+      clientSecret: '',
+      fetchImpl: () => Promise.reject(new Error('no request expected')),
+      openExternal,
+    });
+
+    expect(await destination.connect({ keyJson: null, sharedDriveId: null }, new AbortController().signal)).toMatchObject({
+      ok: false,
+      error: { code: 'backup_destination_error' },
+    });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('aborts the loopback listener when the connect signal is aborted', async () => {
+    const controller = new AbortController();
+    const destination = new GoogleOAuthBackupDestination({
+      config: new InMemoryConfig(),
+      secrets: new MemorySecrets(),
+      clientId: 'client',
+      clientSecret: 'secret',
+      authorizationUrl: 'https://accounts.example.test/auth',
+      fetchImpl: () => Promise.reject(new Error('no request expected')),
+      openExternal: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
+    });
+
+    const connected = await destination.connect({ keyJson: null, sharedDriveId: null }, controller.signal);
+
+    expect(connected).toMatchObject({ ok: false, error: { code: 'backup_auth_required' } });
+  });
+
   it('recreates and stores the app folder when the saved folder id is missing', async () => {
     const config = new InMemoryConfig();
     const secrets = new MemorySecrets();

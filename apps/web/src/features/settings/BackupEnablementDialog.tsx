@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Box,
@@ -51,27 +51,43 @@ export const BackupEnablementDialog = ({
   const [recoveryKeyPath, setRecoveryKeyPath] = useState<string | null>(null);
   const [recoveryKeyFingerprint, setRecoveryKeyFingerprint] = useState<string | null>(null);
   const [recoveryKeySaved, setRecoveryKeySaved] = useState(false);
+  const [importedKey, setImportedKey] = useState('');
+  const [importedFingerprint, setImportedFingerprint] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const statusQuery = useQuery({ ...actions.backupStatus, enabled: open });
+  const listQuery = useQuery({ ...actions.backupList({ tier: null }), enabled: open && step === 2 });
   const connect = useMutation(actions.backupConnect);
+  const cancelConnect = useMutation(actions.backupConnectCancel);
+  const importRecoveryKey = useMutation(actions.backupRecoveryKeyImport);
   const testConnection = useMutation(actions.backupTest);
   const exportRecoveryKey = useMutation(actions.backupRecoveryKeyExport);
   const confirmRecoveryKey = useMutation(actions.backupRecoveryKeyConfirm);
   const enable = useMutation(actions.backupEnable);
 
   const connection = testConnection.data?.connection ?? connect.data?.connection ?? null;
-  const failure = connect.error ?? testConnection.error ?? exportRecoveryKey.error ?? enable.error;
+  const failure = connect.error ?? testConnection.error ?? exportRecoveryKey.error ?? importRecoveryKey.error ?? enable.error;
   const errorMessage = failure === null || failure === undefined
     ? null
     : backupErrorMessage(failure, dictionary.backup.errorMessages) ?? apiErrorMessage(failure, dictionary);
 
+  const foreignArchives = statusQuery.data?.recoveryKeyStored === false
+    && importedFingerprint === null
+    && (listQuery.data?.backups.length ?? 0) > 0;
+
   const close = () => {
+    if (connect.isPending) cancelConnect.mutate(undefined);
     setStep(0);
     setKeyJson('');
     setRecoveryKeyPath(null);
     setRecoveryKeyFingerprint(null);
     setRecoveryKeySaved(false);
+    setImportedKey('');
+    setImportedFingerprint(null);
+    setAcknowledged(false);
     connect.reset();
     testConnection.reset();
     exportRecoveryKey.reset();
+    importRecoveryKey.reset();
     enable.reset();
     onClose();
   };
@@ -92,7 +108,13 @@ export const BackupEnablementDialog = ({
   const finish = () => {
     confirmRecoveryKey.mutate(undefined, {
       onSuccess: () => {
-        enable.mutate({ includeOptional, keepLast, keepWeekly, runFirstBackup: true }, {
+        enable.mutate({
+          includeOptional,
+          keepLast,
+          keepWeekly,
+          runFirstBackup: true,
+          acknowledgeUnreadableArchives: acknowledged,
+        }, {
           onSuccess: () => {
             onEnabled();
             close();
@@ -162,7 +184,7 @@ export const BackupEnablementDialog = ({
             ) : (
               <Typography variant="body2">{dictionary.backup.providerGoogleHelper}</Typography>
             )}
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Button
                 variant="contained"
                 onClick={runConnect}
@@ -179,6 +201,21 @@ export const BackupEnablementDialog = ({
               >
                 {dictionary.backup.testConnection}
               </Button>
+              {connect.isPending ? (
+                <>
+                  <Typography variant="caption" data-testid="backup-connect-waiting">
+                    {dictionary.backup.connectWaiting}
+                  </Typography>
+                  <Button
+                    color="inherit"
+                    onClick={() => cancelConnect.mutate(undefined)}
+                    disabled={cancelConnect.isPending}
+                    data-testid="backup-connect-cancel"
+                  >
+                    {dictionary.backup.connectCancel}
+                  </Button>
+                </>
+              ) : null}
             </Box>
             {connection === null ? null : (
               <Alert severity="success" data-testid="backup-connection-report">
@@ -193,6 +230,48 @@ export const BackupEnablementDialog = ({
 
         {step === 2 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {foreignArchives ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="backup-existing-archives">
+                <Alert severity="warning">{dictionary.backup.existingArchivesWarning}</Alert>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={dictionary.backup.importRecoveryKeyLabel}
+                  value={importedKey}
+                  onChange={(event) => setImportedKey(event.target.value)}
+                  slotProps={{ htmlInput: { 'data-testid': 'backup-import-recovery-key' } }}
+                />
+                <Box>
+                  <Button
+                    variant="outlined"
+                    disabled={importedKey.trim().length === 0 || importRecoveryKey.isPending}
+                    onClick={() => importRecoveryKey.mutate({ recoveryKey: importedKey.trim() }, {
+                      onSuccess: (imported) => {
+                        setImportedFingerprint(imported.fingerprint);
+                      },
+                    })}
+                    data-testid="backup-import-recovery-key-submit"
+                  >
+                    {dictionary.backup.importRecoveryKey}
+                  </Button>
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={acknowledged}
+                      onChange={(event) => setAcknowledged(event.target.checked)}
+                      data-testid="backup-acknowledge-unreadable"
+                    />
+                  }
+                  label={dictionary.backup.acknowledgeUnreadableArchives}
+                />
+              </Box>
+            ) : null}
+            {importedFingerprint === null ? null : (
+              <Alert severity="success" data-testid="backup-imported-recovery-key">
+                {dictionary.backup.recoveryKeyImported(importedFingerprint)}
+              </Alert>
+            )}
             <Typography variant="body2">{dictionary.backup.recoveryKeyHelper}</Typography>
             <Box>
               <Button
@@ -242,7 +321,7 @@ export const BackupEnablementDialog = ({
           <Button
             variant="contained"
             onClick={finish}
-            disabled={recoveryKeyPath === null || !recoveryKeySaved || enable.isPending}
+            disabled={recoveryKeyPath === null || !recoveryKeySaved || (foreignArchives && !acknowledged) || enable.isPending}
             data-testid="backup-finish"
           >
             {dictionary.backup.finish}

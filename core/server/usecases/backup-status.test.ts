@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { BACKUP_ENCRYPTION_KEY_ACCOUNT, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import { InMemoryConfig, InMemoryJobs } from '../../../test/server/usecases/test-fakes.js';
-import type { BackupConnectionReport, BackupDestinationPort, JobRecord } from '../ports.js';
+import type { BackupConnectionReport, BackupDestinationPort, JobRecord, SecretsStore } from '../ports.js';
 import type { BackupStatePort } from './backup-run.js';
 import { deriveBackupIndicator, nextBackupDueAt, readBackupStatus } from './backup-status.js';
 
@@ -28,6 +28,13 @@ class StubState implements BackupStatePort {
     return Promise.resolve(ok(undefined));
   }
 }
+
+const stubSecrets = (values: Record<string, string> = {}): SecretsStore => ({
+  availability: () => Promise.resolve('available'),
+  get: (account) => Promise.resolve(ok(values[account] ?? null)),
+  set: () => Promise.resolve(ok(undefined)),
+  delete: () => Promise.resolve(ok({ existed: false })),
+});
 
 const connectionReport: BackupConnectionReport = {
   accountEmail: 'person@example.com',
@@ -112,6 +119,7 @@ describe('backup status', () => {
       config: new InMemoryConfig(),
       state: new StubState(null),
       jobs: new InMemoryJobs(),
+      secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
       destination: () => {
         destinationCalls += 1;
@@ -141,6 +149,7 @@ describe('backup status', () => {
       nextDueAt: null,
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
       connection: null,
+      recoveryKeyStored: false,
     }));
     expect(destinationCalls).toBe(0);
   });
@@ -162,6 +171,7 @@ describe('backup status', () => {
         lastRestoreAt: null,
       }),
       jobs: new InMemoryJobs(),
+      secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
@@ -191,10 +201,24 @@ describe('backup status', () => {
       config,
       state: new StubState(null),
       jobs: new InMemoryJobs(),
+      secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: true });
 
     expect(status).toMatchObject({ ok: true, value: { connection: connectionReport } });
+  });
+
+  it('reports that a recovery key is already stored on this Mac', async () => {
+    const status = await readBackupStatus({
+      config: new InMemoryConfig(),
+      state: new StubState(null),
+      jobs: new InMemoryJobs(),
+      secrets: stubSecrets({ [BACKUP_ENCRYPTION_KEY_ACCOUNT]: Buffer.alloc(32, 5).toString('base64') }),
+      supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
+    }, { testConnection: false });
+
+    expect(status).toMatchObject({ ok: true, value: { recoveryKeyStored: true } });
   });
 });

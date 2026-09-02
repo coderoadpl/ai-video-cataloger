@@ -23,7 +23,7 @@ export interface BackupSectionState {
   setIncludeOptional: (include: boolean) => void;
   setRetention: (key: 'backup_keep_last' | 'backup_keep_weekly', value: number) => void;
   disable: () => void;
-  restore: (remoteId: string) => void;
+  restore: (remoteId: string, recoveryKey: string | undefined) => void;
   restorePhase: string | null;
   isRestoring: boolean;
   restoreError: string | null;
@@ -85,8 +85,8 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
     disable: () => {
       disableBackup.mutate({ purgeCredentials: false }, { onSuccess: refreshStatus });
     },
-    restore: (remoteId) => {
-      restoreBackup.mutate({ remoteId }, {
+    restore: (remoteId, recoveryKey) => {
+      restoreBackup.mutate({ remoteId, ...(recoveryKey === undefined ? {} : { recoveryKey }) }, {
         onSuccess: (accepted) => {
           setRestoreJobId(accepted.jobId);
         },

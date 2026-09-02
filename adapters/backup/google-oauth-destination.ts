@@ -120,6 +120,8 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
   }
 
   async connect(_input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
+    const client = this.requireClient();
+    if (!client.ok) return client;
     const verifier = randomBytes(32).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(32).toString('base64url');
@@ -248,6 +250,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
             globalCatalog: Number(file.appProperties.schemaGlobalCatalog),
             photos: Number(file.appProperties.schemaPhotos),
           },
+          keyFingerprint: file.appProperties.keyFingerprint ?? null,
         });
         if (!remote.success) return destinationSchemaError('backup metadata');
         backups.push(remote.data);
@@ -269,6 +272,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
       appVersion: input.manifest.appVersion,
       schemaGlobalCatalog: String(input.manifest.schemaVersions.globalCatalog),
       schemaPhotos: String(input.manifest.schemaVersions.photos),
+      ...(input.manifest.keyFingerprint === null ? {} : { keyFingerprint: input.manifest.keyFingerprint }),
     };
     const uploaded = await this.uploadFile(folder.value.folderId, input.sourcePath, input.name, properties, false, signal);
     if (!uploaded.ok) return uploaded;
@@ -280,6 +284,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
       sizeBytes: uploaded.value.sizeBytes,
       appVersion: input.manifest.appVersion,
       schemaVersions: input.manifest.schemaVersions,
+      keyFingerprint: input.manifest.keyFingerprint,
     });
   }
 
@@ -348,8 +353,21 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     return ok(response);
   }
 
+  private requireClient(): Result<void, AppError> {
+    if (this.clientId.length > 0 && this.clientSecret.length > 0) return ok(undefined);
+    return {
+      ok: false,
+      error: appError(
+        'backup_destination_error',
+        'This build has no Google client configured; use a service-account key or an official build',
+      ),
+    };
+  }
+
   private async token(signal: AbortSignal): Promise<Result<string, AppError>> {
     if (this.accessToken !== null) return ok(this.accessToken);
+    const client = this.requireClient();
+    if (!client.ok) return client;
     const refresh = await this.secrets.get(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT);
     if (!refresh.ok) return refresh;
     if (refresh.value === null) return { ok: false, error: appError('backup_auth_required', 'Connect Google Drive to continue') };

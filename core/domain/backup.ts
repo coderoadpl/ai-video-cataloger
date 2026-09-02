@@ -76,6 +76,7 @@ export const backupManifestSchema = z.object({
     folderId: z.string().min(1),
     path: z.string().min(1),
   }).strict()),
+  keyFingerprint: z.string().min(1).nullable().default(null),
 }).strict();
 
 export const remoteBackupSchema = z.object({
@@ -86,6 +87,7 @@ export const remoteBackupSchema = z.object({
   sizeBytes: z.number().int().nonnegative(),
   appVersion: z.string().min(1),
   schemaVersions: backupSchemaVersionsSchema,
+  keyFingerprint: z.string().min(1).nullable(),
 }).strict();
 
 export type BackupManifest = z.output<typeof backupManifestSchema>;

@@ -102,7 +102,7 @@ gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30
 backup now [--tier critical|optional] [--json]
 backup status [--test-connection] [--json]
 backup list [--tier critical|optional] [--json]
-backup restore <remoteId> [--recovery-key <key>] [--yes] [--json]
+backup restore <remoteId> [--recovery-key] [--yes] [--json]
 status [--json]
 reset [filename] [--force] [--json]
 config get [key] [--json]
@@ -140,7 +140,11 @@ and remote id; `--json` emits a completed NDJSON event carrying the array.
 is supplied, printing the tier, date, and size that will be overwritten. With
 `--yes`, restore streams the same job `started` / `progress` / `completed` /
 `error` NDJSON envelopes as other long-running commands and prints a restart
-instruction when the swap completes.
+instruction when the swap completes. On a Mac whose Keychain never held the
+backup key, add `--recovery-key`: the key is read from the
+`AVC_BACKUP_RECOVERY_KEY` environment variable, or, when that is unset, from a
+hidden terminal prompt. The key is never passed as a command-line argument, so
+it stays out of `ps` output and shell history.
 
 Each file handled by `process` or `process-drive` uses one resolved
 configuration; an invocation does not request a configuration matrix. Running

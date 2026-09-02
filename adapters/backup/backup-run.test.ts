@@ -20,6 +20,7 @@ import { enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index
 import type { JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 import {
+  backupKeyFingerprint,
   createBackupEncryptionKey,
   decryptBackupEnvelope,
   encryptBackupEnvelope,
@@ -307,6 +308,8 @@ class MemorySecrets implements SecretsStore {
   }
 }
 
+const TEST_KEY_FINGERPRINT = backupKeyFingerprint(Buffer.alloc(32, 3));
+
 const backup = (remoteId: string, tier: 'critical' | 'optional', createdAt: string): RemoteBackup => ({
   remoteId,
   name: `${remoteId}.avcbak`,
@@ -315,6 +318,7 @@ const backup = (remoteId: string, tier: 'critical' | 'optional', createdAt: stri
   sizeBytes: 100,
   appVersion: '1.0.0',
   schemaVersions: { globalCatalog: 16, photos: 6 },
+  keyFingerprint: TEST_KEY_FINGERPRINT,
 });
 
 const createFixture = async (destination = new MemoryBackupDestination()): Promise<{
@@ -365,6 +369,7 @@ const createFixture = async (destination = new MemoryBackupDestination()): Promi
       state,
       now: () => new Date('2026-09-02T12:00:00.000Z'),
       loadEncryptionKey: () => Promise.resolve(ok(Buffer.alloc(32, 3))),
+      fingerprintKey: backupKeyFingerprint,
       archive: (entries, targetPath, createdAt, signal) => writeTarZstd(entries, targetPath, createdAt, { signal }),
       encrypt: encryptBackupEnvelope,
     },
