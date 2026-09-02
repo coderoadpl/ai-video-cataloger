@@ -807,6 +807,10 @@ export interface CredentialsStore {
   backend?(): Promise<CredentialsBackendStatus>;
 }
 
+export interface FileSavePort {
+  save(input: { suggestedName: string; contents: string }): Promise<Result<{ path: string } | null, AppError>>;
+}
+
 export type SecretsAvailability = 'available' | 'disabled' | 'unsupported' | 'unavailable';
 
 export interface SecretsStore {
@@ -828,8 +832,14 @@ export interface BackupConnectionReport {
   remainingQuotaBytes: number | null;
 }
 
+export interface BackupConnectInput {
+  keyJson: string | null;
+  sharedDriveId: string | null;
+}
+
 export interface BackupDestinationPort {
   describe(): Result<BackupDestinationDescription, AppError>;
+  connect(input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>>;
   test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>>;
   ensureFolder(signal: AbortSignal): Promise<Result<{ folderId: string; name: string }, AppError>>;
   list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;

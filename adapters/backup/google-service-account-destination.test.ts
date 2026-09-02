@@ -6,14 +6,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ok, type AppError, type BackupManifest, type Result } from '@core/domain/index.js';
+import {
+  BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT,
+  ok,
+  type AppError,
+  type BackupManifest,
+  type Result,
+} from '@core/domain/index.js';
 import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
 import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
-import {
-  GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT,
-  GoogleServiceAccountBackupDestination,
-} from './google-service-account-destination.js';
+import { GoogleServiceAccountBackupDestination } from './google-service-account-destination.js';
 import { GOOGLE_DRIVE_FILE_SCOPE } from './google-oauth-destination.js';
 
 class MemorySecrets implements SecretsStore {
@@ -73,7 +76,7 @@ describe('Google service-account backup destination', () => {
     });
 
     expect(await destination.importKeyJson(keyJson)).toMatchObject({ ok: true });
-    expect(secrets.values.get(GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT)).toBe(keyJson);
+    expect(secrets.values.get(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT)).toBe(keyJson);
     expect(await config.get({ kind: 'home' }, 'backup_service_account_fingerprint')).toMatchObject({
       ok: true,
       value: expect.stringMatching(/^sha256:[0-9a-f]{12}$/),
@@ -136,6 +139,53 @@ describe('Google service-account backup destination', () => {
         message: expect.stringContaining('Content manager'),
       },
     });
+  });
+
+  it('creates the backup folder inside the Shared Drive when connecting', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const created: Array<Record<string, unknown>> = [];
+    const destination = new GoogleServiceAccountBackupDestination({
+      config,
+      secrets,
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeSharedDrive(created),
+    });
+
+    const connected = await destination.connect(
+      { keyJson: serviceAccountKey(), sharedDriveId: 'drive-1' },
+      new AbortController().signal,
+    );
+
+    expect(connected).toEqual(ok({
+      accountEmail: 'backup@example.com',
+      driveName: 'Company Archive',
+      folderName: 'AI Video Cataloger Backups',
+      remainingQuotaBytes: null,
+    }));
+    expect(created).toEqual([{
+      name: 'AI Video Cataloger Backups',
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: ['drive-1'],
+    }]);
+    expect(await config.get({ kind: 'home' }, 'backup_folder_id')).toEqual(ok('folder-1'));
+    expect(await config.get({ kind: 'home' }, 'backup_shared_drive_id')).toEqual(ok('drive-1'));
+  });
+
+  it('refuses to connect without a Shared Drive id', async () => {
+    const destination = new GoogleServiceAccountBackupDestination({
+      config: new InMemoryConfig(),
+      secrets: new MemorySecrets(),
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeSharedDrive([]),
+    });
+
+    expect(await destination.connect(
+      { keyJson: serviceAccountKey(), sharedDriveId: null },
+      new AbortController().signal,
+    )).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('streams an uploaded backup through list, download, and remove', async () => {
@@ -243,3 +293,30 @@ const fakeGoogle = (
   if (url.pathname.endsWith('/files/backup-1') && init?.method === 'DELETE') return new Response(null, { status: 204 });
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };
+
+const fakeSharedDrive = (created: Array<Record<string, unknown>>): typeof fetch => async (input, init) => {
+  const url = new URL(String(input));
+  if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
+  if (url.pathname.endsWith('/files/folder-1')) {
+    return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups', driveId: 'drive-1' });
+  }
+  if (url.pathname.endsWith('/files/probe-1')) return Response.json({ id: 'probe-1', parents: ['folder-1'], driveId: 'drive-1' });
+  if (url.pathname.endsWith('/drives/drive-1')) return Response.json({ id: 'drive-1', name: 'Company Archive' });
+  if (url.pathname.endsWith('/permissions')) {
+    return Response.json({ permissions: [{ emailAddress: 'backup@example.com', role: 'fileOrganizer', type: 'user' }] });
+  }
+  if (url.pathname.includes('/upload/')) return Response.json({ id: 'probe-1', name: 'connection-test.bin', size: '1024' });
+  if (url.pathname.endsWith('/files') && init?.method === 'POST') {
+    const body: unknown = JSON.parse(typeof init.body === 'string' ? init.body : '{}');
+    created.push(folderCreationSchema.parse(body));
+    return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups' });
+  }
+  if (url.pathname.endsWith('/files')) return Response.json({ files: created.length === 0 ? [] : [{ id: 'folder-1', name: 'AI Video Cataloger Backups' }] });
+  return Response.json({ error: url.pathname }, { status: 404 });
+};
+
+const folderCreationSchema = z.object({
+  name: z.string(),
+  mimeType: z.string(),
+  parents: z.array(z.string()),
+}).strict();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { API_ROUTES, looseEnvelopeSchema } from '@core/contract/index.js';
-import { ok } from '@core/domain/index.js';
+import { appError, ok } from '@core/domain/index.js';
 
 import { createApp } from './create-app.js';
 import { createInMemoryDeps } from './test-support/in-memory-deps.js';
@@ -60,6 +60,8 @@ describe('POST /api/backup/restore', () => {
         leaseCalls.push('release');
         return Promise.resolve(ok(undefined));
       };
+      deps.restoreBackup = () =>
+        Promise.resolve({ ok: false, error: appError('restore_refused', 'A catalog job is running') });
       return deps;
     });
 

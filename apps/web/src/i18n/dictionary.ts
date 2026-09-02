@@ -1,3 +1,5 @@
+import type { BackupErrorCode, BackupPhase } from '@core/domain/index.js';
+
 import type { AnalyzerErrorMessages } from '../lib/analyzer-error-message.js';
 
 export type Locale = 'en' | 'pl';
@@ -661,6 +663,68 @@ export interface Dictionary {
     notStored: string;
     entryUnreadable: string;
     entryUnreadableRetained: string;
+  };
+  backup: {
+    sectionTitle: string;
+    sectionHelper: string;
+    enableLabel: string;
+    statusConnected: (account: string) => string;
+    statusNotConnected: string;
+    lastBackup: (date: string) => string;
+    lastBackupNever: string;
+    nextDue: (date: string) => string;
+    nextDueUnknown: string;
+    runNow: string;
+    running: string;
+    optionalTierLabel: string;
+    optionalTierHelper: string;
+    keepLastLabel: string;
+    keepWeeklyLabel: string;
+    retentionHelper: string;
+    stepperTitle: string;
+    stepProvider: string;
+    stepConnect: string;
+    stepRecoveryKey: string;
+    providerGoogle: string;
+    providerGoogleHelper: string;
+    providerServiceAccount: string;
+    providerServiceAccountHelper: string;
+    connectGoogle: string;
+    sharedDriveIdLabel: string;
+    sharedDriveIdHelper: string;
+    keyJsonLabel: string;
+    keyJsonHelper: string;
+    importKeyJson: string;
+    testConnection: string;
+    connectionReport: (account: string, folder: string) => string;
+    recoveryKeyHelper: string;
+    exportRecoveryKey: string;
+    recoveryKeyExported: (path: string) => string;
+    recoveryKeyFingerprint: (fingerprint: string) => string;
+    recoveryKeySavedCheckbox: string;
+    finish: string;
+    listTitle: string;
+    listEmpty: string;
+    listLoading: string;
+    tierFilterAll: string;
+    tierCritical: string;
+    tierOptional: string;
+    backupRow: (date: string, size: string, appVersion: string) => string;
+    restore: string;
+    restoreUnsupported: (appVersion: string) => string;
+    restoreDialogTitle: string;
+    restoreDialogOverwrite: string;
+    restoreDialogPreRestore: string;
+    restoreDialogRelaunch: string;
+    restoreConfirm: string;
+    restoreConfirmAgain: string;
+    restoreRunning: (phase: string) => string;
+    restoreFailedNothingChanged: string;
+    indicatorLabel: string;
+    indicatorIdle: (date: string) => string;
+    indicatorFailed: string;
+    phases: Record<BackupPhase, string>;
+    errorMessages: Record<BackupErrorCode, string>;
   };
   errors: AnalyzerErrorMessages;
   folderBar: {
@@ -1606,6 +1670,89 @@ export const en: Dictionary = {
     notStored: 'No key was stored for this provider.',
     entryUnreadable: 'The credentials file entry for this provider could not be read, so nothing was removed. Fix or remove that entry by hand.',
     entryUnreadableRetained: 'The credentials file entry for this provider could not be read and was left untouched. Fix or remove that entry by hand.',
+  },
+  backup: {
+    sectionTitle: 'Backup',
+    sectionHelper: 'An encrypted copy of your catalog — never your media — in your own Google Drive.',
+    enableLabel: 'Back up my catalog',
+    statusConnected: (account) => `Connected as ${account}`,
+    statusNotConnected: 'Not connected',
+    lastBackup: (date) => `Last backup: ${date}`,
+    lastBackupNever: 'No backup yet',
+    nextDue: (date) => `Next evaluation: ${date}`,
+    nextDueUnknown: 'Next evaluation: at the next launch',
+    runNow: 'Back up now',
+    running: 'Backing up…',
+    optionalTierLabel: 'Also back up regenerable artifacts',
+    optionalTierHelper: 'Photo proxies, thumbnails and mirrored frames, as a separate archive series.',
+    keepLastLabel: 'Keep last',
+    keepWeeklyLabel: 'Keep weekly for (weeks)',
+    retentionHelper: 'Older archives are pruned after each successful upload; the last one is never deleted.',
+    stepperTitle: 'Turn on backup',
+    stepProvider: 'Destination',
+    stepConnect: 'Connect',
+    stepRecoveryKey: 'Recovery key',
+    providerGoogle: 'Google account',
+    providerGoogleHelper: 'Sign in with your browser. The app only ever sees the folder it creates.',
+    providerServiceAccount: 'Service account (advanced)',
+    providerServiceAccountHelper: 'For a company Shared Drive. Follow the setup runbook before you continue.',
+    connectGoogle: 'Connect Google Drive',
+    sharedDriveIdLabel: 'Shared Drive id',
+    sharedDriveIdHelper: 'The last part of the Shared Drive address in your browser.',
+    keyJsonLabel: 'Service-account key JSON',
+    keyJsonHelper: 'Pasted here once, stored in the macOS Keychain, never written to disk.',
+    importKeyJson: 'Import key and connect',
+    testConnection: 'Test connection',
+    connectionReport: (account, folder) => `${account} → ${folder}`,
+    recoveryKeyHelper: 'Without this key, and without this Mac, your backups cannot be read. Save it where you keep passwords.',
+    exportRecoveryKey: 'Save recovery key…',
+    recoveryKeyExported: (path) => `Saved to ${path}`,
+    recoveryKeyFingerprint: (fingerprint) => `Fingerprint: ${fingerprint}`,
+    recoveryKeySavedCheckbox: 'I saved my recovery key',
+    finish: 'Finish',
+    listTitle: 'Backups',
+    listEmpty: 'No backups yet.',
+    listLoading: 'Loading backups…',
+    tierFilterAll: 'All',
+    tierCritical: 'Catalog',
+    tierOptional: 'Artifacts',
+    backupRow: (date, size, appVersion) => `${date} · ${size} · app ${appVersion}`,
+    restore: 'Restore',
+    restoreUnsupported: (appVersion) => `Requires app version ≥ ${appVersion}`,
+    restoreDialogTitle: 'Restore this backup?',
+    restoreDialogOverwrite: 'Your catalog, photo database, app settings, per-folder settings and face crops will be replaced by the ones in this backup.',
+    restoreDialogPreRestore: 'A local copy of the current catalog is taken first, so nothing is lost if the restore fails.',
+    restoreDialogRelaunch: 'The app restarts when the restore finishes.',
+    restoreConfirm: 'Restore',
+    restoreConfirmAgain: 'Yes, restore now',
+    restoreRunning: (phase) => `Restoring: ${phase}`,
+    restoreFailedNothingChanged: 'Nothing on your Mac was changed.',
+    indicatorLabel: 'Backup',
+    indicatorIdle: (date) => `Last backup: ${date}`,
+    indicatorFailed: 'The last backup failed. Open Settings > Backup.',
+    phases: {
+      idle: 'Idle',
+      fingerprinting: 'Checking for changes',
+      snapshotting: 'Preparing snapshot',
+      archiving: 'Compressing',
+      encrypting: 'Encrypting',
+      uploading: 'Uploading',
+      pruning: 'Pruning old backups',
+      verifying: 'Verifying',
+      downloading: 'Downloading',
+      decrypting: 'Decrypting',
+      restoring: 'Restoring',
+    },
+    errorMessages: {
+      backup_disabled: 'Backup is switched off.',
+      backup_auth_required: 'The destination needs to be connected again.',
+      backup_destination_error: 'Google Drive returned an error.',
+      backup_quota_exceeded: 'The Drive storage quota is exhausted.',
+      backup_encryption_failed: 'The archive could not be encrypted or decrypted.',
+      backup_integrity_failed: 'The archive did not pass its integrity check.',
+      restore_refused: 'Restore is blocked while another catalog job is running.',
+      recovery_key_required: 'The recovery key is required.',
+    },
   },
   errors: {
     analyzerFailed: 'Analysis failed.',
@@ -2585,6 +2732,89 @@ export const pl: Dictionary = {
     notStored: 'Dla tego dostawcy nie zapisano żadnego klucza.',
     entryUnreadable: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń, więc nic nie zostało usunięte. Popraw lub usuń ten wpis ręcznie.',
     entryUnreadableRetained: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń i został on nietknięty. Popraw lub usuń ten wpis ręcznie.',
+  },
+  backup: {
+    sectionTitle: 'Kopia zapasowa',
+    sectionHelper: 'Zaszyfrowana kopia katalogu — nigdy samych plików wideo — na Twoim własnym Dysku Google.',
+    enableLabel: 'Rób kopię zapasową katalogu',
+    statusConnected: (account) => `Połączono jako ${account}`,
+    statusNotConnected: 'Brak połączenia',
+    lastBackup: (date) => `Ostatnia kopia: ${date}`,
+    lastBackupNever: 'Jeszcze bez kopii',
+    nextDue: (date) => `Następne sprawdzenie: ${date}`,
+    nextDueUnknown: 'Następne sprawdzenie: przy kolejnym uruchomieniu',
+    runNow: 'Kopia teraz',
+    running: 'Trwa kopia…',
+    optionalTierLabel: 'Kopiuj też pliki odtwarzalne',
+    optionalTierHelper: 'Podglądy zdjęć, miniatury i lustrzane klatki, jako osobna seria archiwów.',
+    keepLastLabel: 'Zachowaj ostatnich',
+    keepWeeklyLabel: 'Zachowaj tygodniowe (tygodni)',
+    retentionHelper: 'Starsze archiwa są usuwane po każdej udanej wysyłce; ostatnie nigdy nie znika.',
+    stepperTitle: 'Włącz kopię zapasową',
+    stepProvider: 'Miejsce docelowe',
+    stepConnect: 'Połączenie',
+    stepRecoveryKey: 'Klucz odzyskiwania',
+    providerGoogle: 'Konto Google',
+    providerGoogleHelper: 'Logowanie w Twojej przeglądarce. Aplikacja widzi tylko folder, który sama utworzy.',
+    providerServiceAccount: 'Konto serwisowe (zaawansowane)',
+    providerServiceAccountHelper: 'Dla firmowego Dysku współdzielonego. Najpierw wykonaj instrukcję konfiguracji.',
+    connectGoogle: 'Połącz z Dyskiem Google',
+    sharedDriveIdLabel: 'Identyfikator Dysku współdzielonego',
+    sharedDriveIdHelper: 'Ostatni fragment adresu Dysku współdzielonego w przeglądarce.',
+    keyJsonLabel: 'Klucz konta serwisowego (JSON)',
+    keyJsonHelper: 'Wklejasz go raz, trafia do pęku kluczy macOS i nigdy nie jest zapisywany na dysku.',
+    importKeyJson: 'Zaimportuj klucz i połącz',
+    testConnection: 'Testuj połączenie',
+    connectionReport: (account, folder) => `${account} → ${folder}`,
+    recoveryKeyHelper: 'Bez tego klucza i bez tego Maca kopie są nie do odczytania. Zapisz go tam, gdzie trzymasz hasła.',
+    exportRecoveryKey: 'Zapisz klucz odzyskiwania…',
+    recoveryKeyExported: (path) => `Zapisano w ${path}`,
+    recoveryKeyFingerprint: (fingerprint) => `Odcisk klucza: ${fingerprint}`,
+    recoveryKeySavedCheckbox: 'Zapisałem klucz odzyskiwania',
+    finish: 'Zakończ',
+    listTitle: 'Kopie zapasowe',
+    listEmpty: 'Nie ma jeszcze żadnej kopii.',
+    listLoading: 'Wczytywanie kopii…',
+    tierFilterAll: 'Wszystkie',
+    tierCritical: 'Katalog',
+    tierOptional: 'Pliki odtwarzalne',
+    backupRow: (date, size, appVersion) => `${date} · ${size} · wersja ${appVersion}`,
+    restore: 'Przywróć',
+    restoreUnsupported: (appVersion) => `Wymaga aplikacji w wersji ≥ ${appVersion}`,
+    restoreDialogTitle: 'Przywrócić tę kopię?',
+    restoreDialogOverwrite: 'Katalog, baza zdjęć, ustawienia aplikacji, ustawienia folderów i wycinki twarzy zostaną zastąpione tymi z kopii.',
+    restoreDialogPreRestore: 'Najpierw powstanie lokalna kopia obecnego katalogu, więc nic nie przepadnie, jeśli przywracanie się nie uda.',
+    restoreDialogRelaunch: 'Po zakończeniu aplikacja uruchomi się ponownie.',
+    restoreConfirm: 'Przywróć',
+    restoreConfirmAgain: 'Tak, przywróć teraz',
+    restoreRunning: (phase) => `Przywracanie: ${phase}`,
+    restoreFailedNothingChanged: 'Nic na Twoim Macu nie zostało zmienione.',
+    indicatorLabel: 'Kopia zapasowa',
+    indicatorIdle: (date) => `Ostatnia kopia: ${date}`,
+    indicatorFailed: 'Ostatnia kopia się nie udała. Otwórz Ustawienia > Kopia zapasowa.',
+    phases: {
+      idle: 'Bezczynna',
+      fingerprinting: 'Sprawdzanie zmian',
+      snapshotting: 'Przygotowanie migawki',
+      archiving: 'Kompresja',
+      encrypting: 'Szyfrowanie',
+      uploading: 'Wysyłanie',
+      pruning: 'Usuwanie starych kopii',
+      verifying: 'Weryfikacja',
+      downloading: 'Pobieranie',
+      decrypting: 'Odszyfrowywanie',
+      restoring: 'Przywracanie',
+    },
+    errorMessages: {
+      backup_disabled: 'Kopia zapasowa jest wyłączona.',
+      backup_auth_required: 'Trzeba ponownie połączyć miejsce docelowe.',
+      backup_destination_error: 'Dysk Google zwrócił błąd.',
+      backup_quota_exceeded: 'Skończyło się miejsce na Dysku.',
+      backup_encryption_failed: 'Nie udało się zaszyfrować lub odszyfrować archiwum.',
+      backup_integrity_failed: 'Archiwum nie przeszło kontroli spójności.',
+      restore_refused: 'Przywracanie jest zablokowane, dopóki trwa inne zadanie katalogu.',
+      recovery_key_required: 'Wymagany jest klucz odzyskiwania.',
+    },
   },
   errors: {
     analyzerFailed: 'Analiza nie powiodła się.',

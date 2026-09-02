@@ -7,6 +7,8 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import {
+  BACKUP_FOLDER_NAME,
+  BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT,
   appError,
   ok,
   remoteBackupSchema,
@@ -16,6 +18,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import type {
+  BackupConnectInput,
   BackupConnectionReport,
   BackupDestinationDescription,
   BackupDestinationPort,
@@ -34,9 +37,7 @@ import {
 } from './google-drive.js';
 
 export const GOOGLE_DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-export const GOOGLE_REFRESH_TOKEN_ACCOUNT = 'backup.google.refresh_token';
 
-const BACKUP_FOLDER_NAME = 'AI Video Cataloger Backups';
 const DEFAULT_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const DEFAULT_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
@@ -118,7 +119,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     return ok({ provider: 'google_oauth', folderName: BACKUP_FOLDER_NAME });
   }
 
-  async connect(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
+  async connect(_input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
     const verifier = randomBytes(32).toString('base64url');
     const challenge = createHash('sha256').update(verifier).digest('base64url');
     const state = randomBytes(32).toString('base64url');
@@ -142,7 +143,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     if (exchanged.value.refreshToken === null) {
       return { ok: false, error: appError('backup_auth_required', 'Google did not return a refresh token') };
     }
-    const stored = await this.secrets.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, exchanged.value.refreshToken);
+    const stored = await this.secrets.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, exchanged.value.refreshToken);
     if (!stored.ok) return stored;
     this.accessToken = exchanged.value.accessToken;
     const folder = await this.ensureFolder(signal);
@@ -349,7 +350,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
 
   private async token(signal: AbortSignal): Promise<Result<string, AppError>> {
     if (this.accessToken !== null) return ok(this.accessToken);
-    const refresh = await this.secrets.get(GOOGLE_REFRESH_TOKEN_ACCOUNT);
+    const refresh = await this.secrets.get(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT);
     if (!refresh.ok) return refresh;
     if (refresh.value === null) return { ok: false, error: appError('backup_auth_required', 'Connect Google Drive to continue') };
     let response: Response;

@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, ok, type AppError, type Result } from '@core/domain/index.js';
 import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
 import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
 import {
   GOOGLE_DRIVE_FILE_SCOPE,
-  GOOGLE_REFRESH_TOKEN_ACCOUNT,
   GoogleOAuthBackupDestination,
 } from './google-oauth-destination.js';
 
@@ -56,7 +55,7 @@ describe('Google OAuth backup destination', () => {
       },
     });
 
-    expect(await destination.connect(new AbortController().signal)).toMatchObject({
+    expect(await destination.connect({ keyJson: null, sharedDriveId: null }, new AbortController().signal)).toMatchObject({
       ok: true,
       value: { accountEmail: 'user@example.com', folderName: 'AI Video Cataloger Backups' },
     });
@@ -65,7 +64,7 @@ describe('Google OAuth backup destination', () => {
     expect(consent.searchParams.get('scope')).toBe(GOOGLE_DRIVE_FILE_SCOPE);
     expect(consent.searchParams.get('code_challenge_method')).toBe('S256');
     expect(consent.searchParams.get('state')).toHaveLength(43);
-    expect(secrets.values.get(GOOGLE_REFRESH_TOKEN_ACCOUNT)).toBe('refresh-token');
+    expect(secrets.values.get(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT)).toBe('refresh-token');
     expect(await config.get({ kind: 'home' }, 'backup_folder_id')).toEqual(ok('folder-1'));
     expect(await config.get({ kind: 'home' }, 'backup_account_email')).toEqual(ok('user@example.com'));
 
@@ -84,7 +83,7 @@ describe('Google OAuth backup destination', () => {
   it('maps a revoked refresh token to backup_auth_required without opening the browser', async () => {
     const config = new InMemoryConfig();
     const secrets = new MemorySecrets();
-    secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'revoked');
+    secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'revoked');
     await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
     const openExternal = vi.fn(() => Promise.resolve());
     const destination = new GoogleOAuthBackupDestination({
@@ -109,7 +108,7 @@ describe('Google OAuth backup destination', () => {
   it('recreates and stores the app folder when the saved folder id is missing', async () => {
     const config = new InMemoryConfig();
     const secrets = new MemorySecrets();
-    secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
     await config.set({ kind: 'home' }, 'backup_folder_id', 'stale-folder');
     const requests: string[] = [];
     const destination = new GoogleOAuthBackupDestination({
@@ -135,7 +134,7 @@ describe('Google OAuth backup destination', () => {
   it('recreates and stores the app folder when the saved folder id is trashed', async () => {
     const config = new InMemoryConfig();
     const secrets = new MemorySecrets();
-    secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
     await config.set({ kind: 'home' }, 'backup_folder_id', 'trashed-folder');
     const destination = new GoogleOAuthBackupDestination({
       config,
@@ -166,7 +165,7 @@ describe('Google OAuth backup destination', () => {
       openExternal: () => Promise.resolve(),
     });
 
-    expect(await destination.connect(new AbortController().signal)).toMatchObject({
+    expect(await destination.connect({ keyJson: null, sharedDriveId: null }, new AbortController().signal)).toMatchObject({
       ok: false,
       error: { code: 'backup_auth_required' },
     });

@@ -51,7 +51,12 @@ import type {
   AnalyzePhotosOutput,
   AnalyzerBatchPort,
   AnalyzerPort,
+  BackupConnectRequest,
+  BackupConnectResult,
+  BackupConnectionReport,
   BackupDestinationPort,
+  BackupEnableRequest,
+  BackupStatusView,
   CatalogRepositoryFactory,
   ConfigScope,
   ConfigStore,
@@ -61,6 +66,7 @@ import type {
   ExifPort,
   FaceEnginePort,
   CliPathPort,
+  FileSavePort,
   FileSystemPort,
   FolderWatcherPort,
   GlobalCatalogStore,
@@ -84,6 +90,11 @@ import type {
 
 import { createGoogleBackupDestination } from './backup-destination.js';
 import { createBackupLifecycle } from './backup-lifecycle.js';
+
+const unavailableSaveDialog = (): Result<{ path: string } | null, AppError> => ({
+  ok: false,
+  error: appError('unavailable', 'A native save dialog is not available in this process'),
+});
 
 const CLI_COMMAND_NAME = 'ai-video-cataloger';
 const CLI_OWNED_INSTALL_PATHS = ['/usr/local/bin/ai-video-cataloger'];
@@ -117,6 +128,14 @@ export interface AppDeps {
   evaluateScheduledBackup(): Promise<Result<void, AppError>>;
   listBackups(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
   restoreBackup(input: { remoteId: string; recoveryKey?: string | undefined }): Promise<Result<{ jobId: string }, AppError>>;
+  backupStatus(input: { testConnection: boolean }): Promise<Result<BackupStatusView, AppError>>;
+  connectBackup(request: BackupConnectRequest, signal: AbortSignal): Promise<Result<BackupConnectResult, AppError>>;
+  testBackup(signal: AbortSignal): Promise<Result<{ connection: BackupConnectionReport }, AppError>>;
+  enableBackup(request: BackupEnableRequest): Promise<Result<{ enabled: true; jobId: string | null }, AppError>>;
+  disableBackup(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
+  exportBackupRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
+  confirmBackupRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  runBackup(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
   readiness: ReadinessCache;
 }
 
@@ -129,6 +148,7 @@ export interface AppConfig {
   processName?: CatalogLockProcessName | undefined;
   catalogLockMode?: 'lazy' | 'eager' | undefined;
   openExternal?: ((url: string) => Promise<void>) | undefined;
+  saveFile?: FileSavePort['save'] | undefined;
   googleOAuthClientId?: string | undefined;
   googleOAuthClientSecret?: string | undefined;
 }
@@ -136,6 +156,7 @@ export interface AppConfig {
 export interface InMemoryDepsConfig {
   version: string;
   workingDirectory: string;
+  saveFile?: FileSavePort['save'] | undefined;
 }
 
 export type InMemoryDepsFactory = (config: InMemoryDepsConfig) => AppDeps;
@@ -154,6 +175,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     return inMemoryDepsFactory({
       version: config.version ?? packageJson.version,
       workingDirectory,
+      saveFile: config.saveFile,
     });
   }
   const readiness = new ReadinessCache();
@@ -205,6 +227,8 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     oauthClientId: config.googleOAuthClientId ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '',
     oauthClientSecret: config.googleOAuthClientSecret ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '',
     openExternal: config.openExternal ?? (() => Promise.reject(new Error('System browser integration is unavailable'))),
+    driveBaseUrl: process.env.AVC_GOOGLE_DRIVE_BASE_URL,
+    uploadBaseUrl: process.env.AVC_GOOGLE_UPLOAD_BASE_URL,
   });
   const backupLifecycle = createBackupLifecycle({
     homeDirectory: resolvedHomeDirectory,
@@ -216,6 +240,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     secrets,
     jobs,
     destination: backupDestination,
+    fileSave: { save: config.saveFile ?? (() => Promise.resolve(unavailableSaveDialog())) },
   });
   return {
     version: config.version ?? packageJson.version,
@@ -246,6 +271,14 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     evaluateScheduledBackup: backupLifecycle.evaluate,
     listBackups: backupLifecycle.list,
     restoreBackup: backupLifecycle.restore,
+    backupStatus: backupLifecycle.status,
+    connectBackup: backupLifecycle.connect,
+    testBackup: backupLifecycle.test,
+    enableBackup: backupLifecycle.enable,
+    disableBackup: backupLifecycle.disable,
+    exportBackupRecoveryKey: backupLifecycle.exportRecoveryKey,
+    confirmBackupRecoveryKey: backupLifecycle.confirmRecoveryKey,
+    runBackup: backupLifecycle.run,
     readiness,
   };
 };

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import {
+  BACKUP_FOLDER_NAME,
+  BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT,
   appError,
   ok,
   remoteBackupSchema,
@@ -15,6 +17,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import type {
+  BackupConnectInput,
   BackupConnectionReport,
   BackupDestinationDescription,
   BackupDestinationPort,
@@ -32,8 +35,6 @@ import {
   type GoogleUploadedFile,
 } from './google-drive.js';
 import { GOOGLE_DRIVE_FILE_SCOPE } from './google-oauth-destination.js';
-
-export const GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT = 'backup.service_account.key';
 
 const DEFAULT_DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
 const DEFAULT_UPLOAD_BASE_URL = 'https://www.googleapis.com/upload/drive/v3';
@@ -59,6 +60,7 @@ const folderSchema = z.object({
   driveId: z.string().min(1),
 }).passthrough();
 const driveSchema = z.object({ id: z.string().min(1), name: z.string().min(1) }).passthrough();
+const createdFolderSchema = z.object({ id: z.string().min(1), name: z.string().min(1) }).passthrough();
 const remoteFileLocationSchema = z.object({
   id: z.string().min(1),
   parents: z.array(z.string().min(1)),
@@ -128,15 +130,29 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
       .update(parsed.value.client_email + parsed.value.private_key_id)
       .digest('hex')
       .slice(0, 12)}`;
-    const stored = await this.secrets.set(GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT, keyJson);
+    const stored = await this.secrets.set(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT, keyJson);
     if (!stored.ok) return stored;
     const configured = await this.config.set({ kind: 'home' }, 'backup_service_account_fingerprint', fingerprint);
     if (!configured.ok) {
-      await this.secrets.delete(GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT);
+      await this.secrets.delete(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT);
       return configured;
     }
     this.accessToken = null;
     return ok({ fingerprint });
+  }
+
+  async connect(input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
+    if (input.keyJson !== null) {
+      const imported = await this.importKeyJson(input.keyJson);
+      if (!imported.ok) return imported;
+    }
+    if (input.sharedDriveId !== null) {
+      const stored = await this.config.set({ kind: 'home' }, 'backup_shared_drive_id', input.sharedDriveId);
+      if (!stored.ok) return stored;
+    }
+    const resolved = await this.resolveBackupFolder(signal);
+    if (!resolved.ok) return resolved;
+    return this.test(signal);
   }
 
   async test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
@@ -281,6 +297,46 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     return ok({ removed: true });
   }
 
+  private async resolveBackupFolder(signal: AbortSignal): Promise<Result<{ folderId: string }, AppError>> {
+    const drive = await this.config.get({ kind: 'home' }, 'backup_shared_drive_id');
+    if (!drive.ok) return drive;
+    const driveId = drive.value ?? '';
+    if (driveId.length === 0) return { ok: false, error: appError('validation', 'A Shared Drive id is required') };
+    const query = new URL(`${this.driveBaseUrl}/files`);
+    query.searchParams.set('q', `mimeType='application/vnd.google-apps.folder' and name='${BACKUP_FOLDER_NAME}' and trashed=false`);
+    setSharedDriveParameters(query, driveId);
+    query.searchParams.set('fields', 'files(id,name)');
+    const listed = await this.request(query.toString(), {}, signal);
+    if (!listed.ok) return listed;
+    const parsed = await parseGoogleResponse(listed.value, filesSchema, 'folder search');
+    if (!parsed.ok) return parsed;
+    const existing = parsed.value.files[0];
+    const folder = existing === undefined ? await this.createBackupFolder(driveId, signal) : ok(existing);
+    if (!folder.ok) return folder;
+    const stored = await this.config.set({ kind: 'home' }, 'backup_folder_id', folder.value.id);
+    return stored.ok ? ok({ folderId: folder.value.id }) : stored;
+  }
+
+  private async createBackupFolder(
+    driveId: string,
+    signal: AbortSignal,
+  ): Promise<Result<{ id: string; name: string }, AppError>> {
+    const url = new URL(`${this.driveBaseUrl}/files`);
+    url.searchParams.set('supportsAllDrives', 'true');
+    url.searchParams.set('fields', 'id,name');
+    const response = await this.request(url.toString(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: BACKUP_FOLDER_NAME,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [driveId],
+      }),
+    }, signal);
+    if (!response.ok) return response;
+    return parseGoogleResponse(response.value, createdFolderSchema, 'folder creation');
+  }
+
   private async drive(driveId: string, signal: AbortSignal): Promise<Result<{ name: string }, AppError>> {
     const response = await this.request(`${this.driveBaseUrl}/drives/${encodeURIComponent(driveId)}?fields=id,name`, {}, signal);
     if (!response.ok) return response;
@@ -388,7 +444,7 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
   }
 
   private async key(): Promise<Result<ServiceAccountKey, AppError>> {
-    const stored = await this.secrets.get(GOOGLE_SERVICE_ACCOUNT_KEY_ACCOUNT);
+    const stored = await this.secrets.get(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT);
     if (!stored.ok) return stored;
     if (stored.value === null) return { ok: false, error: appError('backup_auth_required', 'Import a service-account key to continue') };
     return parseServiceAccountKey(stored.value);

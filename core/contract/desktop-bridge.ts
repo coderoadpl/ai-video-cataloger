@@ -66,6 +66,10 @@ export interface MenuEventsBridge {
   on(name: 'showSetupWizard', handler: MenuEventHandler<'showSetupWizard'>): Unsubscribe;
 }
 
+export interface ApplicationBridge {
+  relaunch(): Promise<void>;
+}
+
 export interface OnboardingBridge {
   getCompleted(): Promise<boolean>;
   setCompleted(): Promise<void>;
@@ -101,4 +105,5 @@ export interface DesktopBridge {
   window: WindowControlsBridge;
   menu: MenuEventsBridge;
   onboarding: OnboardingBridge;
+  app: ApplicationBridge;
 }

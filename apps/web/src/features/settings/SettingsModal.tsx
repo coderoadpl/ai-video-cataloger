@@ -19,6 +19,7 @@ import {
   Typography,
 } from '@mui/material';
 
+import { SettingsBackupSection } from './SettingsBackupSection.js';
 import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
   UI_LANGUAGE_OPTIONS,
@@ -386,6 +387,9 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             />
           </Box>
         )}
+        <Box sx={{ pt: 3 }}>
+          <SettingsBackupSection open={open} />
+        </Box>
       </DialogContent>
       <DialogActions>
         {onRunWizard === undefined ? null : (

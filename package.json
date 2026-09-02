@@ -37,6 +37,7 @@
     "test:e2e:matrix": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=matrix",
     "test:e2e:open-folder": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=open-folder",
     "test:e2e:settings": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=settings",
+    "test:e2e:backup": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=backup-settings",
     "test:e2e:photos": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=photos",
     "test:e2e:people": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=people",
     "test:e2e:people-media": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=people-media",

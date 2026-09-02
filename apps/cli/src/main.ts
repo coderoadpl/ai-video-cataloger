@@ -29,6 +29,7 @@ import {
   configKeySchema,
   CREDENTIALS_BACKEND_LABELS,
   err,
+  remoteBackupSchema,
   whisperLanguageSchema,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
@@ -166,6 +167,10 @@ interface TranslationImportOptions extends JsonOption {
 
 interface BackupListOptions extends JsonOption {
   tier?: BackupTier | undefined;
+}
+
+interface BackupStatusOptions extends JsonOption {
+  testConnection?: boolean | undefined;
 }
 
 interface BackupRestoreOptions extends JsonOption {
@@ -614,6 +619,37 @@ backup
       return;
     }
     emitCompleted(json, result.value.backups, backupListHuman(result.value.backups));
+  });
+
+backup
+  .command('now')
+  .description('Run a backup immediately')
+  .option('--tier <tier>', 'backup tier: critical or optional', backupTierOption)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (options: BackupListOptions) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'backup_now', { tier: options.tier ?? 'critical' });
+    const result = await api.backupRun({ tier: options.tier ?? 'critical' });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, backupRunHuman);
+  });
+
+backup
+  .command('status')
+  .description('Show backup status, retention and the connected destination')
+  .option('--test-connection', 'also run a destination connection test', false)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (options: BackupStatusOptions) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'backup_status',
+      () => api.backupStatus({ testConnection: options.testConnection === true }),
+      backupStatusHuman,
+    );
   });
 
 backup
@@ -2030,6 +2066,33 @@ const backupListHuman = (backups: readonly BackupListItem[]): string => {
     backupItem.remoteId,
   ].join('\t'));
   return ['DATE\tTIER\tSIZE\tAPP\tSCHEMA\tREMOTE ID', ...rows].join('\n');
+};
+
+type BackupStatusOutput = Awaited<ReturnType<ApiClient['backupStatus']>> extends Result<infer T, AppError> ? T : never;
+
+const backupRunHuman = (data: unknown): string => {
+  const parsed = remoteBackupSchema.safeParse(data);
+  if (!parsed.success) return 'Backup completed';
+  return `Backup completed: ${parsed.data.name} (${formatBytes(parsed.data.sizeBytes)})`;
+};
+
+const backupStatusHuman = (status: BackupStatusOutput): string => {
+  const lines = [
+    `enabled: ${String(status.enabled)}`,
+    `provider: ${status.provider}`,
+    `account: ${status.accountEmail ?? status.serviceAccountFingerprint ?? '-'}`,
+    `folder: ${status.folderName}`,
+    `indicator: ${status.indicator}`,
+    `last success: ${status.lastSuccessAt ?? '-'}`,
+    `next due: ${status.nextDueAt ?? '-'}`,
+    `last error: ${status.lastErrorCode ?? '-'}`,
+    `retention: keep last ${String(status.keepLast)}, weekly ${String(status.keepWeekly)}`,
+    `optional tier: ${String(status.includeOptional)}`,
+  ];
+  if (status.connection !== null) {
+    lines.push(`connection: ${status.connection.accountEmail ?? '-'} / ${status.connection.driveName ?? 'My Drive'}`);
+  }
+  return lines.join('\n');
 };
 
 const backupRestoreConfirmationHuman = (backupItem: BackupListItem): string =>

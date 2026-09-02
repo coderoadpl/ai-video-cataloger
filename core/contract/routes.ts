@@ -16,6 +16,10 @@ import {
   analyzerProviderDescriptorSchema,
   analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
+  backupIndicatorStateSchema,
+  backupPhaseSchema,
+  backupSchemaVersionsSchema,
+  backupProviderSchema,
   backupTierSchema,
   configDescriptorSchema,
   configKeySchema,
@@ -306,6 +310,102 @@ export const backupRestoreOutputSchema = z.object({
   restored: remoteBackupSchema,
   relaunchRequired: z.literal(true),
   preRestoreDirectory: z.string().min(1),
+});
+
+export const backupRunInputSchema = z.object({
+  tier: backupTierSchema.default('critical'),
+});
+
+export const backupConnectionSchema = z.object({
+  accountEmail: z.string().nullable(),
+  driveName: z.string().nullable(),
+  folderName: z.string(),
+  remainingQuotaBytes: z.number().int().nonnegative().nullable(),
+});
+
+export const backupConnectInputSchema = z.object({
+  provider: backupProviderSchema,
+  keyJson: z.string().min(1).nullable().default(null),
+  sharedDriveId: z.string().min(1).nullable().default(null),
+});
+
+export const backupConnectOutputSchema = z.object({
+  provider: backupProviderSchema,
+  connection: backupConnectionSchema,
+  serviceAccountFingerprint: z.string().nullable(),
+});
+
+export const backupTestInputSchema = z.object({});
+
+export const backupTestOutputSchema = z.object({
+  connection: backupConnectionSchema,
+});
+
+export const backupEnableInputSchema = z.object({
+  includeOptional: z.boolean().default(false),
+  keepLast: z.number().int().min(1).max(90).default(CONFIG_DEFAULTS.backup_keep_last),
+  keepWeekly: z.number().int().min(0).max(52).default(CONFIG_DEFAULTS.backup_keep_weekly),
+  runFirstBackup: z.boolean().default(true),
+});
+
+export const backupEnableOutputSchema = z.object({
+  enabled: z.literal(true),
+  jobId: z.string().min(1).nullable(),
+});
+
+export const backupDisableInputSchema = z.object({
+  purgeCredentials: z.boolean().default(false),
+});
+
+export const backupDisableOutputSchema = z.object({
+  enabled: z.literal(false),
+});
+
+export const backupRecoveryKeyExportInputSchema = z.object({});
+
+export const backupRecoveryKeyExportOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const backupRecoveryKeyConfirmInputSchema = z.object({});
+
+export const backupRecoveryKeyConfirmOutputSchema = z.object({
+  confirmed: z.literal(true),
+});
+
+const queryFlag = z.preprocess((value) => {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+}, z.boolean().default(false));
+
+export const backupStatusInputSchema = z.object({
+  testConnection: queryFlag,
+});
+
+export const backupStatusOutputSchema = z.object({
+  enabled: z.boolean(),
+  provider: backupProviderSchema,
+  connected: z.boolean(),
+  accountEmail: z.string().nullable(),
+  serviceAccountFingerprint: z.string().nullable(),
+  sharedDriveId: z.string().nullable(),
+  folderName: z.string(),
+  includeOptional: z.boolean(),
+  keepLast: z.number().int(),
+  keepWeekly: z.number().int(),
+  indicator: backupIndicatorStateSchema,
+  phase: backupPhaseSchema,
+  percentage: z.number().int().min(0).max(100).nullable(),
+  activeJobId: z.string().nullable(),
+  lastSuccessAt: z.iso.datetime().nullable(),
+  lastArchiveName: z.string().nullable(),
+  lastErrorCode: z.enum(ERROR_CODES).nullable(),
+  lastRestoreAt: z.iso.datetime().nullable(),
+  nextDueAt: z.iso.datetime().nullable(),
+  supportedSchemaVersions: backupSchemaVersionsSchema,
+  connection: backupConnectionSchema.nullable(),
 });
 
 export const processCompletedOutputSchema = z.object({
@@ -2276,6 +2376,24 @@ export const API_ROUTES = {
   jobCancel: { method: 'POST', path: '/api/jobs/cancel', input: jobIdInputSchema, output: jobCancelOutputSchema },
   backupList: { method: 'GET', path: '/api/backup/list', input: backupListInputSchema, output: backupListOutputSchema },
   backupRestore: { method: 'POST', path: '/api/backup/restore', input: backupRestoreInputSchema, output: jobAcceptedOutputSchema },
+  backupRun: { method: 'POST', path: '/api/backup/run', input: backupRunInputSchema, output: jobAcceptedOutputSchema },
+  backupStatus: { method: 'GET', path: '/api/backup/status', input: backupStatusInputSchema, output: backupStatusOutputSchema },
+  backupConnect: { method: 'POST', path: '/api/backup/connect', input: backupConnectInputSchema, output: backupConnectOutputSchema },
+  backupTest: { method: 'POST', path: '/api/backup/test', input: backupTestInputSchema, output: backupTestOutputSchema },
+  backupEnable: { method: 'POST', path: '/api/backup/enable', input: backupEnableInputSchema, output: backupEnableOutputSchema },
+  backupDisable: { method: 'POST', path: '/api/backup/disable', input: backupDisableInputSchema, output: backupDisableOutputSchema },
+  backupRecoveryKeyExport: {
+    method: 'POST',
+    path: '/api/backup/recovery-key/export',
+    input: backupRecoveryKeyExportInputSchema,
+    output: backupRecoveryKeyExportOutputSchema,
+  },
+  backupRecoveryKeyConfirm: {
+    method: 'POST',
+    path: '/api/backup/recovery-key/confirm',
+    input: backupRecoveryKeyConfirmInputSchema,
+    output: backupRecoveryKeyConfirmOutputSchema,
+  },
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
   indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
@@ -2504,6 +2622,14 @@ export const API_PATHS = {
   jobCancel: API_ROUTES.jobCancel.path,
   backupList: API_ROUTES.backupList.path,
   backupRestore: API_ROUTES.backupRestore.path,
+  backupRun: API_ROUTES.backupRun.path,
+  backupStatus: API_ROUTES.backupStatus.path,
+  backupConnect: API_ROUTES.backupConnect.path,
+  backupTest: API_ROUTES.backupTest.path,
+  backupEnable: API_ROUTES.backupEnable.path,
+  backupDisable: API_ROUTES.backupDisable.path,
+  backupRecoveryKeyExport: API_ROUTES.backupRecoveryKeyExport.path,
+  backupRecoveryKeyConfirm: API_ROUTES.backupRecoveryKeyConfirm.path,
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
   indexForget: API_ROUTES.indexForget.path,

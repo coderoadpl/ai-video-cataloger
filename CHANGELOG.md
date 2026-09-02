@@ -24,6 +24,10 @@ release history jumps from `0.5.10` to `0.5.12`.
   `GET /api/faces/people` gained additive `videoCount` and `photoCount`.
 - Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging.
 - The CLI can now list remote encrypted backups and restore one after explicit confirmation.
+- `backup now` runs a backup immediately (exit code 47 while backup is off) and `backup status [--test-connection]` prints enablement, provider, connected account, last success, next due date, last error, retention and indicator state.
+- Settings gained a Backup section: a one-time enablement stepper (destination choice, Google sign-in or service-account key import with a Shared Drive id, connection test, mandatory recovery-key export plus confirmation), the optional-tier toggle, the two retention fields, "Kopia teraz", the last-backup and next-evaluation readout, and the list of remote backups with a two-step restore confirmation that names the pre-restore copy and the relaunch.
+- The bottom bar shows a backup indicator next to the terminal controls — hidden while backup is off, a check glyph with the last backup date in its tooltip when idle, a spinner with the current phase while a backup runs, and a warning that opens Settings > Backup after a failure.
+- New contract routes `POST /api/backup/run`, `GET /api/backup/status`, `POST /api/backup/connect`, `POST /api/backup/test`, `POST /api/backup/enable`, `POST /api/backup/disable`, `POST /api/backup/recovery-key/export` and `POST /api/backup/recovery-key/confirm`.
 - Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
 - `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
 - `faces index` and `photos process` now detect faces in photos themselves,

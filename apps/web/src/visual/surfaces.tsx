@@ -24,6 +24,7 @@ import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
+import { BackupIndicatorView, type BackupIndicatorViewProps } from '../features/settings/BackupIndicator.js';
 import { getDict } from '../i18n/dictionary.js';
 
 const SURFACE_IDS = [
@@ -31,6 +32,9 @@ const SURFACE_IDS = [
   'shell-sidebar-collapsed',
   'shell-terminal-open',
   'shell-loading',
+  'shell-backup-idle',
+  'shell-backup-running',
+  'shell-backup-failed',
   'variant-compare',
   'catalog-sidebar-narrow',
   'catalog-sidebar-wide',
@@ -58,6 +62,12 @@ export const surfaceIdFromSearch = (search: string): SurfaceId => {
 };
 
 const dictionary = getDict('en');
+
+const BACKUP_INDICATOR_BY_SURFACE = {
+  'shell-backup-idle': 'idle',
+  'shell-backup-running': 'running',
+  'shell-backup-failed': 'failed',
+} as const satisfies Record<string, BackupIndicatorViewProps['state']>;
 
 const noop = (): void => undefined;
 
@@ -440,6 +450,7 @@ interface Surface {
   banner?: ReactNode;
   sidebarCollapsed: boolean;
   terminalCollapsed: boolean;
+  backupIndicator?: BackupIndicatorViewProps['state'];
 }
 
 const surfaceFor = (id: ShellSurfaceId): Surface => {
@@ -472,6 +483,16 @@ const surfaceFor = (id: ShellSurfaceId): Surface => {
         banner: <BannerFixture />,
         sidebarCollapsed: false,
         terminalCollapsed: true,
+      };
+    case 'shell-backup-idle':
+    case 'shell-backup-running':
+    case 'shell-backup-failed':
+      return {
+        sidebar: <CatalogFixture />,
+        content: <DetailsFixture />,
+        sidebarCollapsed: false,
+        terminalCollapsed: false,
+        backupIndicator: BACKUP_INDICATOR_BY_SURFACE[id],
       };
   }
 };
@@ -527,11 +548,21 @@ export const VisualSurface = ({ id }: { id: SurfaceId }) => {
           </Typography>
         }
         terminalActions={
-          <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }}>
-            {surface.terminalCollapsed
-              ? dictionary.appFrame.terminalExpand
-              : dictionary.appFrame.terminalCollapse}
-          </Button>
+          <>
+            {surface.backupIndicator === undefined ? null : (
+              <BackupIndicatorView
+                state={surface.backupIndicator}
+                phase={dictionary.backup.phases.uploading}
+                lastSuccessAt="2026-09-01T12:00:00.000Z"
+                onOpenSettings={noop}
+              />
+            )}
+            <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }}>
+              {surface.terminalCollapsed
+                ? dictionary.appFrame.terminalExpand
+                : dictionary.appFrame.terminalCollapse}
+            </Button>
+          </>
         }
         terminal={<TerminalLog lines={LOG_LINES} />}
         terminalCollapsed={surface.terminalCollapsed}

@@ -99,6 +99,8 @@ variants default <folder> (--config <configId>|--clear) [--json]
 thumbnail <video-path> [--force] [--json]
 thumbnails <root> [--force] [--json]
 gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30] [--max-visit-hours 36] [--reresolve-places] [--json]
+backup now [--tier critical|optional] [--json]
+backup status [--test-connection] [--json]
 backup list [--tier critical|optional] [--json]
 backup restore <remoteId> [--recovery-key <key>] [--yes] [--json]
 status [--json]
@@ -125,6 +127,13 @@ models whisper-runtime status|install
 
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`, `output_language`, `tag_language`, `backup_enabled`, `backup_provider`, `backup_include_optional`, `backup_keep_last`, `backup_keep_weekly`, `backup_folder_id`, `backup_shared_drive_id`, `backup_service_account_fingerprint`, `backup_account_email`. `tag_language` follows `output_language` until you set it.
 
+`backup now` runs a backup immediately, ignoring the daily schedule and the
+change fingerprint, and streams one `progress` event per backup phase; it exits
+`BACKUP_DISABLED` (47) while backup is switched off. `backup status` prints
+whether backup is enabled, the provider, the connected account or key
+fingerprint, the last success, the next due date, the last error, the retention
+settings, and the indicator state; `--test-connection` additionally runs the
+destination's connection test.
 `backup list` prints remote backup date, tier, size, app version, schema versions,
 and remote id; `--json` emits a completed NDJSON event carrying the array.
 `backup restore <remoteId>` refuses with `CONFIRMATION_REQUIRED` until `--yes`
