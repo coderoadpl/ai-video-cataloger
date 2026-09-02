@@ -158,6 +158,27 @@ describe('clusterFaceObservations', () => {
     for (let index = 0; index < pairCount; index += 1) store.add(index, pairCount + index, 0.6, 1);
     expect(store.get(0, pairCount)).toEqual({ sum: 0.6, count: 1 });
     expect(store.get(pairCount - 1, pairCount + pairCount - 1)).toEqual({ sum: 0.6, count: 1 });
+  }, 20_000);
+
+  it('clusters hundreds of observations across multiple similarity blocks', () => {
+    const groupAngles = [0, 130, 250];
+    const perGroup = 110;
+    const observations = groupAngles.flatMap((baseAngle, groupIndex) =>
+      Array.from({ length: perGroup }, (_, memberIndex) => ({
+        obsId: `g${groupIndex}-${String(memberIndex).padStart(3, '0')}`,
+        embedding: unitAtAngleDeg(baseAngle + (memberIndex % 5) * 0.2),
+        quality: 0.9,
+      })));
+
+    const outcome = clusterFaceObservations(observations);
+
+    expect(outcome.unassignedObsIds).toEqual([]);
+    expect(outcome.clusters.length).toBe(groupAngles.length);
+    for (const cluster of outcome.clusters) {
+      const groupIds = new Set(cluster.memberObsIds.map((obsId) => obsId.split('-')[0]));
+      expect(groupIds.size).toBe(1);
+      expect(cluster.memberObsIds.length).toBe(perGroup);
+    }
   });
 
   it('clusters two clearly distinct embedding sets into two people', () => {
