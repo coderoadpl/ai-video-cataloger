@@ -2,7 +2,14 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  backupConnectOutputSchema,
+  backupDisableOutputSchema,
+  backupEnableOutputSchema,
   backupListOutputSchema,
+  backupRecoveryKeyConfirmOutputSchema,
+  backupRecoveryKeyExportOutputSchema,
+  backupStatusOutputSchema,
+  backupTestOutputSchema,
   catalogFolderOutputSchema,
   catalogLocationsOutputSchema,
   catalogLockOutputSchema,
@@ -384,6 +391,93 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  backupRun: (input: z.input<typeof API_ROUTES.backupRun.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupRun.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupRun.method,
+      API_ROUTES.backupRun.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  backupStatus: (input: z.input<typeof API_ROUTES.backupStatus.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupStatus.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupStatus.method,
+      queryPath(API_ROUTES.backupStatus.path, [['testConnection', parsed.value.testConnection ? 'true' : null]]),
+      backupStatusOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  backupConnect: (input: z.input<typeof API_ROUTES.backupConnect.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupConnect.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupConnect.method,
+      API_ROUTES.backupConnect.path,
+      backupConnectOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  backupTest: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.backupTest.method,
+      API_ROUTES.backupTest.path,
+      backupTestOutputSchema,
+      {},
+      signal,
+    ),
+  backupEnable: (input: z.input<typeof API_ROUTES.backupEnable.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupEnable.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupEnable.method,
+      API_ROUTES.backupEnable.path,
+      backupEnableOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  backupDisable: (input: z.input<typeof API_ROUTES.backupDisable.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupDisable.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupDisable.method,
+      API_ROUTES.backupDisable.path,
+      backupDisableOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  backupRecoveryKeyExport: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.backupRecoveryKeyExport.method,
+      API_ROUTES.backupRecoveryKeyExport.path,
+      backupRecoveryKeyExportOutputSchema,
+      {},
+      signal,
+    ),
+  backupRecoveryKeyConfirm: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.backupRecoveryKeyConfirm.method,
+      API_ROUTES.backupRecoveryKeyConfirm.path,
+      backupRecoveryKeyConfirmOutputSchema,
+      {},
+      signal,
+    ),
   processVideo: (input: z.input<typeof API_ROUTES.process.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.process.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

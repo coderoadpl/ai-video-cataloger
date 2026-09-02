@@ -11,6 +11,7 @@ import {
 } from '@core/domain/index.js';
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
+  type BackupConnectInput,
   type BackupConnectionReport,
   type BackupDestinationDescription,
   type BackupDestinationPort,
@@ -46,6 +47,16 @@ export class MemoryBackupDestination implements BackupDestinationPort {
 
   describe(): Result<BackupDestinationDescription, AppError> {
     return ok({ provider: 'memory', folderName: 'AI Video Cataloger Backups' });
+  }
+
+  connect(input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
+    if (signal.aborted) return Promise.resolve(cancelled());
+    return Promise.resolve(ok({
+      accountEmail: 'memory@example.com',
+      driveName: input.sharedDriveId,
+      folderName: 'AI Video Cataloger Backups',
+      remainingQuotaBytes: null,
+    }));
   }
 
   test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {

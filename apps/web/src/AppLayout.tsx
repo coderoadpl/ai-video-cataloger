@@ -14,6 +14,7 @@ import { type AppMode } from './components/ui/ModeSwitcher.js';
 import { NestedDbDialog } from './components/ui/dialogs/NestedDbDialog.js';
 import { TerminalLog } from './components/ui/TerminalLog.js';
 import { mergeLogLines, renderLine, type LogLine, type TerminalViewMode } from './components/ui/use-terminal-log.js';
+import { BackupIndicator } from './features/settings/BackupIndicator.js';
 import { useMenuEvents } from './features/shell/use-menu-events.js';
 import { type ShellState } from './features/shell/use-shell.js';
 import { useDictionary } from './i18n/use-dictionary.js';
@@ -204,6 +205,7 @@ export const AppLayout = ({
         }
         terminalActions={
           <>
+            <BackupIndicator onOpenSettings={() => setModal('settings')} />
             {terminalCollapsed ? null : (
               <Button
                 size="small"

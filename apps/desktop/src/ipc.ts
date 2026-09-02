@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import {
   BrowserWindow,
+  app,
   dialog,
   ipcMain,
   shell,
@@ -137,6 +138,12 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     return readOnboardingCompleted();
   });
 
+  ipcMain.handle(CHANNELS.appRelaunch, (event): void => {
+    if (!isTrustedSender(event)) return;
+    app.relaunch();
+    app.exit(0);
+  });
+
   ipcMain.handle(CHANNELS.onboardingSetCompleted, async (event): Promise<void> => {
     if (!isTrustedSender(event)) return;
     await writeOnboardingCompleted();
@@ -198,6 +205,7 @@ export const cleanupIpcHandlers = (): void => {
   ipcMain.removeHandler(CHANNELS.folderRemoveRecent);
   ipcMain.removeHandler(CHANNELS.folderClearRecent);
   ipcMain.removeHandler(CHANNELS.revealInFinder);
+  ipcMain.removeHandler(CHANNELS.appRelaunch);
   ipcMain.removeHandler(CHANNELS.onboardingGetCompleted);
   ipcMain.removeHandler(CHANNELS.onboardingSetCompleted);
 };

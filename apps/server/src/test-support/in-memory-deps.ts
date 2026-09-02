@@ -1,8 +1,12 @@
 import path from 'node:path';
-import { access, constants } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { access, constants, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import packageJson from '../../../../package.json' with { type: 'json' };
 import { z } from 'zod';
 
+import { PHOTOS_SCHEMA_VERSION } from '@adapters/db/index.js';
+import { ensureBackupRecoveryKey } from '@adapters/backup/envelope.js';
 import { MemoryBackupDestination } from '@adapters/backup/memory-destination.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { FakeExifPort, FakePhotoMediaPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
@@ -16,6 +20,9 @@ import {
   compareUtf8Bytes,
   ok,
   type AnalysisLanguageResolution,
+  type BackupPhase,
+  type BackupState,
+  type BackupTier,
   type AppError,
   type CatalogAnalysis,
   type CatalogFile,
@@ -32,7 +39,25 @@ import {
   type SpendLedgerEntry,
   type WhisperModelName,
 } from '@core/domain/index.js';
-import { ReadinessCache } from '@core/server/index.js';
+import {
+  ReadinessCache,
+  confirmBackupRecoveryKey,
+  connectBackupDestination,
+  createRecoveryKeyCeremony,
+  disableBackup,
+  enableBackup,
+  exportBackupRecoveryKey,
+  readBackupStatus,
+  runBackupNow,
+  testBackupDestination,
+  type BackupConnectRequest,
+  type BackupEnableRequest,
+  type BackupEnablementDeps,
+  type BackupStatePort,
+  type FileSavePort,
+  type SecretsAvailability,
+  type SecretsStore,
+} from '@core/server/index.js';
 import type {
   AlignedFaceCrop,
   AnalyzedFileLocation,
@@ -115,6 +140,7 @@ interface InMemoryDepsConfig {
   workingDirectory?: string;
   files?: readonly string[];
   textFiles?: Readonly<Record<string, string>>;
+  saveFile?: FileSavePort['save'] | undefined;
 }
 
 export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
@@ -124,6 +150,21 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
   const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
   const backupDestination = new MemoryBackupDestination();
   seedMemoryBackups(backupDestination, process.env.AVC_TEST_MEMORY_BACKUPS);
+  const secrets = new InMemorySecrets();
+  const backupState = new InMemoryBackupState();
+  const backupEnablement: BackupEnablementDeps = {
+    config: configStore,
+    secrets,
+    jobs,
+    ceremony: createRecoveryKeyCeremony(),
+    fileSave: { save: config.saveFile ?? (() => Promise.resolve(memoryModeUnavailable())) },
+    destination: () => Promise.resolve(ok(backupDestination)),
+    enqueueBackup: (input) => enqueueSimulatedBackup(jobs, backupDestination, backupState, {
+      ...input,
+      appVersion: config.version ?? packageJson.version,
+    }),
+    recoveryKey: () => ensureBackupRecoveryKey(secrets),
+  };
   return {
     version: config.version ?? packageJson.version,
     cliPath: stubCliPathPort,
@@ -151,11 +192,153 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     cleanupBackupStaging: () => Promise.resolve(ok(undefined)),
     evaluateScheduledBackup: () => Promise.resolve(ok(undefined)),
     listBackups: (tier: 'critical' | 'optional' | null, signal: AbortSignal) => backupDestination.list(tier, signal),
-    restoreBackup: (): Promise<Result<{ jobId: string }, AppError>> =>
-      Promise.resolve({ ok: false, error: appError('backup_disabled', 'Backup restore is not available in memory mode') }),
+    restoreBackup: (input: { remoteId: string }) =>
+      enqueueSimulatedRestore(jobs, backupDestination, input.remoteId),
+    backupStatus: (input: { testConnection: boolean }) => readBackupStatus({
+      config: configStore,
+      state: backupState,
+      jobs,
+      supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+      destination: () => Promise.resolve(ok(backupDestination)),
+    }, input),
+    connectBackup: (request: BackupConnectRequest, signal: AbortSignal) =>
+      connectBackupDestination(backupEnablement, request, signal),
+    testBackup: (signal: AbortSignal) => testBackupDestination(backupEnablement, signal),
+    enableBackup: (request: BackupEnableRequest) => enableBackup(backupEnablement, request),
+    disableBackup: (request: { purgeCredentials: boolean }) => disableBackup(backupEnablement, request),
+    exportBackupRecoveryKey: () => exportBackupRecoveryKey(backupEnablement),
+    confirmBackupRecoveryKey: () => confirmBackupRecoveryKey(backupEnablement),
+    runBackup: (request: { tier: BackupTier }) => runBackupNow(backupEnablement, request),
     readiness,
   };
 };
+
+class InMemorySecrets implements SecretsStore {
+  private readonly values = new Map<string, string>();
+
+  availability(): Promise<SecretsAvailability> {
+    return Promise.resolve('available');
+  }
+
+  get(account: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.values.get(account) ?? null));
+  }
+
+  set(account: string, secret: string): Promise<Result<void, AppError>> {
+    this.values.set(account, secret);
+    return Promise.resolve(ok(undefined));
+  }
+
+  delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    return Promise.resolve(ok({ existed: this.values.delete(account) }));
+  }
+}
+
+class InMemoryBackupState implements BackupStatePort {
+  private state: BackupState | null = null;
+
+  read(): Promise<Result<BackupState | null, AppError>> {
+    return Promise.resolve(ok(this.state));
+  }
+
+  write(state: BackupState): Promise<Result<void, AppError>> {
+    this.state = state;
+    return Promise.resolve(ok(undefined));
+  }
+}
+
+const BACKUP_PROGRESS: ReadonlyArray<readonly [BackupPhase, number]> = [
+  ['fingerprinting', 5],
+  ['snapshotting', 15],
+  ['archiving', 35],
+  ['encrypting', 55],
+  ['uploading', 75],
+  ['pruning', 90],
+];
+
+const RESTORE_PROGRESS: ReadonlyArray<readonly [BackupPhase, number]> = [
+  ['downloading', 20],
+  ['decrypting', 45],
+  ['verifying', 65],
+  ['restoring', 85],
+];
+
+// The memory driver has no real catalog files to snapshot, so the backup and restore
+// jobs replay the phase sequence the GUI renders and exchange a placeholder archive
+// with the memory destination; the real pipeline is covered by the adapter suites.
+const enqueueSimulatedBackup = (
+  jobs: JobsPort,
+  destination: MemoryBackupDestination,
+  state: BackupStatePort,
+  input: { tier: BackupTier; manual: boolean; appVersion: string },
+): Promise<Result<{ jobId: string }, AppError>> => jobs.enqueue({
+  kind: 'backup',
+  payload: { tier: input.tier, manual: input.manual },
+  resourceKey: 'backup',
+  run: async (context) => {
+    const createdAt = new Date().toISOString();
+    for (const [step, percentage] of BACKUP_PROGRESS) {
+      const reported = await context.reportProgress({ step, percentage });
+      if (!reported.ok) return reported;
+    }
+    const archivePath = path.join(tmpdir(), `avc-memory-backup-${randomUUID()}.avcbak`);
+    await writeFile(archivePath, Buffer.alloc(1024), { mode: 0o600 });
+    try {
+      const uploaded = await destination.upload({
+        sourcePath: archivePath,
+        name: `avc-${input.tier}-${createdAt.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}.avcbak`,
+        manifest: {
+          formatVersion: 1,
+          tier: input.tier,
+          createdAt,
+          appVersion: input.appVersion,
+          schemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+          contentFingerprint: '0'.repeat(64),
+          totalBytes: 1024,
+          files: [],
+          folders: [],
+        },
+      }, context.signal);
+      if (!uploaded.ok) return uploaded;
+      const written = await state.write({
+        lastSuccessAt: createdAt,
+        lastFingerprint: null,
+        lastErrorCode: null,
+        lastArchiveName: uploaded.value.name,
+        lastRestoreAt: null,
+      });
+      return written.ok ? ok(uploaded.value) : written;
+    } finally {
+      await rm(archivePath, { force: true });
+    }
+  },
+});
+
+const enqueueSimulatedRestore = (
+  jobs: JobsPort,
+  destination: MemoryBackupDestination,
+  remoteId: string,
+): Promise<Result<{ jobId: string }, AppError>> => jobs.enqueue({
+  kind: 'restore',
+  payload: { remoteId },
+  resourceKey: 'backup',
+  run: async (context) => {
+    const listed = await destination.list(null, context.signal);
+    if (!listed.ok) return listed;
+    const restored = listed.value.find((backup) => backup.remoteId === remoteId);
+    if (restored === undefined) return { ok: false, error: appError('not_found', 'Remote backup not found') };
+    for (const [step, percentage] of RESTORE_PROGRESS) {
+      const reported = await context.reportProgress({ step, percentage });
+      if (!reported.ok) return reported;
+    }
+    return ok({ restored, relaunchRequired: true, preRestoreDirectory: path.join(tmpdir(), 'avc-memory-pre-restore') });
+  },
+});
+
+const memoryModeUnavailable = (): { ok: false; error: AppError } => ({
+  ok: false,
+  error: appError('unavailable', 'Backup management is not available in memory mode'),
+});
 
 const memoryBackupSeedSchema = z.array(z.object({
   metadata: z.object({

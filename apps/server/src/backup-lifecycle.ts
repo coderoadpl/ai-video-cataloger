@@ -7,6 +7,7 @@ import { BackupStateFile } from '@adapters/backup/state-store.js';
 import {
   decryptBackupEnvelope,
   encryptBackupEnvelope,
+  ensureBackupRecoveryKey,
   loadBackupEncryptionKey,
   parseRecoveryKey,
 } from '@adapters/backup/envelope.js';
@@ -14,7 +15,6 @@ import { extractTarZstd, writeTarZstd } from '@adapters/backup/tar.js';
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
-  configValueSchema,
   ok,
   type AppError,
   type BackupTier,
@@ -23,17 +23,34 @@ import {
 } from '@core/domain/index.js';
 import {
   cleanupBackupStaging,
+  confirmBackupRecoveryKey,
+  connectBackupDestination,
+  createRecoveryKeyCeremony,
+  disableBackup,
+  enableBackup,
   enqueueBackup,
   enqueueRestore,
   evaluateScheduledBackup,
+  exportBackupRecoveryKey,
   listBackups,
   performRestoreStartupRecovery,
   prepareBackupScope,
+  readBackupSettings,
+  readBackupStatus,
+  runBackupNow,
+  testBackupDestination,
+  type BackupConnectRequest,
+  type BackupConnectResult,
+  type BackupConnectionReport,
+  type BackupEnableRequest,
+  type BackupEnablementDeps,
   type BackupRestoreDeps,
   type BackupRestoreInput,
   type BackupRunDeps,
+  type BackupStatusView,
   type BackupDestinationPort,
   type ConfigStore,
+  type FileSavePort,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobsPort,
@@ -50,6 +67,7 @@ export interface BackupLifecycleOptions {
   config: ConfigStore;
   secrets: SecretsStore;
   jobs: JobsPort;
+  fileSave: FileSavePort;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
   now?: (() => Date) | undefined;
 }
@@ -59,6 +77,14 @@ export interface BackupLifecycle {
   evaluate(): Promise<Result<void, AppError>>;
   list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
   restore(input: BackupRestoreInput): Promise<Result<{ jobId: string }, AppError>>;
+  status(input: { testConnection: boolean }): Promise<Result<BackupStatusView, AppError>>;
+  connect(request: BackupConnectRequest, signal: AbortSignal): Promise<Result<BackupConnectResult, AppError>>;
+  test(signal: AbortSignal): Promise<Result<{ connection: BackupConnectionReport }, AppError>>;
+  enable(request: BackupEnableRequest): Promise<Result<{ enabled: true; jobId: string | null }, AppError>>;
+  disable(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
+  exportRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
+  confirmRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  run(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
 }
 
 export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLifecycle => {
@@ -100,31 +126,46 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       extract: extractTarZstd,
     });
   };
-  const enqueue = async (): Promise<Result<{ jobId: string }, AppError>> => {
-    const retention = await readRetention(options.config);
-    if (!retention.ok) return retention;
+  const enqueueTier = async (
+    input: { tier: BackupTier; keepLast: number; keepWeekly: number; manual: boolean },
+  ): Promise<Result<{ jobId: string }, AppError>> => {
     const deps = await runDeps();
     if (!deps.ok) return deps;
-    const critical = await enqueueBackup(options.jobs, deps.value, {
+    return enqueueBackup(options.jobs, deps.value, input);
+  };
+  const enqueue = async (): Promise<Result<{ jobId: string }, AppError>> => {
+    const settings = await readBackupSettings(options.config);
+    if (!settings.ok) return settings;
+    const critical = await enqueueTier({
       tier: 'critical',
-      keepLast: retention.value.keepLast,
-      keepWeekly: retention.value.keepWeekly,
+      keepLast: settings.value.keepLast,
+      keepWeekly: settings.value.keepWeekly,
       manual: false,
     });
     if (!critical.ok) return critical;
-    if (retention.value.includeOptional) {
+    if (settings.value.includeOptional) {
       options.jobs.onSettled(critical.value.jobId, async () => {
         const completed = await options.jobs.get(critical.value.jobId);
         if (!completed.ok || completed.value?.status !== 'completed') return;
-        await enqueueBackup(options.jobs, deps.value, {
+        await enqueueTier({
           tier: 'optional',
-          keepLast: retention.value.keepLast,
-          keepWeekly: retention.value.keepWeekly,
+          keepLast: settings.value.keepLast,
+          keepWeekly: settings.value.keepWeekly,
           manual: false,
         });
       });
     }
     return critical;
+  };
+  const enablementDeps: BackupEnablementDeps = {
+    config: options.config,
+    secrets: options.secrets,
+    jobs: options.jobs,
+    ceremony: createRecoveryKeyCeremony(),
+    fileSave: options.fileSave,
+    destination: options.destination,
+    enqueueBackup: enqueueTier,
+    recoveryKey: () => ensureBackupRecoveryKey(options.secrets),
   };
   return {
     cleanup: async () => {
@@ -153,6 +194,20 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       if (!deps.ok) return deps;
       return enqueueRestore(options.jobs, deps.value, input);
     },
+    status: (input) => readBackupStatus({
+      config: options.config,
+      state,
+      jobs: options.jobs,
+      supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+      destination: options.destination,
+    }, input),
+    connect: (request, signal) => connectBackupDestination(enablementDeps, request, signal),
+    test: (signal) => testBackupDestination(enablementDeps, signal),
+    enable: (request) => enableBackup(enablementDeps, request),
+    disable: (request) => disableBackup(enablementDeps, request),
+    exportRecoveryKey: () => exportBackupRecoveryKey(enablementDeps),
+    confirmRecoveryKey: () => confirmBackupRecoveryKey(enablementDeps),
+    run: (request) => runBackupNow(enablementDeps, request),
   };
 };
 
@@ -196,29 +251,6 @@ const scheduledFingerprint = async (
 };
 
 const readEnabled = async (config: ConfigStore): Promise<Result<boolean, AppError>> => {
-  const stored = await config.get({ kind: 'home' }, 'backup_enabled');
-  if (!stored.ok) return stored;
-  const parsed = configValueSchema.shape.backup_enabled.safeParse(stored.value ?? undefined);
-  return parsed.success
-    ? ok(parsed.data)
-    : { ok: false, error: appError('invalid_config_value', 'Invalid backup_enabled value') };
-};
-
-const readRetention = async (
-  config: ConfigStore,
-): Promise<Result<{ keepLast: number; keepWeekly: number; includeOptional: boolean }, AppError>> => {
-  const values = await Promise.all([
-    config.get({ kind: 'home' }, 'backup_keep_last'),
-    config.get({ kind: 'home' }, 'backup_keep_weekly'),
-    config.get({ kind: 'home' }, 'backup_include_optional'),
-  ]);
-  const failure = values.find((value) => !value.ok);
-  if (failure !== undefined && !failure.ok) return failure;
-  const keepLast = configValueSchema.shape.backup_keep_last.safeParse(values[0]?.ok === true ? values[0].value ?? undefined : undefined);
-  const keepWeekly = configValueSchema.shape.backup_keep_weekly.safeParse(values[1]?.ok === true ? values[1].value ?? undefined : undefined);
-  const includeOptional = configValueSchema.shape.backup_include_optional.safeParse(values[2]?.ok === true ? values[2].value ?? undefined : undefined);
-  if (!keepLast.success || !keepWeekly.success || !includeOptional.success) {
-    return { ok: false, error: appError('invalid_config_value', 'Invalid backup retention configuration') };
-  }
-  return ok({ keepLast: keepLast.data, keepWeekly: keepWeekly.data, includeOptional: includeOptional.data });
+  const settings = await readBackupSettings(config);
+  return settings.ok ? ok(settings.value.enabled) : settings;
 };

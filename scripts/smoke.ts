@@ -482,6 +482,26 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   assert(status.code === 0, `status: expected exit 0, got ${status.code}.\nstdout: ${status.stdout}\nstderr: ${status.stderr}`);
   z.object({ videos: z.array(z.unknown()), summary: z.object({ total: z.number() }) }).parse(completedData(status, 'status'));
 
+  const backupStatus = await run(['backup', 'status', '--json'], env, folder);
+  assert(
+    backupStatus.code === 0,
+    `backup status: expected exit 0, got ${backupStatus.code}.\nstdout: ${backupStatus.stdout}\nstderr: ${backupStatus.stderr}`,
+  );
+  z.object({ enabled: z.literal(false), indicator: z.literal('disabled'), connected: z.literal(false) })
+    .parse(completedData(backupStatus, 'backup status'));
+
+  const backupNow = await run(['backup', 'now', '--json'], env, folder);
+  const backupDisabledExit = EXIT_CODE_BY_ERROR_CODE.backup_disabled;
+  assert(
+    backupNow.code === backupDisabledExit,
+    `backup now: expected exit ${backupDisabledExit}, got ${backupNow.code}.\nstdout: ${backupNow.stdout}\nstderr: ${backupNow.stderr}`,
+  );
+  const backupNowError = errorEvent(backupNow, 'backup now');
+  assert(
+    backupNowError.type === 'error' && backupNowError.code === 'BACKUP_DISABLED',
+    `backup now: expected BACKUP_DISABLED, got ${JSON.stringify(backupNowError)}`,
+  );
+
   const indexStatus = await run(['index', 'status', '--json'], env, folder);
   assert(indexStatus.code === 0, `index status: expected exit 0, got ${indexStatus.code}.\nstdout: ${indexStatus.stdout}\nstderr: ${indexStatus.stderr}`);
   z.object({

@@ -16,6 +16,8 @@ export interface GoogleBackupDestinationOptions {
   oauthClientSecret: string;
   openExternal(url: string): Promise<void>;
   fetchImpl?: typeof fetch | undefined;
+  driveBaseUrl?: string | undefined;
+  uploadBaseUrl?: string | undefined;
 }
 
 export const createGoogleBackupDestination = async (
@@ -30,6 +32,7 @@ export const createGoogleBackupDestination = async (
       config: options.config,
       secrets: options.secrets,
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+      ...endpointOverrides(options),
     }));
   }
   return ok(new GoogleOAuthBackupDestination({
@@ -39,5 +42,13 @@ export const createGoogleBackupDestination = async (
     clientSecret: options.oauthClientSecret,
     openExternal: options.openExternal,
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    ...endpointOverrides(options),
   }));
 };
+
+const endpointOverrides = (
+  options: GoogleBackupDestinationOptions,
+): { driveBaseUrl?: string; uploadBaseUrl?: string } => ({
+  ...(options.driveBaseUrl === undefined ? {} : { driveBaseUrl: options.driveBaseUrl }),
+  ...(options.uploadBaseUrl === undefined ? {} : { uploadBaseUrl: options.uploadBaseUrl }),
+});

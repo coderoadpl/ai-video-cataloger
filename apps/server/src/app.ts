@@ -485,6 +485,58 @@ export const buildApp = (deps: AppDeps): Hono => {
     );
   });
 
+  app.post(API_ROUTES.backupRun.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupRun.output);
+    const input = parseInput(API_ROUTES.backupRun.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupRun.output);
+    return respond(await deps.runBackup(input.value), API_ROUTES.backupRun.output);
+  });
+
+  app.get(API_ROUTES.backupStatus.path, async (context) => {
+    const input = parseInput(API_ROUTES.backupStatus.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.backupStatus.output);
+    return respond(await deps.backupStatus(input.value), API_ROUTES.backupStatus.output);
+  });
+
+  app.post(API_ROUTES.backupConnect.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupConnect.output);
+    const input = parseInput(API_ROUTES.backupConnect.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupConnect.output);
+    const controller = new AbortController();
+    return respond(await deps.connectBackup(input.value, controller.signal), API_ROUTES.backupConnect.output);
+  });
+
+  app.post(API_ROUTES.backupTest.path, async () => {
+    const controller = new AbortController();
+    return respond(await deps.testBackup(controller.signal), API_ROUTES.backupTest.output);
+  });
+
+  app.post(API_ROUTES.backupEnable.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupEnable.output);
+    const input = parseInput(API_ROUTES.backupEnable.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupEnable.output);
+    return respond(await deps.enableBackup(input.value), API_ROUTES.backupEnable.output);
+  });
+
+  app.post(API_ROUTES.backupDisable.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupDisable.output);
+    const input = parseInput(API_ROUTES.backupDisable.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupDisable.output);
+    return respond(await deps.disableBackup(input.value), API_ROUTES.backupDisable.output);
+  });
+
+  app.post(API_ROUTES.backupRecoveryKeyExport.path, async () =>
+    respond(await deps.exportBackupRecoveryKey(), API_ROUTES.backupRecoveryKeyExport.output),
+  );
+
+  app.post(API_ROUTES.backupRecoveryKeyConfirm.path, async () =>
+    respond(await deps.confirmBackupRecoveryKey(), API_ROUTES.backupRecoveryKeyConfirm.output),
+  );
+
   app.get(API_ROUTES.indexStatus.path, async () =>
     respond(await indexStatus(deps), API_ROUTES.indexStatus.output),
   );

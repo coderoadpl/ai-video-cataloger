@@ -21,6 +21,7 @@ export const CHANNELS = {
   menuShowPrerequisites: 'menu:showPrerequisites',
   menuShowModelManager: 'menu:showModelManager',
   menuShowSetupWizard: 'menu:showSetupWizard',
+  appRelaunch: 'app:relaunch',
   onboardingGetCompleted: 'onboarding:getCompleted',
   onboardingSetCompleted: 'onboarding:setCompleted',
 } as const;

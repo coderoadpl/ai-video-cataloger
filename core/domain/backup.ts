@@ -1,6 +1,27 @@
 import { z } from 'zod';
 
-import { ERROR_CODES } from './errors.js';
+import { ERROR_CODES, type ErrorCode } from './errors.js';
+
+export const BACKUP_FOLDER_NAME = 'AI Video Cataloger Backups';
+export const BACKUP_ENCRYPTION_KEY_ACCOUNT = 'backup.encryption_key';
+export const BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT = 'backup.google.refresh_token';
+export const BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT = 'backup.service_account.key';
+
+export const BACKUP_ERROR_CODES = [
+  'backup_disabled',
+  'backup_auth_required',
+  'backup_destination_error',
+  'backup_quota_exceeded',
+  'backup_encryption_failed',
+  'backup_integrity_failed',
+  'restore_refused',
+  'recovery_key_required',
+] as const satisfies readonly ErrorCode[];
+
+export type BackupErrorCode = (typeof BACKUP_ERROR_CODES)[number];
+
+export const isBackupErrorCode = (code: string): code is BackupErrorCode =>
+  BACKUP_ERROR_CODES.some((known) => known === code);
 
 export const BACKUP_PROVIDERS = ['google_oauth', 'service_account'] as const;
 export const BACKUP_TIERS = ['critical', 'optional'] as const;
@@ -35,6 +56,8 @@ export const backupSchemaVersionsSchema = z.object({
   globalCatalog: z.number().int().nonnegative(),
   photos: z.number().int().nonnegative(),
 }).strict();
+
+export type BackupSchemaVersions = z.output<typeof backupSchemaVersionsSchema>;
 
 export const backupManifestSchema = z.object({
   formatVersion: z.literal(1),

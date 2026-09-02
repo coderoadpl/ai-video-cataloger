@@ -50,6 +50,13 @@ const NO_LOCK_REASON: Record<string, string> = {
   localAiDaemonStop: 'controls the local AI daemon, performs no catalog write',
   jobCancel: 'cancels an in-flight job; it does not write the catalog',
   faceArtifactsInstall: 'installs face model artifacts, not a global-catalog write',
+  backupRun: 'enqueues the backup job, which claims the catalog-write resource itself for its snapshot phase',
+  backupConnect: 'stores destination settings and keychain items, not the global catalog',
+  backupTest: 'read-only destination probe, performs no write',
+  backupEnable: 'writes backup settings in the user-settings store, not the global catalog',
+  backupDisable: 'writes backup settings and clears keychain items, not the global catalog',
+  backupRecoveryKeyExport: 'writes the recovery-key file through the native save dialog, not the global catalog',
+  backupRecoveryKeyConfirm: 'records the in-session recovery-key confirmation, performs no write',
 };
 
 describe('catalog write-lock funnel (hotspot 4)', () => {

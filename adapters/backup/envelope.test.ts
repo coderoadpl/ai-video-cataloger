@@ -4,15 +4,15 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { BACKUP_ENCRYPTION_KEY_ACCOUNT, ok, type AppError, type Result } from '@core/domain/index.js';
 import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 import {
-  BACKUP_ENCRYPTION_KEY_ACCOUNT,
   ENVELOPE_FRAME_SIZE,
   ENVELOPE_HEADER_SIZE,
   createBackupEncryptionKey,
   decryptBackupEnvelope,
+  ensureBackupRecoveryKey,
   encryptBackupEnvelope,
   parseRecoveryKey,
   renderRecoveryKey,
@@ -125,6 +125,32 @@ describe('backup encryption envelope', () => {
       expect(output).not.toContain(stored);
       expect(output).not.toContain(created.value.recoveryKey);
     }
+  });
+
+  it('creates the recovery-key document once and reuses the stored key afterwards', async () => {
+    const secrets = new MemorySecrets();
+
+    const first = await ensureBackupRecoveryKey(secrets);
+    const stored = secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT) ?? '';
+    const second = await ensureBackupRecoveryKey(secrets);
+
+    expect(first).toMatchObject({ ok: true });
+    expect(first).toEqual(second);
+    expect(secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(stored);
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.value.fingerprint).toMatch(/^sha256:[0-9a-f]{12}$/);
+    expect(first.value.document).toContain(renderRecoveryKey(Buffer.from(stored, 'base64')));
+    expect(first.value.document).not.toContain(stored);
+  });
+
+  it('refuses to rebuild a recovery key from a corrupted Keychain entry', async () => {
+    const secrets = new MemorySecrets();
+    secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, 'dG9vLXNob3J0');
+
+    expect(await ensureBackupRecoveryKey(secrets)).toMatchObject({
+      ok: false,
+      error: { code: 'recovery_key_required' },
+    });
   });
 
   it('renders and parses a checksummed Crockford recovery key', () => {

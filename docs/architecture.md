@@ -1213,6 +1213,26 @@ the backup PRD's US-003 wording, which asks 26 base32 characters to round-trip
 32 bytes; 26 base32 characters can encode only 130 bits and cannot satisfy the
 same story's 256-bit key requirement.
 
+Backup surfaces deviate from the PRD in six recorded places. (a) The
+enablement flow reaches the destination through
+`BackupDestinationPort.connect`, and the service-account path resolves — or
+creates — the `AI Video Cataloger Backups` folder inside the configured Shared
+Drive, instead of asking the user for a folder id as the runbook implies.
+(b) The recovery-key ceremony is per-process state: `POST /api/backup/enable`
+refuses with `recovery_key_required` unless the key was exported **and**
+confirmed in the same app session, which is also what makes an abandoned
+stepper leave `backup_enabled: false`. (c) `GET /api/backup/status` carries the
+running app's supported schema versions, so the backup list can disable a row
+written by a newer app without a second route. (d) The restore relaunch is
+triggered from the renderer through `desktopBridge.app.relaunch()` — a native
+surface behind the preload bridge — because the restore job completes inside
+the in-process server. (e) `AVC_GOOGLE_DRIVE_BASE_URL` and
+`AVC_GOOGLE_UPLOAD_BASE_URL` override the Drive endpoints so e2e can drive a
+local fake Google; unset, the real endpoints apply. (f) The status route
+carries the whole Settings > Backup readout (enablement, provider, retention,
+last success, next due, indicator state), which is what both the bottom-bar
+indicator and `avc backup status` render.
+
 The Electron main process (and the CLI process, for its lifetime) is a
 resident executor. The foundation's `JobsPort` pattern applies **in-process**
 at the first real job — which exists on day one: the processing pipeline
@@ -1376,6 +1396,20 @@ managed runtimes, and its working-directory fallback.
 - `ModelDownloadPort` — HuggingFace whisper models; Ollama pulls go through
   the runtime port.
 - `JobsPort` — in-process executor (see Delta 5).
+- `BackupDestinationPort` — one port for both Google Drive destinations
+  (`drive.file` OAuth, service-account Shared Drive) plus the in-memory fake
+  the gates use: `describe`, `connect`, `test`, `ensureFolder`, `list`,
+  `upload`, `download`, `remove`. Enablement calls `connect` through the port,
+  so no use-case, route, CLI command or component branches on
+  `backup_provider`; the composition root is the only place the provider is
+  read. All Drive traffic, crypto and filesystem work stay in the main
+  process / in-process server — the renderer keeps its zero-networking posture
+  and reaches the feature only through contract routes.
+- `FileSavePort` — a native save dialog supplied by the Electron composition
+  root; the recovery-key export writes the key document through it in the main
+  process and returns only a fingerprint and a path, so key material never
+  crosses the contract. Compositions without a window (CLI, gates) return
+  `unavailable`.
 - `FaceEnginePort` — face detect/align/embed/crop lifecycle behind the faces
   feature; ONNX Runtime adapter (darwin-only binding). The drive job composes it (and
   `ModelDownloadPort`) optionally, so a composition without a face engine degrades to a

@@ -68,6 +68,14 @@ export type StatusInput = z.input<typeof API_ROUTES.status.input>;
 export type ConfigInput = z.input<typeof API_ROUTES.configGet.input>;
 export type CheckInput = z.input<typeof API_ROUTES.check.input>;
 export type JobInput = z.input<typeof API_ROUTES.jobStatus.input>;
+export type BackupListInput = z.input<typeof API_ROUTES.backupList.input>;
+export type BackupRunInput = z.input<typeof API_ROUTES.backupRun.input>;
+export type BackupConnectInput = z.input<typeof API_ROUTES.backupConnect.input>;
+export type BackupEnableInput = z.input<typeof API_ROUTES.backupEnable.input>;
+export type BackupDisableInput = z.input<typeof API_ROUTES.backupDisable.input>;
+export type BackupRestoreInput = z.input<typeof API_ROUTES.backupRestore.input>;
+export type BackupStatusOutput = z.output<typeof API_ROUTES.backupStatus.output>;
+export type BackupListOutput = z.output<typeof API_ROUTES.backupList.output>;
 export type ProcessVideoInput = z.input<typeof API_ROUTES.process.input>;
 export type ProcessDriveInput = z.input<typeof API_ROUTES.processDrive.input>;
 export type GenerateThumbnailInput = z.input<typeof API_ROUTES.thumbnail.input>;
@@ -298,6 +306,15 @@ export const photosScopes = {
 export const invalidatePhotosQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
   client.invalidateQueries({ queryKey: photosScopes.all() });
 
+export const backupScopes = {
+  all: () => ['backup'] as const,
+  status: () => ['backup', 'status'] as const,
+  list: (tier: 'critical' | 'optional' | null) => ['backup', 'list', tier] as const,
+};
+
+export const invalidateBackupQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
+  client.invalidateQueries({ queryKey: backupScopes.all() });
+
 export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
   processDrive: () => ['processDrive'] as const,
@@ -336,6 +353,14 @@ export const mutationScopes = {
   deleteVariant: () => ['variants', 'delete'] as const,
   setFolderDefaultVariant: () => ['variants', 'folder-default'] as const,
   photosVariantsSelect: () => ['photos', 'variants', 'select'] as const,
+  backupRun: () => ['backup', 'run'] as const,
+  backupConnect: () => ['backup', 'connect'] as const,
+  backupTest: () => ['backup', 'test'] as const,
+  backupEnable: () => ['backup', 'enable'] as const,
+  backupDisable: () => ['backup', 'disable'] as const,
+  backupRestore: () => ['backup', 'restore'] as const,
+  backupRecoveryKeyExport: () => ['backup', 'recovery-key', 'export'] as const,
+  backupRecoveryKeyConfirm: () => ['backup', 'recovery-key', 'confirm'] as const,
 };
 
 const invalidateVariantConsumers = async (
@@ -802,6 +827,84 @@ export const stopLocalAiDaemonMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.stopLocalAiDaemon(),
     call: () => api.stopLocalAiDaemon(),
+  });
+
+export const backupStatusRefetchInterval =
+  (idleMs = 60_000, runningMs = 2_000) =>
+  (query: RefetchQuery<BackupStatusOutput>): number | false => {
+    const indicator = query.state.data?.indicator;
+    if (indicator === undefined || indicator === 'disabled') return idleMs;
+    return indicator === 'running' ? runningMs : idleMs;
+  };
+
+export const backupStatusQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: backupScopes.status(),
+    staleTime: 0,
+    refetchInterval: backupStatusRefetchInterval(),
+    call: ({ signal }) => api.backupStatus({}, signal),
+  });
+
+export const backupListQuery = (api: ApiClient, input: BackupListInput = {}) => {
+  const parsed = API_ROUTES.backupList.input.parse(input);
+  return defineQuery({
+    queryKey: backupScopes.list(parsed.tier),
+    staleTime: 0,
+    call: ({ signal }) => api.backupList(parsed, signal),
+  });
+};
+
+export const backupRunMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupRun(),
+    call: (variables: BackupRunInput) => api.backupRun(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupConnectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupConnect(),
+    call: (variables: BackupConnectInput) => api.backupConnect(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupTestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupTest(),
+    call: () => api.backupTest(),
+  });
+
+export const backupEnableMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupEnable(),
+    call: (variables: BackupEnableInput) => api.backupEnable(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupDisableMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupDisable(),
+    call: (variables: BackupDisableInput) => api.backupDisable(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupRestoreMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupRestore(),
+    call: (variables: BackupRestoreInput) => api.backupRestore(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupRecoveryKeyExportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupRecoveryKeyExport(),
+    call: () => api.backupRecoveryKeyExport(),
+  });
+
+export const backupRecoveryKeyConfirmMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupRecoveryKeyConfirm(),
+    call: () => api.backupRecoveryKeyConfirm(),
   });
 
 export const cancelJobMutation = (api: ApiClient) =>

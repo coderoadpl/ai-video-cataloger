@@ -134,6 +134,11 @@ const desktopBridge: DesktopBridge = {
   menu: {
     on: onMenuEvent,
   },
+  app: {
+    relaunch: async () => {
+      await invokeUnknown(CHANNELS.appRelaunch);
+    },
+  },
   onboarding: {
     getCompleted: async () => z.boolean().parse(await invokeUnknown(CHANNELS.onboardingGetCompleted)),
     setCompleted: async () => {

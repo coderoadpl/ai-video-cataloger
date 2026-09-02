@@ -5,11 +5,17 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ok, type AppError, type BackupManifest, type Result } from '@core/domain/index.js';
+import {
+  BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT,
+  ok,
+  type AppError,
+  type BackupManifest,
+  type Result,
+} from '@core/domain/index.js';
 import type { BackupDestinationPort, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
-import { GOOGLE_REFRESH_TOKEN_ACCOUNT, GoogleOAuthBackupDestination } from './google-oauth-destination.js';
+import { GoogleOAuthBackupDestination } from './google-oauth-destination.js';
 import { GoogleServiceAccountBackupDestination } from './google-service-account-destination.js';
 
 class MemorySecrets implements SecretsStore {
@@ -36,7 +42,7 @@ describe('Google backup destination port contract', () => {
     await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
     let destination: BackupDestinationPort;
     if (provider === 'google_oauth') {
-      secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+      secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
       destination = new GoogleOAuthBackupDestination({
         config,
         secrets,

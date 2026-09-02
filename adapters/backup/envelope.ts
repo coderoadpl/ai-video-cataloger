@@ -16,10 +16,15 @@ import {
   writeSync,
 } from 'node:fs';
 
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import {
+  BACKUP_ENCRYPTION_KEY_ACCOUNT,
+  appError,
+  ok,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
 import type { SecretsStore } from '@core/server/index.js';
 
-export const BACKUP_ENCRYPTION_KEY_ACCOUNT = 'backup.encryption_key';
 export const ENVELOPE_FRAME_SIZE = 8 * 1024 * 1024;
 export const ENVELOPE_HEADER_SIZE = 24;
 
@@ -51,6 +56,35 @@ export const loadBackupEncryptionKey = async (
   }
   return ok(key);
 };
+
+export const ensureBackupRecoveryKey = async (
+  secrets: SecretsStore,
+): Promise<Result<{ fingerprint: string; document: string }, AppError>> => {
+  const stored = await secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
+  if (!stored.ok) return stored;
+  const key = stored.value === null ? randomBytes(32) : Buffer.from(stored.value, 'base64');
+  if (key.length !== 32) {
+    return { ok: false, error: appError('recovery_key_required', 'The stored backup encryption key is invalid') };
+  }
+  if (stored.value === null) {
+    const written = await secrets.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, key.toString('base64'));
+    if (!written.ok) return written;
+  }
+  return ok({
+    fingerprint: `sha256:${createHash('sha256').update(key).digest('hex').slice(0, 12)}`,
+    document: recoveryKeyDocument(renderRecoveryKey(key)),
+  });
+};
+
+const recoveryKeyDocument = (recoveryKey: string): string => [
+  'AI Video Cataloger — backup recovery key',
+  '',
+  recoveryKey,
+  '',
+  'This key is the only way to read your encrypted backups on another Mac.',
+  'Anyone holding it can read them. Store it where you store passwords.',
+  '',
+].join('\n');
 
 export const renderRecoveryKey = (key: Buffer): string => {
   if (key.length !== 32) throw new Error('Backup encryption keys must be 32 bytes');

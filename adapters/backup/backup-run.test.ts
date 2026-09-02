@@ -7,12 +7,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js';
-import { appError, ok, type AppError, type BackupManifest, type RemoteBackup, type Result } from '@core/domain/index.js';
+import {
+  BACKUP_ENCRYPTION_KEY_ACCOUNT,
+  appError,
+  ok,
+  type AppError,
+  type BackupManifest,
+  type RemoteBackup,
+  type Result,
+} from '@core/domain/index.js';
 import { enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index.js';
 import type { JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 import {
-  BACKUP_ENCRYPTION_KEY_ACCOUNT,
   createBackupEncryptionKey,
   decryptBackupEnvelope,
   encryptBackupEnvelope,
