@@ -23,7 +23,7 @@
       "@server/*": ["apps/server/*"]
     }
   },
-  "include": ["core", "adapters", "apps", "config-regression", "scripts/smoke.ts", "scripts/doc-lint.ts", "scripts/promote-home.ts", "scripts/promote-home-plan.ts", "scripts/promote-home-plan.test.ts", "scripts/promote-home.test.ts", "*.config.ts", ".dependency-cruiser.cjs"],
+  "include": ["core", "adapters", "apps", "config-regression", "scripts/smoke.ts", "scripts/doc-lint.ts", "scripts/promote-home.ts", "scripts/promote-home-plan.ts", "scripts/promote-home-plan.test.ts", "scripts/promote-home.test.ts", "scripts/visual-env.ts", "scripts/visual-env.test.ts", "*.config.ts", ".dependency-cruiser.cjs"],
   "exclude": [
     "node_modules",
     "dist",

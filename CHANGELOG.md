@@ -14,6 +14,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- A privacy-lint gate now runs in `check`, and `AVC_SCRATCH_DIR` replaces the previous fixed scratch-directory convention.
+- CI gates (`check`, `smoke`, `ai-review`) run on GitHub-hosted `macos-15` runners with literal job names and no arming variables, `e2e-cli` and the new `visual-baselines` workflow are dispatch-only, and the visual gate selects its baseline set with `VISUAL_ENV` (`local-darwin` by default, `ci-macos-15` on CI). See [docs/ci.md](docs/ci.md)
+- `variants import-translation` bulk-upserts Polish analysis variants from NDJSON with dry-run, optional selection, normalized tags, copied source transcripts and selectable source artifacts.
+
 ### Fixed
 
 - Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files.

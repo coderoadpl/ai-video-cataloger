@@ -39,7 +39,7 @@ Every run launches with:
 - `--fixtures` itself — `prepareScratchFixtures` (`scripts/release-walkthrough.mjs`)
   copies the given folder into a scratch temp directory before the app ever
   opens it, so the source folder (which may be a read-only walkthrough
-  template such as `claude-tmp/avc-release-walkthrough-template/`) is never
+  template in a scratch directory outside the repository) is never
   written to. The scratch copy also gets one planted `broken-photo.jpg` — a
   real JPEG start-of-image marker with no image data — so the photo scan the
   `photos-sidebar` step auto-triggers always has one file whose proxy
@@ -67,15 +67,13 @@ Every run launches with:
 
 A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
-prepared QA home (for example the
-`~/repositories/claude-tmp/avc-e2e-matrix-home` cache used by
-`pnpm run test:e2e:matrix`), or `--analyzer local:<model>` (below) to seed one
+prepared QA home (for example the matrix cache below `AVC_SCRATCH_DIR`), or
+`--analyzer local:<model>` (below) to seed one
 into the scratch home for this run. Without either the step reports itself
 `skipped`, which is a legitimate outcome for a video-only pass — but it is
 **not** in `TOLERATED_SKIPS`, so a `--strict` release run fails on it: a
 release must prove the analysis half of the checklist, not skip it silently
-(W54, 2026-08-03 — four releases shipped with the analyze step reporting `ok`
-whenever the run merely *finished*, even when analysis itself had errored).
+because a finished run is not evidence that analysis succeeded.
 
 ### `--analyzer local:<model>`
 
@@ -146,20 +144,18 @@ covers the grid and intercepts the preview tile click.
    pnpm run verify:package
    ```
 
-3. Run the walkthrough against the built `.app` and a fixture folder of sample
-   videos, archiving the finished set as part of the same command
-   (W43, 2026-08-03 owner mandate — a worktree cleanup between the run and the
-   review previously deleted the only copy of a screenshot set that would have
-   caught a shipped regression):
+3. Set `AVC_SCRATCH_DIR` to a scratch directory outside the repository, then
+   run the walkthrough against the built `.app` and a fixture folder of sample
+   videos, archiving the finished set as part of the same command:
 
    ```bash
    pnpm run qa:walkthrough -- \
      --app "release/mac-arm64/AI Video Cataloger.app" \
-     --fixtures ~/repositories/claude-tmp/avc-walkthrough-fixtures \
-     --home ~/repositories/claude-tmp/avc-e2e-matrix-home \
+     --fixtures "$AVC_SCRATCH_DIR/avc-walkthrough-fixtures" \
+     --home "$AVC_SCRATCH_DIR/avc-e2e-matrix-home" \
      --strict \
      --analyzer local:gemma3:4b \
-     --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/
+     --archive-to "$AVC_SCRATCH_DIR/avc-release-shots/<version>/"
    ```
 
    `--analyzer local:gemma3:4b` requires the system ollama running at its
@@ -197,8 +193,7 @@ covers the grid and intercepts the preview tile click.
    whoever ran step 3 — and have them work the checklist below against the
    archived PNGs, not against a description of them. This reviewer has
    authority to fail the release: a release does not proceed on the release
-   agent's own "looks correct" (W43, 2026-08-03 — the previous incident
-   included exactly that self-graded, and wrong, verdict).
+   agent's own "looks correct" verdict.
 
 ## Real UI, not synthetic events
 

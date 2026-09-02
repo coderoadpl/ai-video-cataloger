@@ -92,6 +92,7 @@ process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper
 process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
 variants list <path> [--json]
+variants import-translation <ndjson> [--dry-run] [--no-select] [--json]
 variants select <path> --config <configId> [--json]
 variants delete <path> --config <configId> [--json]
 variants default <folder> (--config <configId>|--clear) [--json]
@@ -136,6 +137,15 @@ the last one. `variants default` sets the preferred configuration for files in
 a folder; `--clear` restores the resolved processing configuration as the
 folder fallback. A file's explicit selection is shared by duplicate copies of
 the same content.
+
+`variants import-translation <ndjson>` validates one translation interchange
+object per line and upserts Polish variants keyed by the source configuration,
+translator provider, and model. Tags use the same ASCII transliteration and
+normalization as live analysis. The imported variant becomes selected unless
+`--no-select` is present; `--dry-run` reports created, updated, skipped, and
+invalid counts without changing the catalog or artifacts. In `--json` mode the
+command emits one progress envelope per input row followed by the completed
+summary envelope.
 
 `tags suggest-aliases` proposes tag merges (normalisation, English and Polish
 plurals, spelling variants) with file counts and never writes anything; apply
@@ -400,11 +410,12 @@ share the machine with other heavy work; a non-numeric or non-positive value
 falls back to `1`. It buys headroom on a loaded machine — it never excuses a red
 gate, which stays a P1 under the flake doctrine.
 
-CI (`check`, `smoke`, `e2e`, `ai-review`) runs on a self-hosted Apple-silicon
-Mac and is dormant until the owner registers that runner and sets the
-`CI_RUNNER_READY` repository variable; dormant jobs skip under a name that says
-so. `pnpm run workflow-lint` (part of `pnpm run check`) keeps the workflow
-guards pointed at this repository. See [docs/ci.md](docs/ci.md).
+CI runs on GitHub-hosted `macos-15` runners: `check`, `smoke` and `ai-review` on
+every PR and on `main`, `e2e-cli` and `visual-baselines` on demand
+([ADR-0017](docs/decisions/0017-hosted-ci-runners.md)). `pnpm run workflow-lint`
+(part of `pnpm run check`) keeps the workflow guards pointed at this repository,
+the job names literal and no `self-hosted` label in the tree. See
+[docs/ci.md](docs/ci.md).
 
 E2E:
 

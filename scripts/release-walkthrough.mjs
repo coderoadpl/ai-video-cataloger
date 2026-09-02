@@ -61,8 +61,8 @@ Options:
                                (first-run-wizard, library-preview — see docs/qa/release-walkthrough.md).
   --archive-to <path>          Copy the finished screenshot set (plan.json, manifest.json and every
                                PNG) to this directory before the run exits, so it survives a worktree
-                               cleanup. Release runs pass
-                               ~/repositories/claude-tmp/avc-release-shots/<version>/.
+                               cleanup. Release runs pass a path under AVC_SCRATCH_DIR, which points
+                               to a scratch directory outside the repository.
   --analyzer local:<model>     Seed the SCRATCH home's config.json with a real local analyzer
                                (analyzer_backend: 'local', local_model: '<model>') and whisper_mode:
                                'skip', so the analyze step can complete offline against the system

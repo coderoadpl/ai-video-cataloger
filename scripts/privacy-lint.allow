@@ -1,0 +1,81 @@
+# The linter must contain the built-in scratch convention it detects.
+scripts/privacy-lint.mjs:scratch-dir
+# Synthetic home layouts exercise executable discovery across installation methods.
+adapters/analyzers/harness-command.test.ts:home-path
+# Synthetic crop locations exercise persisted catalog path behavior.
+adapters/db/global-catalog.test.ts:home-path
+# Synthetic install locations exercise bundled binary resolution.
+adapters/whisper/whisper.test.ts:home-path
+# Synthetic credential locations exercise human-readable error formatting.
+apps/cli/src/credential-delete-human.test.ts:home-path
+# Synthetic artifact locations exercise photo command rendering.
+apps/cli/src/photos-human.test.ts:home-path
+# Synthetic executable locations exercise desktop CLI guidance.
+apps/desktop/src/cli-install.test.ts:home-path
+# Synthetic media locations exercise sanitized refresh errors.
+apps/web/src/RefreshSnackbar.test.tsx:home-path
+# Synthetic media locations exercise sanitized root errors.
+apps/web/src/RootErrorFallback.test.tsx:home-path
+# Synthetic media locations exercise long-path code presentation.
+apps/web/src/components/ui/CodeSnippetField.test.tsx:home-path
+# Synthetic mount names exercise disconnected-library rendering.
+apps/web/src/features/library/library.test.tsx:volume-name
+# Synthetic binary locations exercise model status rendering.
+apps/web/src/features/models/models.test.tsx:home-path
+# Synthetic crop locations exercise people-detail rendering.
+apps/web/src/features/people/people.test.tsx:home-path
+# Synthetic folder locations exercise photo-tree hierarchy rendering.
+apps/web/src/features/photos/PhotosTree.test.tsx:home-path
+# Synthetic provider locations exercise private-error sanitization.
+apps/web/src/features/photos/photos-workspace.test.tsx:home-path
+# Synthetic credential locations exercise settings error rendering.
+apps/web/src/features/settings/settings.test.tsx:home-path
+# Gallery paths are fixed synthetic data for disconnected-media states.
+apps/web/src/gallery/GalleryApp.tsx:volume-name
+# Synthetic media locations exercise analyzer-error redaction.
+apps/web/src/lib/analyzer-error-message.test.ts:home-path
+# Visual surface paths are fixed synthetic gallery data.
+apps/web/src/visual/surfaces.tsx:volume-name
+# Synthetic mount names exercise Unicode path normalization.
+core/domain/domain-model.test.ts:volume-name
+# Synthetic executable locations exercise stale-CLI reporting.
+core/domain/stale-cli.test.ts:home-path
+# Synthetic crop locations exercise catalog indexing.
+core/server/usecases/catalog-index.test.ts:home-path
+# Synthetic credential locations exercise doctor recovery guidance.
+core/server/usecases/doctor.test.ts:home-path
+# Synthetic crop locations exercise face lifecycle behavior.
+core/server/usecases/faces.test.ts:home-path
+# Synthetic artifact locations exercise photo cleanup behavior.
+core/server/usecases/photos.test.ts:home-path
+# Synthetic crop locations exercise degraded-mode behavior.
+core/server/usecases/read-only-degraded.test.ts:home-path
+# Synthetic database locations exercise scan failure handling.
+core/server/usecases/scan.test.ts:home-path
+# Synthetic mount names exercise online and offline search results.
+core/server/usecases/search.test.ts:volume-name
+# Synthetic mount names exercise offline-folder classification.
+core/server/usecases/shared.test.ts:volume-name
+# Synthetic home locations exercise offline-folder classification.
+core/server/usecases/shared.test.ts:home-path
+# Documentation uses a generic mount name in runnable CLI examples.
+landing/blog/content/getting-started-catalog-your-first-folder.mdx:volume-name
+
+# Public business contact address on the marketing site.
+landing/components/landing/hero-section.tsx:email
+
+# Public business contact address on the marketing site.
+landing/components/site-footer.tsx:email
+
+# Landing examples use an explicit placeholder home segment.
+landing/lib/i18n.ts:home-path
+
+# Public business contact address on the marketing site.
+landing/scripts/deploy.ts:email
+
+# Synthetic home locations exercise promotion planning.
+scripts/promote-home-plan.test.ts:home-path
+# Retina icon filenames use the standard at-sign scale suffix.
+scripts/build-app-icon.mjs:email
+# The historical UI wireframe uses a generic placeholder home path.
+tasks/prd-gui-mvp.md:home-path

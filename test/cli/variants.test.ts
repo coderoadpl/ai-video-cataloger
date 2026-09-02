@@ -19,6 +19,7 @@ import { cleanupTestDir, createTestDir } from '../setup.js';
 
 interface VariantFixture {
   videoPath: string;
+  fingerprint: string;
   firstConfigId: string;
   secondConfigId: string;
 }
@@ -120,7 +121,7 @@ const seedVariants = async (folder: string, home: string): Promise<VariantFixtur
     writeFileSync(paths.transcriptPath, variant.transcript ?? '');
   }
   requiredValue(await store.dispose());
-  return { videoPath, firstConfigId, secondConfigId };
+  return { videoPath, fingerprint, firstConfigId, secondConfigId };
 };
 
 describe('variants commands', () => {
@@ -236,6 +237,67 @@ describe('variants commands', () => {
     });
   });
 
+  it('imports translations with NDJSON progress, dry-run summaries, missing-source skips, and taxonomy exits', async () => {
+    const fixture = await seedVariants(folder, home);
+    const ndjsonPath = join(folder, 'translations.ndjson');
+    const row = {
+      fingerprint: fixture.fingerprint,
+      sourceConfigId: fixture.firstConfigId,
+      sourceDescription: 'English description',
+      sourceTags: ['english'],
+      description: 'Polski opis z importu',
+      tags: ['Jeżowak morski'],
+      finalName: null,
+      translator: { provider: 'codex', model: 'gpt-5.5' },
+    };
+    const missing = { ...row, fingerprint: 'missing-fingerprint' };
+    writeFileSync(ndjsonPath, `${JSON.stringify(row)}\n${JSON.stringify(missing)}\n`);
+
+    const dryRun = await runCli(
+      ['variants', 'import-translation', ndjsonPath, '--dry-run', '--json'],
+      { cwd: folder, env: { HOME: home } },
+    );
+    const dryRunEvents = parseJsonEvents(dryRun.stdout);
+    expect(dryRun.exitCode).toBe(0);
+    expect(findEvent(dryRunEvents, 'started')).toMatchObject({
+      command: 'variants_import_translation',
+      data: { ndjsonPath, dryRun: true, select: true },
+    });
+    expect(dryRunEvents.filter((event) => event.type === 'progress')).toEqual([
+      expect.objectContaining({ step: 'translation_created', data: expect.objectContaining({ fingerprint: fixture.fingerprint }) }),
+      expect.objectContaining({ step: 'translation_skipped', data: expect.objectContaining({ fingerprint: 'missing-fingerprint' }) }),
+    ]);
+    expect(findEvent(dryRunEvents, 'completed')).toMatchObject({
+      data: { total: 2, created: 1, updated: 0, skipped: 1, invalid: 1, dryRun: true },
+    });
+
+    const imported = await runCli(
+      ['variants', 'import-translation', ndjsonPath, '--no-select', '--json'],
+      { cwd: folder, env: { HOME: home } },
+    );
+    expect(imported.exitCode).toBe(0);
+    expect(findEvent(parseJsonEvents(imported.stdout), 'completed')).toMatchObject({
+      data: { created: 1, skipped: 1, selected: 0, dryRun: false },
+    });
+
+    writeFileSync(ndjsonPath, '{not-json}\n');
+    const invalid = await runCli(
+      ['variants', 'import-translation', ndjsonPath, '--json'],
+      { cwd: folder, env: { HOME: home } },
+    );
+    expect(invalid.exitCode).toBe(0);
+    expect(findEvent(parseJsonEvents(invalid.stdout), 'completed')).toMatchObject({
+      data: { total: 1, created: 0, updated: 0, skipped: 1, invalid: 1 },
+    });
+
+    const missingFile = await runCli(
+      ['variants', 'import-translation', join(folder, 'missing.ndjson'), '--json'],
+      { cwd: folder, env: { HOME: home } },
+    );
+    expect(missingFile.exitCode).toBe(11);
+    expect(findEvent(parseJsonEvents(missingFile.stdout), 'error')).toMatchObject({ code: 'FILE_NOT_FOUND' });
+  });
+
   it('documents the variants command family without adding process matrix options', async () => {
     const variantsHelp = await runCli(['variants', '--help'], { cwd: folder, env: { HOME: home } });
     const processHelp = await runCli(['process', '--help'], { cwd: folder, env: { HOME: home } });
@@ -244,6 +306,7 @@ describe('variants commands', () => {
     expect(variantsHelp.stdout).toContain('select');
     expect(variantsHelp.stdout).toContain('delete');
     expect(variantsHelp.stdout).toContain('default');
+    expect(variantsHelp.stdout).toContain('import-translation');
     expect(processHelp.stdout).not.toContain('--config');
   });
 });

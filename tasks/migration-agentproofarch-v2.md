@@ -51,11 +51,11 @@ flagged OWNER.
 2. **ADR-0008 visual regression → ADOPT (adapted).** One screenshot engine:
    a new `visual/` Playwright suite with `toHaveScreenshot()` and the
    determinism levers verbatim. App-specific rulings: (a) **darwin baselines
-   are the platform truth** — this is a mac-only Electron app and the CI runner
-   is (will be) the owner's mac; until the self-hosted runner is registered,
-   baselines are authored on the same machine that runs the gates, which is
+   are the platform truth** — this is a mac-only Electron app and every runner
+   it is gated on is a mac, so baselines are authored where the gate runs, on
    the same rasterizer — the ADR's "render where the gate runs" principle,
-   not its linux letter; (b) the suite drives the built renderer bundle
+   not its linux letter (amended 2026-09-02, W75: one baseline set per
+   environment, ADR-0005 (f)); (b) the suite drives the built renderer bundle
    (vite build + preview) with MSW-style fixtures, not live Electron — the
    packaged-app journeys stay in e2e; (c) surfaces: layout skeletons and
    their states first (AppShell chrome, status/empty states) — only
@@ -100,6 +100,9 @@ flagged OWNER.
 6. **ai-review as required check → ADOPT, BLOCKED-ON-OWNER.** The workflow
    shipped in round 1; making it required needs the self-hosted runner
    registered (owner action, reminder 2026-07-29) and a ruleset edit (OWNER).
+   **Superseded 2026-09-02 (W75) by
+   [ADR-0017](../docs/decisions/0017-hosted-ci-runners.md):** the repository is
+   public and the gate runs on a hosted runner, so only the ruleset edit remains.
 7. **Changelog discipline → ADOPT.** Root `CHANGELOG.md` (Keep a Changelog),
    one factual line per behaviour-visible change in the same commit; enforced
    by review convention (not a gate), mirrored in the PR template. Backfilled

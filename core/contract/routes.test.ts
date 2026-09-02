@@ -42,6 +42,37 @@ import {
 } from './routes.js';
 
 describe('route schemas', () => {
+  it('defines the translation import route and its summary envelope', () => {
+    expect(API_ROUTES.variantsImportTranslation).toMatchObject({
+      method: 'POST',
+      path: '/api/variants/import-translation',
+    });
+    expect(API_ROUTES.variantsImportTranslation.input.parse({ ndjsonPath: '/work/translations.ndjson' })).toEqual({
+      ndjsonPath: '/work/translations.ndjson',
+      dryRun: false,
+      select: true,
+    });
+    expect(API_ROUTES.variantsImportTranslation.output.parse({
+      ndjsonPath: '/work/translations.ndjson',
+      dryRun: true,
+      select: false,
+      total: 1,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      invalid: 0,
+      selected: 0,
+      rows: [{
+        line: 1,
+        fingerprint: 'fp-1',
+        sourceConfigId: 'cfg_0123456789ab',
+        configId: 'cfg_ba9876543210',
+        outcome: 'created',
+        reason: null,
+      }],
+    })).toMatchObject({ total: 1, created: 1, dryRun: true });
+  });
+
   it('retains optional folder scope on folder-backed routes', () => {
     expect(API_ROUTES.status.input.parse({ folder: '/videos' })).toEqual({ folder: '/videos' });
     expect(API_ROUTES.resetAll.input.parse({ folder: '/videos', force: true })).toEqual({

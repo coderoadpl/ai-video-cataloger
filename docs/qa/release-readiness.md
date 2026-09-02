@@ -42,7 +42,7 @@ skipped legs are named in the release notes to the owner.
 |---|---|---|
 | Build | `pnpm run electron:package` | the bundle builds |
 | Bundle shape | `pnpm run verify:package` | a single darwin onnxruntime binding, no non-darwin artifacts |
-| Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict --analyzer local:gemma3:4b --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/ ...` | no `failed` step, no `skipped` step, and the set is archived outside the worktree |
+| Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict --analyzer local:gemma3:4b --archive-to "$AVC_SCRATCH_DIR/avc-release-shots/<version>/" ...` | no `failed` step, no `skipped` step, and the set is archived outside the worktree |
 | Screenshot review | — | an **independent reviewer** (not the agent that ran the walkthrough) works the full checklist in [release-walkthrough.md](release-walkthrough.md) against the archived set, including the sidebar geometry, Kolekcja photo viewer and completed-analysis shots; that reviewer has authority to fail the release |
 
 A release that ships photo changes runs the walkthrough against a `--home`
@@ -51,9 +51,8 @@ steps produce real screenshots instead of honest skips. Release runs use `--stri
 step means the `--home` is not fully provisioned for this release's scope, and
 `--strict` turns that into a non-zero exit instead of a note a reviewer could miss.
 The set is archived **before** the release worktree is cleaned up
-(`--archive-to`, W43 2026-08-03): a screenshot set that only lives in a
-worktree does not survive the worktree being removed, which is how a prior
-broken release shipped unreviewed.
+(`--archive-to`): a screenshot set that only lives in a worktree does not
+survive the worktree being removed.
 
 Release runs also pass `--analyzer local:gemma3:4b` (the system ollama must be
 running at its default port — check first with
@@ -61,10 +60,7 @@ running at its default port — check first with
 mapped from the real UI result (`ok` only when analysis reaches `completed`,
 `failed` when it ends in error), and its `skipped` outcome (no analyzer
 configured) is not in `TOLERATED_SKIPS`, so `--strict` fails the run without a
-real analyzer (W54, 2026-08-03 — four prior releases shipped with this step
-reporting `ok` whenever the run merely finished, never checking whether
-analysis itself had errored; see
-[release-walkthrough.md](release-walkthrough.md)).
+real analyzer; see [release-walkthrough.md](release-walkthrough.md).
 
 ## 4. Docs and changelog
 

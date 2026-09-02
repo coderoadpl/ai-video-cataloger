@@ -43,9 +43,10 @@ export const CONFIG_IDENTITY_CLASSIFICATION = {
 } satisfies Record<ConfigKey, 'identity' | 'excluded'>;
 
 const configDescriptorShape = z.object({
-  family: z.enum(['api', 'harness', 'local', 'gemini-native']),
+  family: z.enum(['api', 'harness', 'local', 'gemini-native', 'translation']),
   providerId: z.string().trim().min(1),
   model: z.string().trim().min(1).optional(),
+  sourceConfigId: z.union([z.literal(LEGACY_CONFIG_ID), z.string().regex(/^cfg_[0-9a-f]{12}$/)]).optional(),
   modelTag: z.string().trim().min(1).optional(),
   maxImageDetail: maxImageDetailSchema.optional(),
   promptStyle: harnessPromptStyleSchema.optional(),
@@ -78,6 +79,8 @@ export const requiredAnalyzerFields = (
       return ['modelTag'];
     case 'gemini-native':
       return ['model'];
+    case 'translation':
+      return ['model'];
   }
 };
 
@@ -94,6 +97,22 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
     if (!expected && descriptor[field] !== undefined) {
       context.addIssue({ code: 'custom', path: [field], message: `${field} is not valid for ${descriptor.family}` });
     }
+  }
+
+  if (descriptor.family === 'translation') {
+    if (descriptor.sourceConfigId === undefined) {
+      context.addIssue({ code: 'custom', path: ['sourceConfigId'], message: 'sourceConfigId is required for translation' });
+    }
+    for (const field of ['whisper_mode', 'whisper_model', 'whisper_language', 'whisper_api_base_url', 'whisper_api_model', 'frames'] as const) {
+      if (descriptor[field] !== undefined) {
+        context.addIssue({ code: 'custom', path: [field], message: `${field} is not valid for translation` });
+      }
+    }
+    return;
+  }
+
+  if (descriptor.sourceConfigId !== undefined) {
+    context.addIssue({ code: 'custom', path: ['sourceConfigId'], message: `sourceConfigId is not valid for ${descriptor.family}` });
   }
 
   if (descriptor.family === 'gemini-native') {
@@ -154,6 +173,22 @@ export const analysisLanguageResolutionSchema = z.object({
 }).strict();
 
 export type AnalysisLanguageResolution = z.output<typeof analysisLanguageResolutionSchema>;
+
+export const TRANSLATION_PROMPT_VERSION = 1;
+
+export const buildTranslationConfigDescriptor = (input: {
+  providerId: string;
+  model: string;
+  sourceConfigId: string;
+}): ConfigDescriptor => configDescriptorSchema.parse({
+  family: 'translation',
+  providerId: input.providerId,
+  model: input.model,
+  sourceConfigId: input.sourceConfigId,
+  output_language: 'pl',
+  tag_language: 'pl',
+  promptVersion: TRANSLATION_PROMPT_VERSION,
+});
 
 export const descriptorTagLanguage = (
   descriptor: Pick<ConfigDescriptor, 'output_language' | 'tag_language'>,

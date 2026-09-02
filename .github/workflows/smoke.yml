@@ -12,16 +12,9 @@ concurrency:
 
 jobs:
   smoke:
-    name: "${{ vars.CI_RUNNER_READY == 'true' && 'smoke' || 'smoke (dormant: register the self-hosted macOS runner, then set repository variable CI_RUNNER_READY=true; see docs/ci.md)' }}"
-    # `CI_RUNNER_READY` is the arming switch: an unmatched self-hosted job would
-    # queue for 24h on every PR instead of skipping. Never a fork head — this
-    # runner is the owner's Mac.
-    if: >-
-      vars.CI_RUNNER_READY == 'true' &&
-      github.repository == 'coderoadpl/ai-video-cataloger' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, arm64]
+    name: smoke
+    runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0

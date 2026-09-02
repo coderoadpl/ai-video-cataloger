@@ -683,6 +683,7 @@ export interface GlobalCatalogStore {
   databasePath(): string;
   flush(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
+  withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
   lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>>;
   acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>>;
   acquireLease(): Promise<Result<void, AppError>>;

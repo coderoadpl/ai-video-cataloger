@@ -1,10 +1,8 @@
 name: ai-review
 
 # Fail-closed AI code-review gate (foundation DECIDE F1). The status-check context
-# is the job name `ai-review`. Branch rulesets are unavailable on this private Free
-# repo, so the gate is advisory until the repo is public or on a paid plan; it still
-# reports RED on the PR. The ONLY green path is a positive PASS verdict from a token
-# slot; every other outcome — a FAIL verdict, an
+# is the job name `ai-review`. The ONLY green path is a positive PASS verdict from a
+# token slot; every other outcome — a FAIL verdict, an
 # infra failure (rate-limit / auth / network / timeout) on all available slots, an
 # empty/malformed model output, or a missing slot-1 secret — exits the gate RED.
 # "Could not verify" and "verified safe" never collapse to one colour. The ONLY
@@ -17,7 +15,10 @@ on:
   pull_request:
     # ready_for_review fires when a draft is marked ready, so a PR opened as a
     # draft still gets gated the moment it leaves draft state.
-    types: [opened, synchronize, ready_for_review]
+    # `reopened` re-arms the gate on a branch a workflow pushed: a GITHUB_TOKEN
+    # push starts no run, so closing and reopening that PR is the only way to
+    # trigger one (docs/ci.md, the visual-baselines bootstrap).
+    types: [opened, synchronize, ready_for_review, reopened]
     branches: [main]
 
 # One in-flight review per PR; a new push cancels the superseded run.
@@ -31,21 +32,15 @@ permissions:
 
 jobs:
   ai-review:
-    name: "${{ (vars.CI_RUNNER_READY == 'true' && vars.AI_REVIEW_READY == 'true') && 'ai-review' || 'ai-review (dormant: add secret CLAUDE_CODE_OAUTH_TOKEN_1 and set repository variables CI_RUNNER_READY and AI_REVIEW_READY to true; see docs/ci.md)' }}"
-    # `AI_REVIEW_READY` exists because a job-level `if:` cannot read the `secrets`
-    # context: this gate is fail-closed, so without `CLAUDE_CODE_OAUTH_TOKEN_1` it
-    # would mark every PR RED, and `CI_RUNNER_READY` alone would queue it on a
-    # runner that is not registered. Self-hosted safety: this repo only, non-draft,
-    # and never a fork PR — unlike the ubuntu-hosted upstream this runner is the
-    # owner's Mac, so a fork head must not execute here at all (a skipped fork run
-    # cannot fail closed to RED the way it does on a disposable hosted runner).
+    name: ai-review
+    # A draft PR is not up for merge yet, and `ready_for_review` gates it the
+    # moment it leaves draft. A fork head is deliberately NOT excluded: the runner
+    # is disposable and a fork PR receives no secret, so the gate fails closed RED
+    # there exactly as it does for any other unusable token.
     if: >-
-      vars.CI_RUNNER_READY == 'true' &&
-      vars.AI_REVIEW_READY == 'true' &&
       github.repository == 'coderoadpl/ai-video-cataloger' &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, arm64]
+      github.event.pull_request.draft == false
+    runs-on: macos-15
     # Bounds the known `--json-schema` CLI-hang failure mode (claude-code#27926);
     # a timeout is a RED could-not-run, never a silent pass.
     timeout-minutes: 15
@@ -73,6 +68,12 @@ jobs:
           - Comment doctrine: zero narration. A comment is allowed ONLY for a
             non-obvious WHY the code cannot express; flag any what-narration,
             section headers, or change-describing comments as blocking.
+          - Privacy: FAIL any PR that introduces owner-private data into a repo
+            artifact, including names or personal/company handles, absolute
+            local/home paths, scratch-directory or external-volume names,
+            personal library facts or run statistics, and names or contents of
+            private tooling sessions. Require generic product language; existing
+            shipped product feature identifiers remain permitted.
           - No false claims in docs/prose; no weakening of the gates (`check` /
             `smoke`), lint rules, or coverage floors to go green.
           - `zod`-parse at every boundary; use-cases return `Result<T, AppError>`
@@ -90,7 +91,7 @@ jobs:
       # from the model's tool use).
       CLAUDE_ARGS: >-
         --model sonnet
-        --max-turns 20
+        --max-turns 40
         --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(git show:*)"
         --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}}},"required":["verdict","summary"]}'
     steps:

@@ -40,6 +40,7 @@ import {
   indexStatus,
   forgetCatalogEntry,
   installWhisperRuntime,
+  importTranslationVariants,
   aliasTag,
   libraryCollection,
   enqueuePhotoScan,
@@ -582,6 +583,17 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(
       await withCatalogWriteLock(deps, () => setFolderDefaultVariant(deps, input.value)),
       API_ROUTES.variantsFolderDefault.output,
+    );
+  });
+
+  app.post(API_ROUTES.variantsImportTranslation.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.variantsImportTranslation.output);
+    const input = parseInput(API_ROUTES.variantsImportTranslation.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.variantsImportTranslation.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => importTranslationVariants(deps, input.value)),
+      API_ROUTES.variantsImportTranslation.output,
     );
   });
 

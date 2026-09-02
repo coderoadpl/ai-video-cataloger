@@ -86,6 +86,9 @@ export const transcriptKey = (input: ConfigDescriptor): string => {
   if (descriptor.family === 'gemini-native') {
     return safePathSegmentSchema.parse(`native:${descriptor.providerId}:${descriptor.model}`);
   }
+  if (descriptor.family === 'translation') {
+    return safePathSegmentSchema.parse(`translation:${descriptor.sourceConfigId}:${descriptor.providerId}:${descriptor.model}`);
+  }
   if (descriptor.whisper_mode === undefined) throw new TypeError('Parsed descriptor has no transcription mode');
   switch (descriptor.whisper_mode) {
     case 'local':
@@ -115,6 +118,17 @@ export const sharedArtifactPaths = (
   const fingerprint = fingerprintSchema.parse(fingerprintInput);
   const descriptor = configDescriptorSchema.parse(descriptorInput);
   const resolvedTranscriptKey = transcriptKey(descriptor);
+  if (descriptor.family === 'translation') {
+    if (descriptor.sourceConfigId === undefined) throw new TypeError('Parsed translation descriptor has no source config id');
+    const output = variantOutputPaths(fs, root, fingerprint, configId(descriptor));
+    return {
+      framesKey: descriptor.sourceConfigId,
+      framesDirectory: fs.join(output.directory, 'frames'),
+      transcriptKey: resolvedTranscriptKey,
+      transcriptPath: fs.join(output.directory, 'transcript.txt'),
+      transcriptJsonPath: fs.join(output.directory, 'transcript.json'),
+    };
+  }
   const transcriptDirectory = fs.join(root.catalogDirectory, 'artifacts', 'transcripts', fingerprint);
   if (descriptor.family === 'gemini-native') {
     return {
@@ -366,6 +380,40 @@ export const materializeArtifactFile = async (
   const linked = await fs.linkFile(source, target);
   if (linked.ok) return linked;
   return fs.copyFile(source, target);
+};
+
+export const materializeTranslatedVariantArtifacts = async (
+  fs: FileSystemPort,
+  source: SelectedVariantProjectionSource,
+  target: VariantArtifactPaths,
+): Promise<Result<void, AppError>> => {
+  const parsed = projectionSourceSchema.safeParse(source);
+  if (!parsed.success) return invalidArtifactInput('translation artifact source', parsed.error.issues);
+  const files = [
+    [parsed.data.summaryPath, target.summaryPath],
+    [parsed.data.summaryJsonPath, target.summaryJsonPath],
+    [parsed.data.debugLogPath, target.debugLogPath],
+    [parsed.data.transcriptPath, target.transcriptPath],
+    [parsed.data.transcriptJsonPath, target.transcriptJsonPath],
+  ] as const;
+  for (const [from, to] of files) {
+    if (from === null) continue;
+    const ensured = await fs.ensureDirectory(fs.dirname(to));
+    if (!ensured.ok) return ensured;
+    const copied = await materializeArtifactFile(fs, from, to);
+    if (!copied.ok) return copied;
+  }
+  if (parsed.data.framesDirectory === null || target.framesDirectory === null) return ok(undefined);
+  const entries = await fs.listDirectory(parsed.data.framesDirectory);
+  if (!entries.ok) return entries;
+  const ensured = await fs.ensureDirectory(target.framesDirectory);
+  if (!ensured.ok) return ensured;
+  for (const entry of entries.value) {
+    if (entry.kind !== 'file' || !FRAME_FILE_NAME_PATTERN.test(entry.name)) continue;
+    const copied = await materializeArtifactFile(fs, entry.path, fs.join(target.framesDirectory, entry.name));
+    if (!copied.ok) return copied;
+  }
+  return ok(undefined);
 };
 
 const commitProjectionEntry = async (

@@ -11,9 +11,8 @@ The `gemini-native` analyzer sends the whole video to Gemini as one modality
 and gets back the description plus a timestamped transcript in a single
 `generateContent` call. That call is billed at interactive rates. The Gemini
 **Batch API** runs the same requests against the same models for **50% of the
-interactive price**, with a published SLA of "up to 24 hours" — the owner's
-measured archive run (115 clips / 95 min, `~/repositories/claude-tmp/gemini-video-chat/notatka-kurs-przetwarzanie-wideo-ai.md`
-§4.1) completed in ~4 minutes on Flash and cost $1.76 instead of $3.52.
+interactive price**, with a published SLA of "up to 24 hours". A measured
+validation run completed well within that SLA at half the interactive cost.
 
 Cataloguing a drive is exactly the workload batch pricing exists for: hundreds
 of files, no human waiting on any single answer. The uploads are already the

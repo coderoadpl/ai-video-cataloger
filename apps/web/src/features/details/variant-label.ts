@@ -5,6 +5,8 @@ const transcriptionLabel = (copy: VariantLabelCopy, dictionary: Dictionary): str
   switch (copy.key) {
     case 'legacySettingsUnknown':
       return dictionary.details.variants.legacySettingsUnknown;
+    case 'translation':
+      return dictionary.details.variants.translation;
     case 'nativeTranscription':
       return dictionary.details.variants.nativeTranscription;
     case 'localTranscription':
@@ -19,6 +21,10 @@ const transcriptionLabel = (copy: VariantLabelCopy, dictionary: Dictionary): str
 export const variantLabelText = (model: VariantLabelModel, dictionary: Dictionary): string => {
   if (model.transcription.key === 'legacySettingsUnknown') {
     return dictionary.details.variants.legacySettingsUnknown;
+  }
+  if (model.transcription.key === 'translation') {
+    const modelName = model.analyzer ?? dictionary.details.unknown;
+    return `${dictionary.details.variants.translation} / ${modelName}`;
   }
   const analyzer = model.analyzer ?? dictionary.details.unknown;
   const frames = model.frames === null

@@ -1,10 +1,9 @@
 # Architecture — AI Video Cataloger (local-first Electron)
 
 Normative reference for this app. This document is a **delta** against the
-agentproofarch foundation
-([`agentproofarch/docs/architecture.md`](https://github.com/chomamateusz/agentproofarch/blob/main/docs/architecture.md),
-read it first — its rules apply here except where this document overrides
-them). Provenance: foundation docs as of 2026-07-12; local-first decisions in
+agentproofarch foundation architecture; its rules apply here except where this
+document overrides them. Provenance: foundation docs as of 2026-07-12;
+local-first decisions in
 [ADR-0001](decisions/0001-local-first-electron.md). Product scope:
 [`../tasks/prd-foundation-rewrite.md`](../tasks/prd-foundation-rewrite.md);
 behavioral ground truth: [`../tasks/parity-inventory.md`](../tasks/parity-inventory.md).
@@ -144,6 +143,33 @@ of its resolved processing configuration. Explicit selection is stored per
 fingerprint and is therefore shared by duplicate copies of the content; only
 the folder-default fallback is folder-relative. Search indexes the resolved
 variant only.
+
+Translation imports add a fifth closed video config-descriptor family,
+`translation`, whose identity carries `providerId`, `model`, and
+`sourceConfigId` together with pinned Polish output/tag languages and the
+translation prompt version. `POST /api/variants/import-translation` accepts an
+NDJSON path plus dry-run/selection flags; the CLI reaches it only through the
+shared typed client. The server validates every non-empty line with zod, skips
+invalid rows and missing `(fingerprint, sourceConfigId)` analyses without
+aborting valid rows, copies the source transcript verbatim into the new
+analysis, normalizes imported tags through `normalizeTagList`, and upserts the
+translation variant. All catalog mutations for the entire NDJSON batch are
+enclosed in one sql.js transaction. Search-document writes are deferred during
+that batch and each affected fingerprint is rebuilt once after its final
+selection is known.
+Dry runs perform the same parsing, source lookup, identity derivation, and
+created/updated classification without artifact or catalog writes.
+
+Translation artifacts are self-contained below
+`.ai-video-cataloger/variants/{fingerprint}/{translationConfigId}/`: source
+frames are hard-linked into `frames/`, source transcript text/JSON into
+`transcript.txt`/`transcript.json`, and source summary/debug outputs retain the
+normal per-variant names. `FileSystemPort.copyFile` is the fallback when a hard
+link is unavailable. This duplicates directory entries, and sometimes bytes
+across filesystems, but keeps translation selection honest and simple: the
+existing projection path reads only the translation config directory and does
+not need to reconstruct or globally alias the source descriptor's shared
+artifact keys.
 
 `files` records where a coordinate came from — `gps_source`
 (`camera | timeline | manual`), `gps_accuracy_m`, `gps_interval_kind`
@@ -1304,9 +1330,8 @@ managed runtimes, and its working-directory fallback.
   processing path that **skips frame extraction and Whisper** — the model
   returns the description and a timestamped transcript in one call, and
   `usageMetadata` (tokens + est cost per file) is surfaced as an NDJSON
-  event; GPS still comes from metadata. Budget-capped smoke bench (real key,
-  11-clip subset, flash vs flash-lite, $0.096 total) recorded at
-  `~/repositories/claude-tmp/wf-mg1/bench-report.md`.
+  event; GPS still comes from metadata. A budget-capped smoke bench recorded
+  in a scratch directory outside the repository validated this path.
 - `AnalyzerBatchPort` — the Gemini **Batch API** half of the same adapter,
   used only by `process_drive` and only when batch mode is on
   ([ADR-0008](decisions/0008-gemini-batch-drive-runs.md)): per-file uploads
@@ -1380,8 +1405,9 @@ boot the real in-process app, drive doctor/scan/config/status through the CLI
 in an isolated temp HOME + temp folder, assert envelope shapes and taxonomy
 exit codes. Both green = done; every new lint rule proves itself with a
 violating probe before it counts. `pnpm run workflow-lint` holds the CI
-workflow guards to this repository's slug and keeps every self-hosted job
-behind its arming variable ([docs/ci.md](ci.md)).
+workflow guards to this repository's slug, keeps every job name a literal the
+ruleset can match, and refuses a `self-hosted` runner label
+([docs/ci.md](ci.md), [ADR-0017](decisions/0017-hosted-ci-runners.md)).
 
 The package manager is pnpm, pinned by `packageManager` and activated through
 Corepack; dependency install scripts are off by default and the exceptions are
