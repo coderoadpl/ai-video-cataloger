@@ -53,6 +53,19 @@ const fixtures = {
     rel: join(coreDir, 'any-probe.ts'),
     content: 'export const identity = (value: any) => value;\n',
   },
+  configDescriptorExhaustiveness: {
+    rel: join(coreDir, 'config-descriptor-exhaustiveness-probe.ts'),
+    content:
+      "import type { ConfigDescriptor } from '../config-descriptor.js';\n" +
+      "export const label = (family: ConfigDescriptor['family']): string => {\n" +
+      '  switch (family) {\n' +
+      "    case 'api': return 'api';\n" +
+      "    case 'harness': return 'harness';\n" +
+      "    case 'local': return 'local';\n" +
+      "    case 'gemini-native': return 'gemini-native';\n" +
+      '  }\n' +
+      '};\n',
+  },
   coreImportsAdapters: {
     rel: join(coreDir, 'adapters-probe.ts'),
     content: "import '../../../adapters/db/index.js';\n",
@@ -247,6 +260,15 @@ describe('ESLint gate still rejects violations', () => {
 
   it('bans `any` (no-explicit-any)', () => {
     expect(findMessage(fixtures.explicitAny, '@typescript-eslint/no-explicit-any')).toBeDefined();
+  });
+
+  it('rejects a config descriptor family switch that omits translation', () => {
+    const message = findMessage(
+      fixtures.configDescriptorExhaustiveness,
+      '@typescript-eslint/switch-exhaustiveness-check',
+    );
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('translation');
   });
 
   it('bans core importing adapters (boundaries/element-types)', () => {

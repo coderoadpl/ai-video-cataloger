@@ -6,6 +6,7 @@ import {
   CONFIG_KEYS,
   LEGACY_CONFIG_ID,
   buildConfigDescriptor,
+  buildTranslationConfigDescriptor,
   configDescriptorSchema,
   configId,
   type ConfigInput,
@@ -268,6 +269,26 @@ describe('config descriptor identity', () => {
       expect(configId(vector.descriptor)).toMatch(/^cfg_[0-9a-f]{12}$/);
       expect(configId(vector.descriptor)).not.toBe(LEGACY_CONFIG_ID);
     }
+  });
+
+  it('builds a closed translation descriptor from translator and source identity', () => {
+    const descriptor = buildTranslationConfigDescriptor({
+      providerId: 'codex',
+      model: 'gpt-5.5',
+      sourceConfigId: 'cfg_0123456789ab',
+    });
+
+    expect(descriptor).toEqual({
+      family: 'translation',
+      providerId: 'codex',
+      model: 'gpt-5.5',
+      sourceConfigId: 'cfg_0123456789ab',
+      output_language: 'pl',
+      tag_language: 'pl',
+      promptVersion: 1,
+    });
+    expect(configDescriptorSchema.safeParse({ ...descriptor, frames: 3 }).success).toBe(false);
+    expect(configDescriptorSchema.safeParse({ ...descriptor, sourceConfigId: undefined }).success).toBe(false);
   });
 
   it('parses descriptors persisted before whisper_language existed', () => {

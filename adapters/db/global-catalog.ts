@@ -146,6 +146,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly lockMode: 'none' | 'lazy' | 'eager';
   private readonly lock: HomeLock;
   private dirtyCount = 0;
+  private batchDepth = 0;
+  private readonly pendingSearchDocuments = new Set<string>();
   private state: {
     SQL: SqlJsStatic;
     client: Database;
@@ -219,6 +221,44 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     } catch (cause) {
       if (!flushed.ok) return flushed;
       return failure(cause);
+    }
+  }
+
+  async withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    if (this.batchDepth > 0) return operation();
+    try {
+      this.lock.takeWriteLock();
+      const state = await this.ensureOpen(true);
+      const dirtyCountBefore = this.dirtyCount;
+      state.client.run('BEGIN TRANSACTION');
+      this.batchDepth += 1;
+      const result = await operation();
+      if (!result.ok) {
+        state.client.run('ROLLBACK');
+        this.dirtyCount = dirtyCountBefore;
+        this.pendingSearchDocuments.clear();
+        return result;
+      }
+      for (const fingerprint of this.pendingSearchDocuments) {
+        syncSearchDocument(state.db, state.client, fingerprint);
+      }
+      this.pendingSearchDocuments.clear();
+      state.client.run('COMMIT');
+      if (this.dirtyCount > 0) this.persist(state);
+      return result;
+    } catch (cause) {
+      if (this.state !== null) {
+        try {
+          this.state.client.run('ROLLBACK');
+        } catch {
+          this.state = null;
+          this.dirtyCount = 0;
+        }
+      }
+      this.pendingSearchDocuments.clear();
+      return failure(cause);
+    } finally {
+      this.batchDepth = 0;
     }
   }
 
@@ -431,7 +471,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         })
         .run();
       setVariantTags(db, variant.fingerprint, variant.configId, variant.tags);
-      syncSearchDocument(db, client, variant.fingerprint);
+      this.syncSearchDocument(db, client, variant.fingerprint);
     });
   }
 
@@ -486,9 +526,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async setSelectedVariant(fingerprint: string, configIdValue: string | null): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
-      runCatalogTransaction(client, () => {
+      this.runTransaction(client, () => {
         db.update(files).set({ selectedConfigId: configIdValue }).where(eq(files.fingerprint, fingerprint)).run();
-        syncSearchDocument(db, client, fingerprint);
+        this.syncSearchDocument(db, client, fingerprint);
       });
     });
   }
@@ -1350,7 +1390,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
-      if (this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
+      if (this.batchDepth === 0 && this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
@@ -1359,6 +1399,18 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       }
       return failure(cause);
     }
+  }
+
+  private syncSearchDocument(db: GlobalDrizzle, client: Database, fingerprint: string): void {
+    if (this.batchDepth > 0) {
+      this.pendingSearchDocuments.add(fingerprint);
+      return;
+    }
+    syncSearchDocument(db, client, fingerprint);
+  }
+
+  private runTransaction<T>(client: Database, operation: () => T): T {
+    return this.batchDepth > 0 ? operation() : runCatalogTransaction(client, operation);
   }
 
   private persist(state: NonNullable<SqlJsGlobalCatalogStore['state']>): void {

@@ -1194,6 +1194,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
+  withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    return operation();
+  }
+
   lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
     return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
   }

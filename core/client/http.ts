@@ -65,6 +65,7 @@ import {
   thumbnailOutputSchema,
   variantDeleteOutputSchema,
   variantFolderDefaultOutputSchema,
+  translationImportOutputSchema,
   variantSelectOutputSchema,
   variantsListOutputSchema,
   type HttpMethod,
@@ -762,6 +763,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.variantsFolderDefault.method,
       API_ROUTES.variantsFolderDefault.path,
       variantFolderDefaultOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  importTranslationVariants: (
+    input: z.input<typeof API_ROUTES.variantsImportTranslation.input>,
+    signal?: AbortSignal,
+  ) => {
+    const parsed = parseInput(API_ROUTES.variantsImportTranslation.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.variantsImportTranslation.method,
+      API_ROUTES.variantsImportTranslation.path,
+      translationImportOutputSchema,
       parsed.value,
       signal,
     );
