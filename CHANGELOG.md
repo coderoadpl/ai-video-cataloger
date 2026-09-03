@@ -54,6 +54,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Fixed
 
 - Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard.
+- `GET /api/library/collection` now pages by a keyset cursor that carries the last-seen sort key per medium, so an item indexed while Kolekcja or a person's media panel is paging no longer repeats one tile and hides another at the page boundary; the person media panel also drops a fingerprint it has already shown. Cursors minted by an earlier build are rejected as `validation`.
 - Importing a backup recovery key is now verified against the archives already in the destination: a checksum-valid key that wrote none of them is refused with the new `recovery_key_mismatch` code (HTTP 409, CLI exit code 56), and a stored key that wrote none of them can be replaced, so a wrong paste no longer wedges enablement.
 - The backup enablement stepper no longer lets a fresh recovery key be minted over archives written on another Mac: minting stays disabled until that Mac's key is imported or the archives are explicitly acknowledged as unreadable, and the import field reappears when the stored key matches none of the archives. `GET /api/backup/status` gained an additive `recoveryKeyFingerprint` field.
 - Backup startup recovery no longer races a second running process: each backup and restore staging directory records the owning process, `cleanupBackupStaging` keeps directories a live owner still holds, and the restore rollback marker is only replayed once its owning process is gone.

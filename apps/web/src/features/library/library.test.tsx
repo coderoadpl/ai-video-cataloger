@@ -1144,6 +1144,53 @@ describe('LibraryView', () => {
     });
   });
 
+  it('shows a repeated item once when a page boundary overlaps the previous page', async () => {
+    const page1 = [photoItem({ fingerprint: 'ph_0000000000000001' }), photoItem({ fingerprint: 'ph_0000000000000002' })];
+    const page2 = [photoItem({ fingerprint: 'ph_0000000000000002' }), photoItem({ fingerprint: 'ph_0000000000000003' })];
+
+    server.use(
+      http.get('/api/library/collection', ({ request }) => {
+        const url = new URL(request.url);
+        const cursor = url.searchParams.get('cursor');
+        const items = cursor === null ? page1 : page2;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'photo',
+            limit: 200,
+            total: 3,
+            videoTotal: 0,
+            photoTotal: 3,
+            mediaTotals: { all: 3, video: 0, photo: 3 },
+            count: items.length,
+            items,
+            nextCursor: cursor === null ? 'page-2' : null,
+          },
+        });
+      }),
+    );
+
+    renderThemed(
+      <PersonMediaPanel
+        personId="person-abc123"
+        label="Anna"
+        media="photo"
+        onClose={vi.fn()}
+        onOpenResult={vi.fn()}
+        onOpenPhotoInAnalysis={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+    fireEvent.click(await screen.findByTestId('person-media-load-more'));
+
+    await waitFor(() => {
+      const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
+      expect(fingerprints).toEqual(['ph_0000000000000001', 'ph_0000000000000002', 'ph_0000000000000003']);
+    });
+  });
+
   describe('mixed media (Kolekcja)', () => {
     it('renders a photo tile alongside video tiles in one shared date-grouped timeline', async () => {
       const items = [

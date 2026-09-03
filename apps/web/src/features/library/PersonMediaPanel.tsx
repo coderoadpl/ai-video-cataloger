@@ -46,7 +46,9 @@ export const PersonMediaPanel = ({
   const page = useInfiniteQuery(actions.libraryCollectionInfinite(collectionInput));
 
   const pages = page.data?.pages ?? [];
-  const items = pages.flatMap((loadedPage) => loadedPage.items);
+  const items = [...new Map(
+    pages.flatMap((loadedPage) => loadedPage.items).map((item) => [item.fingerprint, item]),
+  ).values()];
   const total = pages[0]?.total ?? 0;
   const order = items.map((item) => item.fingerprint);
   const viewerItem = viewerFingerprint === null

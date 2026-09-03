@@ -47,6 +47,7 @@ import type {
   CatalogLocationsSnapshot,
   CatalogSearchInput,
   CatalogSearchResults,
+  CollectionRowAnchor,
   CatalogSearchRow,
   CatalogFilePerson,
   CatalogRepository,
@@ -1516,9 +1517,20 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       })
       .filter((row): row is CatalogSearchRow => row !== null);
 
-    const sorted = input.sort === 'relevance'
+    const sort = input.sort;
+    const sorted = sort === 'relevance'
       ? [...matched].sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
-      : sortFakeSearchRows(matched, input.sort);
+      : sortFakeSearchRows(matched, sort);
+    const anchor = input.after ?? null;
+    if (anchor !== null && sort !== 'relevance') {
+      const remaining = sorted.filter((row) => compareFakeRowToAnchor(sort, {
+        capturedAt: row.capturedAt,
+        fileName: row.fileName,
+        displayName: row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName,
+        fingerprint: row.fingerprint,
+      }, anchor) > 0);
+      return Promise.resolve(ok({ total: sorted.length, rows: remaining.slice(0, input.limit) }));
+    }
     const rows = sorted.slice(input.offset, input.offset + input.limit);
     return Promise.resolve(ok({ total: sorted.length, rows }));
   }
@@ -2076,16 +2088,36 @@ const sortFakeSearchRows = (
     case 'captured_asc':
       return sorted.sort((left, right) => fakeCapturedAtCompare(left, right, 1));
     case 'name_asc':
-      return sorted.sort((left, right) => compareUtf8Bytes(displayName(left), displayName(right)));
+      return sorted.sort((left, right) =>
+        compareUtf8Bytes(displayName(left), displayName(right))
+        || compareUtf8Bytes(left.fileName, right.fileName)
+        || compareUtf8Bytes(left.fingerprint, right.fingerprint));
   }
 };
 
 const fakeCapturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
-  if (left.capturedAt === null && right.capturedAt === null) return compareUtf8Bytes(left.fileName, right.fileName);
+  const nameTieBreak = compareUtf8Bytes(left.fileName, right.fileName)
+    || compareUtf8Bytes(left.fingerprint, right.fingerprint);
+  if (left.capturedAt === null && right.capturedAt === null) return nameTieBreak;
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return compareUtf8Bytes(left.fileName, right.fileName);
+  if (left.capturedAt === right.capturedAt) return nameTieBreak;
   return left.capturedAt < right.capturedAt ? -direction : direction;
+};
+
+const compareFakeRowToAnchor = (
+  sort: 'captured_desc' | 'captured_asc' | 'name_asc',
+  row: CollectionRowAnchor,
+  anchor: CollectionRowAnchor,
+): number => {
+  const nameTail = compareUtf8Bytes(row.fileName, anchor.fileName)
+    || compareUtf8Bytes(row.fingerprint, anchor.fingerprint);
+  if (sort === 'name_asc') return compareUtf8Bytes(row.displayName, anchor.displayName) || nameTail;
+  const direction = sort === 'captured_desc' ? -1 : 1;
+  if (row.capturedAt === null && anchor.capturedAt === null) return nameTail;
+  if (row.capturedAt === null) return 1;
+  if (anchor.capturedAt === null) return -1;
+  return direction * compareUtf8Bytes(row.capturedAt, anchor.capturedAt) || nameTail;
 };
 
 const uniqueFingerprints = (rows: readonly FaceObservation[]): string[] =>
@@ -2605,6 +2637,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
+    after?: CollectionRowAnchor | null | undefined;
   }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>> {
     const rows = [...this.photoRows.values()]
       .map((photo): PhotoSearchRow | null => {
@@ -2643,9 +2676,21 @@ export class InMemoryPhotosStore implements PhotosStore {
         };
       })
       .filter((row): row is PhotoSearchRow => row !== null);
-    const sorted = input.match !== null && input.sort === 'relevance'
+    const relevance = input.match !== null && input.sort === 'relevance';
+    const sorted = relevance
       ? scorePhotoCollectionRows(rows, input.rankingTerms)
       : sortPhotoCollectionRows(rows, input.sort);
+    const anchor = input.after ?? null;
+    if (anchor !== null && !relevance) {
+      const sort = input.sort === 'relevance' ? 'captured_desc' : input.sort;
+      const remaining = sorted.filter((row) => compareFakeRowToAnchor(sort, {
+        capturedAt: row.capturedAt,
+        fileName: row.fileName,
+        displayName: row.fileName,
+        fingerprint: row.fingerprint,
+      }, anchor) > 0);
+      return Promise.resolve(ok({ total: sorted.length, rows: remaining.slice(0, input.limit) }));
+    }
     return Promise.resolve(ok({
       total: sorted.length,
       rows: sorted.slice(input.offset, input.offset + input.limit),
@@ -2942,16 +2987,18 @@ const sortPhotoCollectionRows = (
   sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc',
 ): PhotoSearchRow[] => {
   const sorted = [...rows];
+  const nameTieBreak = (left: PhotoSearchRow, right: PhotoSearchRow): number =>
+    compareUtf8Bytes(left.fileName, right.fileName) || compareUtf8Bytes(left.fingerprint, right.fingerprint);
   switch (sort) {
     case 'relevance':
     case 'captured_desc':
       return sorted.sort((left, right) =>
-        capturedAtCompare(left.capturedAt, right.capturedAt, -1) || compareUtf8Bytes(left.fileName, right.fileName));
+        capturedAtCompare(left.capturedAt, right.capturedAt, -1) || nameTieBreak(left, right));
     case 'captured_asc':
       return sorted.sort((left, right) =>
-        capturedAtCompare(left.capturedAt, right.capturedAt, 1) || compareUtf8Bytes(left.fileName, right.fileName));
+        capturedAtCompare(left.capturedAt, right.capturedAt, 1) || nameTieBreak(left, right));
     case 'name_asc':
-      return sorted.sort((left, right) => compareUtf8Bytes(left.fileName, right.fileName));
+      return sorted.sort(nameTieBreak);
   }
 };
 

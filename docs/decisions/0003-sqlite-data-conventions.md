@@ -98,8 +98,13 @@ conformance-gates wave.
 
 **Migration intent.** `GET /api/library/collection`
 (`collectionInputSchema`/`core/server/usecases/collection.ts`, added after
-these three) already paginates with the opaque composite-offset `cursor` (d)
-calls for, and covers both video and photo search/browse. The intended
+these three) already paginates with the opaque `cursor` (d) calls for — since
+2026-09-03 a version-2 cursor that carries the last-seen sort key per media
+(`capturedAt`, `fileName`, `displayName`, `fingerprint`), so a row inserted or
+deleted between two page fetches can no longer duplicate or skip an item at the
+page boundary; a `relevance` page, whose rank is not a stored key, still carries
+per-media offsets inside the same opaque cursor. It covers both video and photo
+search/browse. The intended
 migration is for the renderer's Kolekcja surface and the CLI to move onto
 `collection` and for `searchQuery`/`photosList`/`photosSearch` to be
 deprecated once every caller has moved, rather than for the three to grow a

@@ -107,6 +107,13 @@ export interface CatalogSearchFilters {
 
 export type CatalogSearchSort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
 
+export interface CollectionRowAnchor {
+  capturedAt: string | null;
+  fileName: string;
+  displayName: string;
+  fingerprint: string;
+}
+
 export interface CatalogSearchInput {
   match: string | null;
   rankingTerms: string[];
@@ -114,6 +121,7 @@ export interface CatalogSearchInput {
   sort: CatalogSearchSort;
   limit: number;
   offset: number;
+  after?: CollectionRowAnchor | null | undefined;
 }
 
 export interface CatalogTagAlias {
@@ -659,6 +667,7 @@ export interface PhotosStore {
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
+    after?: CollectionRowAnchor | null | undefined;
   }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>>;
   expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   listPhotoVariants(fingerprint: string): Promise<Result<PhotoVariantRecord[], AppError>>;

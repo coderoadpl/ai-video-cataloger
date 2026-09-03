@@ -187,16 +187,17 @@ describe('compareCollectionItems', () => {
 
 describe('collection cursor', () => {
   it('round-trips through base64url JSON', () => {
-    const encoded = encodeCollectionCursor({ v: 1, video: 3, photo: 5 });
-    const decoded = decodeCollectionCursor(encoded);
-    expect(decoded).toEqual({ ok: true, value: { v: 1, video: 3, photo: 5 } });
+    const anchor = { capturedAt: '2026-01-03T00:00:00.000Z', fileName: 'v1.mp4', displayName: 'v1.mp4', fingerprint: 'v1' };
+    const cursor = { v: 2, video: 0, photo: 0, videoAfter: anchor, photoAfter: null } as const;
+    const decoded = decodeCollectionCursor(encodeCollectionCursor(cursor));
+    expect(decoded).toEqual({ ok: true, value: cursor });
   });
 
-  it('rejects malformed and negative cursors as validation errors', () => {
+  it('rejects malformed, superseded and negative cursors as validation errors', () => {
     expect(decodeCollectionCursor('not-base64-json')).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(decodeCollectionCursor(Buffer.from(JSON.stringify({ v: 2, video: 0, photo: 0 })).toString('base64url')))
+    expect(decodeCollectionCursor(Buffer.from(JSON.stringify({ v: 1, video: 0, photo: 0 })).toString('base64url')))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(decodeCollectionCursor(Buffer.from(JSON.stringify({ v: 1, video: -1, photo: 0 })).toString('base64url')))
+    expect(decodeCollectionCursor(Buffer.from(JSON.stringify({ v: 2, video: -1, photo: 0, videoAfter: null, photoAfter: null })).toString('base64url')))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 });
@@ -267,6 +268,31 @@ describe('libraryCollection', () => {
     expect(new Set(allIds).size).toBe(allIds.length);
     expect(allIds).toHaveLength(6);
     expect(page2.value.nextCursor).toBeNull();
+  });
+
+  it('keeps page boundaries stable when a newer item is inserted between pages', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    await photos.upsertFolder(photoFolder);
+    for (let index = 0; index < 3; index += 1) {
+      await globalCatalog.upsertFile(video(`v${String(index)}`, `2026-01-0${String(index + 1)}T00:00:00.000Z`));
+      await photos.upsertPhoto(photo(`p${String(index)}`, `2026-01-0${String(index + 1)}T12:00:00.000Z`, `p${String(index)}.jpg`));
+      await analyzePhoto(photos, `p${String(index)}`);
+    }
+
+    const page1 = await libraryCollection(deps, { query: null, filters: EMPTY_FILTERS, sort: 'captured_desc', media: 'all', limit: 3, cursor: null });
+    expect(page1.ok).toBe(true);
+    if (!page1.ok) return;
+    expect(page1.value.items.map((item) => item.fingerprint)).toEqual(['p2', 'v2', 'p1']);
+
+    await globalCatalog.upsertFile(video('v-indexed-later', '2026-02-01T00:00:00.000Z'));
+
+    const page2 = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: 'captured_desc', media: 'all', limit: 3, cursor: page1.value.nextCursor,
+    });
+    expect(page2.ok).toBe(true);
+    if (!page2.ok) return;
+    expect(page2.value.items.map((item) => item.fingerprint)).toEqual(['v1', 'p0', 'v0']);
   });
 
   it('short-circuits the disabled source when media is video or photo', async () => {
