@@ -1327,6 +1327,11 @@ and cut on the conservative side of the measured optimum (split rather than merg
 greedy per-observation assignment stays as the *incremental* path, cheap to be wrong on
 precisely because the rebuild exists. ADR-0018.
 
+People payloads keep observation counts because grouping quality is about detected face
+frames, but the Osoby card and person-media panel also need distinct file counts per
+medium so a person seen in many frames of one clip still reads as one video. Media chips
+count people, not observations or files.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive

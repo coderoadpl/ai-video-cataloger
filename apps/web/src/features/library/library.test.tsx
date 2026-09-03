@@ -1191,6 +1191,42 @@ describe('LibraryView', () => {
     });
   });
 
+  it('shows supplied person file counts in the panel title and observations as a caption', async () => {
+    server.use(
+      http.get('/api/library/collection', () => HttpResponse.json({
+        ok: true,
+        data: {
+          query: null,
+          media: 'all',
+          limit: 200,
+          total: 5,
+          videoTotal: 2,
+          photoTotal: 3,
+          mediaTotals: { all: 5, video: 2, photo: 3 },
+          count: 0,
+          items: [],
+          nextCursor: null,
+        },
+      })),
+    );
+
+    renderThemed(
+      <PersonMediaPanel
+        personId="person-abc123"
+        label="Person"
+        media="all"
+        fileCountLabel="2 videos · 3 photos"
+        observationCountLabel="12 frames"
+        onClose={vi.fn()}
+        onOpenResult={vi.fn()}
+        onOpenPhotoInAnalysis={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Person (2 videos · 3 photos)')).toBeDefined();
+    expect(screen.getByText('12 frames')).toBeDefined();
+  });
+
   describe('mixed media (Kolekcja)', () => {
     it('renders a photo tile alongside video tiles in one shared date-grouped timeline', async () => {
       const items = [

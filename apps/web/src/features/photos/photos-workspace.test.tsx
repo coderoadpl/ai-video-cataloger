@@ -275,6 +275,19 @@ describe('PhotosWorkspace', () => {
     expect(document.querySelectorAll('[data-detail-metadata-row="true"]')).toHaveLength(4);
   });
 
+  it('keeps long Polish metadata labels on one line while values can wrap', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({ items, selectedFingerprint: firstItem.fingerprint, detail: detailFor(firstItem) })}
+    />);
+
+    expect(getComputedStyle(screen.getByText('Owner path:')).minWidth).toBe('112px');
+    expect(getComputedStyle(screen.getByText('Also at: 1 path')).minWidth).toBe('112px');
+  });
+
   it('renders the captured-at date formatted, never as a raw ISO timestamp', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-08-10T17:46:06.744Z' })];
     const firstItem = items[0];

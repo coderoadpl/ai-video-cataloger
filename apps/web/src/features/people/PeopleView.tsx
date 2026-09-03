@@ -19,6 +19,8 @@ import {
   Snackbar,
   TextField,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 
 import { MoreVertIcon } from '../../components/ui/icons.js';
@@ -28,15 +30,26 @@ import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
-import { peopleForMedium, peopleMediaCounts, personCountForMedium, type PeopleMedia } from './core/index.js';
+import {
+  peopleForMedium,
+  peopleMediaCounts,
+  personCountForMedium,
+  personFileCountLabel,
+  sortPeople,
+  type PeopleMedia,
+  type PeopleSort,
+} from './core/index.js';
 import { type FacePerson, type FacesReclusterReport, usePeople } from './use-people.js';
 
 export interface PersonMediaRequest {
   personId: string;
   label: string;
   media: PeopleMedia;
+  fileCountLabel?: string;
+  observationCountLabel?: string;
   onClose: () => void;
 }
 
@@ -59,16 +72,13 @@ interface RenameState {
 const displayName = (dictionary: Dictionary, person: FacePerson, index: number): string =>
   person.displayName ?? dictionary.people.personName(index);
 
-const observationCountLabel = (dictionary: Dictionary, person: FacePerson, media: PeopleMedia): string => {
-  const count = personCountForMedium(person, media);
-  switch (media) {
-    case 'video':
-      return dictionary.people.videoObservationCount(count);
-    case 'photo':
-      return dictionary.people.photoObservationCount(count);
-    case 'all':
-      return dictionary.people.observationCount(count);
-  }
+const PEOPLE_SORT_KEY = 'avc.people.sort';
+
+const isPeopleSort = (value: string | null): value is PeopleSort => value === 'frequent' || value === 'order';
+
+const readPeopleSort = (): PeopleSort => {
+  const raw = readStorageItem('local', PEOPLE_SORT_KEY);
+  return isPeopleSort(raw) ? raw : 'frequent';
 };
 
 export const PeopleView = ({
@@ -90,14 +100,23 @@ export const PeopleView = ({
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [reclusterOpen, setReclusterOpen] = useState(false);
   const [media, setMedia] = useState<PeopleMedia>('all');
+  const [sort, setSortState] = useState<PeopleSort>(() => readPeopleSort());
   const [openPerson, setOpenPerson] = useState<{ personId: string; label: string } | null>(null);
+  const setSort = (next: PeopleSort) => {
+    setSortState(next);
+    writeStorageItem('local', PEOPLE_SORT_KEY, next);
+  };
 
   const indexed = useMemo(
     () => new Map(people.people.map((person, index) => [person.personId, { person, index }])),
     [people.people],
   );
   const mediaCounts = useMemo(() => peopleMediaCounts(people.people), [people.people]);
-  const visiblePeople = useMemo(() => peopleForMedium(people.people, media), [people.people, media]);
+  const visiblePeople = useMemo(() => sortPeople(peopleForMedium(people.people, media), sort, media), [people.people, media, sort]);
+  const openPersonEntry = openPerson === null ? null : indexed.get(openPerson.personId) ?? null;
+  const reclusterConfirmLabel = people.reclusterDryRunReport !== null && people.reclusterDryRunReport.namesDropped.length > 0
+    ? dictionary.people.reclusterConfirmWithNames(people.reclusterDryRunReport.namesDropped.length)
+    : dictionary.people.reclusterConfirm;
   const selected = people.selectedPersonIds
     .map((personId) => indexed.get(personId))
     .filter((entry): entry is { person: FacePerson; index: number } => entry !== undefined);
@@ -115,6 +134,20 @@ export const PeopleView = ({
           <Typography variant="caption">{dictionary.people.subtitle}</Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={sort}
+            onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
+            data-testid="people-sort"
+          >
+            <ToggleButton value="frequent" data-testid="people-sort-frequency">
+              {dictionary.people.sortFrequent}
+            </ToggleButton>
+            <ToggleButton value="order" data-testid="people-sort-order">
+              {dictionary.people.sortOrder}
+            </ToggleButton>
+          </ToggleButtonGroup>
           <Button
             variant="outlined"
             size="small"
@@ -355,7 +388,7 @@ export const PeopleView = ({
             disabled={people.reclusterDryRunReport === null || people.isBusy || mutationsBlocked}
             data-testid="people-recluster-confirm"
           >
-            {dictionary.people.reclusterConfirm}
+            {reclusterConfirmLabel}
           </Button>
         </DialogActions>
       </Dialog>
@@ -376,7 +409,15 @@ export const PeopleView = ({
 
       {openPerson === null || renderPersonMedia === undefined
         ? null
-        : renderPersonMedia({ ...openPerson, media, onClose: () => setOpenPerson(null) })}
+        : renderPersonMedia({
+          ...openPerson,
+          media,
+          ...(openPersonEntry === null ? {} : {
+            fileCountLabel: personFileCountLabel(dictionary.people, openPersonEntry.person, media),
+            observationCountLabel: dictionary.people.frameObservationCount(personCountForMedium(openPersonEntry.person, media)),
+          }),
+          onClose: () => setOpenPerson(null),
+        })}
 
       <Snackbar
         open={people.mutationError !== null}
@@ -573,7 +614,7 @@ const PersonCard = ({
       data-testid="people-card-body"
     >
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
-      <Typography variant="caption">{observationCountLabel(dictionary, person, media)}</Typography>
+      <Typography variant="caption">{personFileCountLabel(dictionary.people, person, media)}</Typography>
     </CardContent>
   </Card>
   );

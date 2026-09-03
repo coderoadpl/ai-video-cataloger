@@ -337,6 +337,8 @@ export const IndexRoute = () => {
               personId={request.personId}
               label={request.label}
               media={request.media}
+              {...(request.fileCountLabel === undefined ? {} : { fileCountLabel: request.fileCountLabel })}
+              {...(request.observationCountLabel === undefined ? {} : { observationCountLabel: request.observationCountLabel })}
               onClose={request.onClose}
               onOpenResult={openInAnalysis}
               onOpenPhotoInAnalysis={openPhotoInAnalysis}

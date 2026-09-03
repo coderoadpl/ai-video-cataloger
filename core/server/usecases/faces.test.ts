@@ -2141,4 +2141,28 @@ describe('facesPeople per-medium counts', () => {
     expect(first).toMatchObject({ observationCount: 3, videoCount: 1, photoCount: 2 });
     expect(second).toMatchObject({ observationCount: 1, videoCount: 1, photoCount: 0 });
   });
+
+  it('reports distinct file counts for each medium separately from observations', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'fp-a:face:1:1', fingerprint: 'fp-a', personId: 'p1', media: 'video' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'fp-a:face:2:1', fingerprint: 'fp-a', personId: 'p1', media: 'video' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'fp-b:face:1:1', fingerprint: 'fp-b', personId: 'p1', media: 'video' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_1:face:1:1', fingerprint: 'ph_1', personId: 'p1', frameTsS: null, media: 'photo' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_1:face:1:2', fingerprint: 'ph_1', personId: 'p1', frameTsS: null, media: 'photo' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_2:face:1:1', fingerprint: 'ph_2', personId: 'p1', frameTsS: null, media: 'photo' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_3:face:1:1', fingerprint: 'ph_3', personId: 'p1', frameTsS: null, media: 'photo' }));
+
+    const result = await facesPeople(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.people[0]).toMatchObject({
+      observationCount: 7,
+      videoCount: 3,
+      photoCount: 4,
+      fileCounts: { video: 2, photo: 3 },
+    });
+  });
 });
