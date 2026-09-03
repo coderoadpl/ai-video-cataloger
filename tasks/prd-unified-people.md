@@ -139,9 +139,9 @@ end with crops on disk.
   disagree, the user-labelled criterion wins.
 - The implemented edge store is typed-array backed and numeric-keyed, so the
   sparse similarity edge pass is reusable by the benchmark. The benchmark also
-  sweeps `FACE_CLUSTER_MIN_EDGE_DENSITY` candidates because bridge-heavy false
-  merges are controlled by both the cosine cut and the cross-edge density
-  floor.
+  sweeps `FACE_CLUSTER_MIN_STRONG_FRACTION` candidates because bridge-heavy
+  false merges are controlled by both the cosine cut and the strong-edge
+  fraction floor.
 - `FACE_IDENTITY_MIN_SCORE` is separate from `FACE_QUALITY.minScore`: borderline
   detections remain stored and cropped, but they stay unassigned and cannot
   seed or join identities until a future extraction produces a stronger
@@ -257,7 +257,7 @@ adds no changelog line.
 4. `scripts/faces-benchmark.ts` in real-data mode over the freshly-indexed
    catalog, pointed at the operator's reference-partition directory outside
    the repo; the operator labels the emitted pair sample; the report picks the
-   cut and density floor.
+   cut and strong-fraction floor.
 5. `faces recluster --dry-run` from Osoby; read people-before/after, largest
    clusters and `personsWithoutExemplar`.
 6. `faces recluster` for real. Every person id is re-minted; every name is

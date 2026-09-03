@@ -66,7 +66,7 @@ export interface MatchedBenchmarkCorpus {
 
 export interface ThresholdBenchmarkRow {
   threshold: number;
-  minEdgeDensity: number;
+  minStrongFraction: number;
   pairwise: { precision: number; recall: number; f1: number; truePositive: number; falsePositive: number; falseNegative: number };
   referencePairwise: { precision: number; recall: number; f1: number; truePositive: number; falsePositive: number; falseNegative: number };
   purity: number;
@@ -80,13 +80,13 @@ export interface ThresholdBenchmarkRow {
 export interface BenchmarkReport {
   thresholds: ThresholdBenchmarkRow[];
   selectedThreshold: number;
-  selectedMinEdgeDensity: number;
+  selectedMinStrongFraction: number;
   bestPairwiseF1Threshold: number;
-  bestPairwiseF1MinEdgeDensity: number;
+  bestPairwiseF1MinStrongFraction: number;
   bestReferencePairwiseF1Threshold: number;
-  bestReferencePairwiseF1MinEdgeDensity: number;
+  bestReferencePairwiseF1MinStrongFraction: number;
   largestZeroDifferentThreshold: number | null;
-  largestZeroDifferentMinEdgeDensity: number | null;
+  largestZeroDifferentMinStrongFraction: number | null;
   pairSample: { left: string; right: string; similarity: number; bandMin: number; bandMax: number }[];
   unmatchedReference: number;
   unmatchedNative: number;
@@ -95,7 +95,7 @@ export interface BenchmarkReport {
 export const defaultThresholdSweep = (): number[] =>
   Array.from({ length: 26 }, (_unused, index) => Number((0.36 + index * 0.02).toFixed(2)));
 
-export const defaultDensitySweep = (): number[] => [0, 0.15, 0.3, 0.45];
+export const defaultStrongFractionSweep = (): number[] => [0, 0.15, 0.3, 0.45];
 
 export const buildFixtureCorpus = (
   records: readonly ReferencePartitionRecord[],
@@ -186,37 +186,37 @@ export const matchReferenceToNative = (
 export const runBenchmark = (
   corpus: MatchedBenchmarkCorpus,
   thresholds: readonly number[] = defaultThresholdSweep(),
-  minEdgeDensities: readonly number[] = defaultDensitySweep(),
+  minStrongFractions: readonly number[] = defaultStrongFractionSweep(),
 ): BenchmarkReport => {
   const prepared = prepareFaceClustering(corpus.observations.map(toClusterInput));
   const rows = thresholds.flatMap((threshold) =>
-    minEdgeDensities.map((minEdgeDensity) => benchmarkThreshold(corpus, prepared, threshold, minEdgeDensity)));
+    minStrongFractions.map((minStrongFraction) => benchmarkThreshold(corpus, prepared, threshold, minStrongFraction)));
   const bestPairwise = [...rows].sort((left, right) =>
     right.pairwise.f1 - left.pairwise.f1
     || right.threshold - left.threshold
-    || right.minEdgeDensity - left.minEdgeDensity)[0];
+    || right.minStrongFraction - left.minStrongFraction)[0];
   const bestReferencePairwise = [...rows].sort((left, right) =>
     right.referencePairwise.f1 - left.referencePairwise.f1
     || right.threshold - left.threshold
-    || right.minEdgeDensity - left.minEdgeDensity)[0];
+    || right.minStrongFraction - left.minStrongFraction)[0];
   const largestZeroDifferent = [...rows]
     .filter((row) => row.differentPairsMerged === 0)
-    .sort((left, right) => right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0];
+    .sort((left, right) => right.threshold - left.threshold || right.minStrongFraction - left.minStrongFraction)[0];
   const candidates = rows.filter((row) =>
     row.differentPairsMerged === 0 && bestReferencePairwise !== undefined && row.threshold >= bestReferencePairwise.threshold);
   const selected = (candidates.length === 0 ? largestZeroDifferent : [...candidates].sort((left, right) =>
-    right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0])
+    right.threshold - left.threshold || right.minStrongFraction - left.minStrongFraction)[0])
     ?? [...rows].sort((left, right) => right.threshold - left.threshold)[0];
   return {
     thresholds: rows,
     selectedThreshold: selected?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
-    selectedMinEdgeDensity: selected?.minEdgeDensity ?? 0,
+    selectedMinStrongFraction: selected?.minStrongFraction ?? 0,
     bestPairwiseF1Threshold: bestPairwise?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
-    bestPairwiseF1MinEdgeDensity: bestPairwise?.minEdgeDensity ?? 0,
+    bestPairwiseF1MinStrongFraction: bestPairwise?.minStrongFraction ?? 0,
     bestReferencePairwiseF1Threshold: bestReferencePairwise?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
-    bestReferencePairwiseF1MinEdgeDensity: bestReferencePairwise?.minEdgeDensity ?? 0,
+    bestReferencePairwiseF1MinStrongFraction: bestReferencePairwise?.minStrongFraction ?? 0,
     largestZeroDifferentThreshold: largestZeroDifferent?.threshold ?? null,
-    largestZeroDifferentMinEdgeDensity: largestZeroDifferent?.minEdgeDensity ?? null,
+    largestZeroDifferentMinStrongFraction: largestZeroDifferent?.minStrongFraction ?? null,
     pairSample: stratifiedPairSample(corpus.observations),
     unmatchedReference: corpus.unmatchedReference,
     unmatchedNative: corpus.unmatchedNative,
@@ -225,7 +225,7 @@ export const runBenchmark = (
 
 export const benchmarkReportTable = (report: BenchmarkReport): string => {
   const lines = [
-    'threshold samplePrecision sampleRecall sampleF1 referencePrecision referenceRecall referenceF1 density purity completeness clusters largest differentMerged elapsedMs',
+    'threshold samplePrecision sampleRecall sampleF1 referencePrecision referenceRecall referenceF1 strongFraction purity completeness clusters largest differentMerged elapsedMs',
     ...report.thresholds.map((row) => [
       row.threshold.toFixed(2),
       row.pairwise.precision.toFixed(3),
@@ -234,7 +234,7 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
       row.referencePairwise.precision.toFixed(3),
       row.referencePairwise.recall.toFixed(3),
       row.referencePairwise.f1.toFixed(3),
-      row.minEdgeDensity.toFixed(2),
+      row.minStrongFraction.toFixed(2),
       row.purity.toFixed(3),
       row.completeness.toFixed(3),
       String(row.clusterCount),
@@ -242,10 +242,10 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
       String(row.differentPairsMerged),
       String(row.elapsedMs),
     ].join(' ')),
-    `selected ${report.selectedThreshold.toFixed(2)} density=${report.selectedMinEdgeDensity.toFixed(2)}`,
-    `bestLabelledSamplePairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)} density=${report.bestPairwiseF1MinEdgeDensity.toFixed(2)}`,
-    `bestReferencePairwiseF1 ${report.bestReferencePairwiseF1Threshold.toFixed(2)} density=${report.bestReferencePairwiseF1MinEdgeDensity.toFixed(2)}`,
-    `largestZeroDifferent ${report.largestZeroDifferentThreshold === null ? 'none' : report.largestZeroDifferentThreshold.toFixed(2)} density=${report.largestZeroDifferentMinEdgeDensity === null ? 'none' : report.largestZeroDifferentMinEdgeDensity.toFixed(2)}`,
+    `selected ${report.selectedThreshold.toFixed(2)} strongFraction=${report.selectedMinStrongFraction.toFixed(2)}`,
+    `bestLabelledSamplePairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)} strongFraction=${report.bestPairwiseF1MinStrongFraction.toFixed(2)}`,
+    `bestReferencePairwiseF1 ${report.bestReferencePairwiseF1Threshold.toFixed(2)} strongFraction=${report.bestReferencePairwiseF1MinStrongFraction.toFixed(2)}`,
+    `largestZeroDifferent ${report.largestZeroDifferentThreshold === null ? 'none' : report.largestZeroDifferentThreshold.toFixed(2)} strongFraction=${report.largestZeroDifferentMinStrongFraction === null ? 'none' : report.largestZeroDifferentMinStrongFraction.toFixed(2)}`,
     `pairSample ${String(report.pairSample.length)}`,
     `unmatched reference=${String(report.unmatchedReference)} native=${String(report.unmatchedNative)}`,
   ];
@@ -262,10 +262,10 @@ const benchmarkThreshold = (
   corpus: MatchedBenchmarkCorpus,
   prepared: PreparedFaceClustering,
   threshold: number,
-  minEdgeDensity: number,
+  minStrongFraction: number,
 ): ThresholdBenchmarkRow => {
   const startedAt = Date.now();
-  const outcome = clusterPreparedFaceObservations(prepared, { clusterCutSimilarity: threshold, minEdgeDensity });
+  const outcome = clusterPreparedFaceObservations(prepared, { clusterCutSimilarity: threshold, minStrongFraction });
   const clusterByObsId = new Map<string, string>();
   for (const cluster of outcome.clusters) {
     for (const obsId of cluster.memberObsIds) clusterByObsId.set(obsId, cluster.personId);
@@ -276,7 +276,7 @@ const benchmarkThreshold = (
   const partitionScores = scorePartition(corpus.partition, clusterByObsId);
   return {
     threshold,
-    minEdgeDensity,
+    minStrongFraction,
     pairwise,
     referencePairwise,
     purity: partitionScores.purity,

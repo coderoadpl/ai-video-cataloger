@@ -286,13 +286,15 @@ changes the in-memory representation and adds two quality controls:
   cluster ids, and the benchmark prepares the sparse similarity edge set once
   before sweeping threshold candidates. This avoids string-keyed `Map` growth
   as the limiting factor for large native catalogs.
-- A merge between two established clusters now also requires cross-edge density
-  of at least `FACE_CLUSTER_MIN_EDGE_DENSITY`. The default is `0.30`: a bridge
-  observation can still attach to a small cluster, but two already-established
-  clusters need support from more than isolated bridge edges before the rebuild
-  treats them as one identity. The benchmark sweeps this value as a second
-  calibration axis because labelled different-person pairs decide whether the
-  default should move.
+- A merge between two established clusters now also requires a strong-edge
+  fraction of at least `FACE_CLUSTER_MIN_STRONG_FRACTION`, where strong edges
+  are cross-cluster observation pairs whose cosine similarity is at or above
+  `FACE_CLUSTERING.clusterCutSimilarity`. The default is `0.30`: small clusters
+  still merge by average linkage alone, while two clusters with at least three
+  members each need broad support from cut-clearing cross pairs before the
+  rebuild treats them as one identity. The benchmark sweeps this value as the
+  strong-fraction calibration axis; the old density sweep CLI flag is renamed
+  to `--strong-fractions`.
 - `FACE_QUALITY.minScore` remains the storage floor, so crops and telemetry
   still include borderline detections. `FACE_IDENTITY_MIN_SCORE` is the higher
   identity floor; observations below it do not join existing identities, seed

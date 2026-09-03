@@ -120,7 +120,7 @@ interface FacesReclusterOptions extends JsonOption {
   reference?: string | undefined;
   labelledPairs?: string | undefined;
   thresholds?: string | undefined;
-  densities?: string | undefined;
+  strongFractions?: string | undefined;
 }
 
 interface AnalyzerSelection {
@@ -1539,7 +1539,7 @@ faces
   .option('--reference <path>', 'reference partition file for benchmark scoring')
   .option('--labelled-pairs <path>', 'labelled pairs file for benchmark scoring')
   .option('--thresholds <list>', 'comma-separated benchmark threshold sweep')
-  .option('--densities <list>', 'comma-separated benchmark edge-density sweep')
+  .option('--strong-fractions <list>', 'comma-separated benchmark strong-edge fraction sweep')
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: FacesReclusterOptions) => {
     const json = isJsonMode(options);
@@ -1562,9 +1562,9 @@ faces
         ...(options.thresholds === undefined
           ? {}
           : { thresholds: options.thresholds.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
-        ...(options.densities === undefined
+        ...(options.strongFractions === undefined
           ? {}
-          : { densities: options.densities.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
+          : { strongFractions: options.strongFractions.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
       });
       if (!report.ok) {
         emitError(json, report.error);

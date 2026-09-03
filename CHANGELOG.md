@@ -42,9 +42,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
-- Face identity rebuild (`faces recluster`) now uses a typed-array similarity store with a cross-edge density guard, and detections below the identity score floor stay unassigned while remaining stored observations.
+- Face identity rebuild (`faces recluster`) now uses a typed-array similarity store with a strong-edge fraction guard, and detections below the identity score floor stay unassigned while remaining stored observations.
 - Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018).
-- `scripts/faces-benchmark.ts` can sweep cross-edge density values alongside clustering thresholds while reusing one similarity edge pass.
+- `scripts/faces-benchmark.ts` can sweep strong-edge fraction values alongside clustering thresholds while reusing one similarity edge pass.
 - `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
 - `GET /api/faces/status` reports `videosIndexed`, `photosWithFaces`,
   `photosProcessed` and `stalePhotoFiles` alongside the existing counters.
@@ -53,6 +53,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard.
 - SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur.
 - Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version.
 - PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities.
