@@ -14,126 +14,226 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.28] - 2026-09-03
+
 ### Added
 
 - Osoby has Wszystko / Filmy / Zdjęcia chips that narrow the person list and its
   per-person counts, and a person card opens a grid of that person's photos and
-  videos in the shared Kolekcja media viewer.
+  videos in the shared Kolekcja media viewer
+  ([`fd33125`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd331257cde73c0d48c653b65183e15d31fbcbb0)).
 - Photo detail shows the people detected in the photo, the way video detail
   already did; `GET /api/photos/detail` gained an additive `people` field and
-  `GET /api/faces/people` gained additive `videoCount` and `photoCount`.
-- Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging.
-- The CLI can now list remote encrypted backups and restore one after explicit confirmation.
-- `backup now` runs a backup immediately (exit code 47 while backup is off) and `backup status [--test-connection]` prints enablement, provider, connected account, last success, next due date, last error, retention and indicator state.
-- Settings gained a Backup section: a one-time enablement stepper (destination choice, Google sign-in or service-account key import with a Shared Drive id, connection test, mandatory recovery-key export plus confirmation), the optional-tier toggle, the two retention fields, "Kopia teraz", the last-backup and next-evaluation readout, and the list of remote backups with a two-step restore confirmation that names the pre-restore copy and the relaunch.
-- The bottom bar shows a backup indicator next to the terminal controls — hidden while backup is off, a check glyph with the last backup date in its tooltip when idle, a spinner with the current phase while a backup runs, and a warning that opens Settings > Backup after a failure.
-- New contract routes `POST /api/backup/run`, `GET /api/backup/status`, `POST /api/backup/connect`, `POST /api/backup/test`, `POST /api/backup/enable`, `POST /api/backup/disable`, `POST /api/backup/recovery-key/export`, `POST /api/backup/recovery-key/confirm`, `POST /api/backup/recovery-key/import` and `POST /api/backup/connect/cancel`.
-- Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
-- `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
+  `GET /api/faces/people` gained additive `videoCount` and `photoCount`
+  ([`fd33125`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd331257cde73c0d48c653b65183e15d31fbcbb0)).
+- Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging
+  ([`9557113`](https://github.com/coderoadpl/ai-video-cataloger/commit/95571136c3302f26ffcbec7d586d4915bddc611d)).
+- The CLI can now list remote encrypted backups and restore one after explicit confirmation
+  ([`585563d`](https://github.com/coderoadpl/ai-video-cataloger/commit/585563d21d15c1b8d16e1169a6a5387af881702d)).
+- `backup now` runs a backup immediately (exit code 47 while backup is off) and `backup status [--test-connection]` prints enablement, provider, connected account, last success, next due date, last error, retention and indicator state
+  ([`92a79d7`](https://github.com/coderoadpl/ai-video-cataloger/commit/92a79d751b1e3e95da97dfcbd46d58faf810ee5d)).
+- Settings gained a Backup section: a one-time enablement stepper (destination choice, Google sign-in or service-account key import with a Shared Drive id, connection test, mandatory recovery-key export plus confirmation), the optional-tier toggle, the two retention fields, "Kopia teraz", the last-backup and next-evaluation readout, and the list of remote backups with a two-step restore confirmation that names the pre-restore copy and the relaunch
+  ([`92a79d7`](https://github.com/coderoadpl/ai-video-cataloger/commit/92a79d751b1e3e95da97dfcbd46d58faf810ee5d)).
+- The bottom bar shows a backup indicator next to the terminal controls — hidden while backup is off, a check glyph with the last backup date in its tooltip when idle, a spinner with the current phase while a backup runs, and a warning that opens Settings > Backup after a failure
+  ([`92a79d7`](https://github.com/coderoadpl/ai-video-cataloger/commit/92a79d751b1e3e95da97dfcbd46d58faf810ee5d)).
+- New contract routes `POST /api/backup/run`, `GET /api/backup/status`, `POST /api/backup/connect`, `POST /api/backup/test`, `POST /api/backup/enable`, `POST /api/backup/disable`, `POST /api/backup/recovery-key/export`, `POST /api/backup/recovery-key/confirm`, `POST /api/backup/recovery-key/import` and `POST /api/backup/connect/cancel`
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder
+  ([`9557113`](https://github.com/coderoadpl/ai-video-cataloger/commit/95571136c3302f26ffcbec7d586d4915bddc611d)).
+- `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster
+  ([`63dc718`](https://github.com/coderoadpl/ai-video-cataloger/commit/63dc7185716873e654f59100d874a56119d72612)).
 - `faces index` and `photos process` now detect faces in photos themselves,
   over the photo proxy, writing one crop per observation like the video pass;
   photo face observations that arrived through `photos import-libra` are
   dropped on first open (backed up under
   `~/.ai-video-cataloger/backups/`) because they carry no crops and foreign
-  geometry.
-- A privacy-lint gate now runs in `check`, and `AVC_SCRATCH_DIR` replaces the previous fixed scratch-directory convention.
+  geometry
+  ([`3d2fe78`](https://github.com/coderoadpl/ai-video-cataloger/commit/3d2fe7863fafd817a8e3b9eb0249426e6215581f)).
+- A privacy-lint gate now runs in `check`, and `AVC_SCRATCH_DIR` replaces the previous fixed scratch-directory convention
+  ([`34e50f9`](https://github.com/coderoadpl/ai-video-cataloger/commit/34e50f961085edfe2b864ed52af70af18211c941)).
 - CI gates (`check`, `smoke`, `ai-review`) run on GitHub-hosted `macos-15` runners with literal job names and no arming variables, `e2e-cli` and the new `visual-baselines` workflow are dispatch-only, and the visual gate selects its baseline set with `VISUAL_ENV` (`local-darwin` by default, `ci-macos-15` on CI). See [docs/ci.md](docs/ci.md)
-- `variants import-translation` bulk-upserts Polish analysis variants from NDJSON with dry-run, optional selection, normalized tags, copied source transcripts and selectable source artifacts.
+  ([`eaa9f25`](https://github.com/coderoadpl/ai-video-cataloger/commit/eaa9f250df40bd8e3e269b99a33f714d21eeb05c)).
+- `variants import-translation` bulk-upserts Polish analysis variants from NDJSON with dry-run, optional selection, normalized tags, copied source transcripts and selectable source artifacts
+  ([`940dce3`](https://github.com/coderoadpl/ai-video-cataloger/commit/940dce3ef2de4be848025d88eb3cd94db74101b9)).
 
 ### Changed
 
-- Face identity rebuild (`faces recluster`) now uses a typed-array similarity store with a strong-edge fraction guard, and detections below the identity score floor stay unassigned while remaining stored observations.
-- Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018).
-- `scripts/faces-benchmark.ts` can sweep strong-edge fraction values alongside clustering thresholds while reusing one similarity edge pass.
-- `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
+- Face identity rebuild (`faces recluster`) now uses a typed-array similarity store with a strong-edge fraction guard, and detections below the identity score floor stay unassigned while remaining stored observations
+  ([`ddd2475`](https://github.com/coderoadpl/ai-video-cataloger/commit/ddd2475aa1a523560aa32ed33c4f25fae70bf254)).
+- Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018)
+  ([`63dc718`](https://github.com/coderoadpl/ai-video-cataloger/commit/63dc7185716873e654f59100d874a56119d72612)).
+- `scripts/faces-benchmark.ts` can sweep strong-edge fraction values alongside clustering thresholds while reusing one similarity edge pass
+  ([`ddd2475`](https://github.com/coderoadpl/ai-video-cataloger/commit/ddd2475aa1a523560aa32ed33c4f25fae70bf254)).
+- `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold
+  ([`63dc718`](https://github.com/coderoadpl/ai-video-cataloger/commit/63dc7185716873e654f59100d874a56119d72612)).
 - `GET /api/faces/status` reports `videosIndexed`, `photosWithFaces`,
-  `photosProcessed` and `stalePhotoFiles` alongside the existing counters.
+  `photosProcessed` and `stalePhotoFiles` alongside the existing counters
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
 - The AI review gate has a 90-turn budget and reads large diffs in grouped
-  `git diff` calls, always returning a verdict.
+  `git diff` calls, always returning a verdict
+  ([`91d1c1f`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d1c1fb3dc96ac68f56cdf52783a154952ad800)).
 
 ### Fixed
 
-- Settings > Kopia zapasowa now refreshes the list of remote backups while a backup job runs and when it finishes, so the first enqueued backup and "Kopia teraz" appear without closing and reopening Settings, and "Kopia teraz" stays busy until the enqueued run is observed.
-- The two retention fields in Settings > Kopia zapasowa are wide enough for their Polish and English labels, which no longer truncate to an ellipsis.
-- `qa:walkthrough` now clicks the Settings > Kopia zapasowa enable switch and the provider radio instead of calling Playwright's `check()` on controls whose checked state the server owns, waits for the recovery-key step rather than the connect alert the stepper unmounts, counts only uploaded archives in the fake Drive, reads the backup indicator's state, and captures a new `people` step over Biblioteka > Osoby.
-- The smoke gate now boots the in-process app against an isolated temp home instead of the developer home.
-- A failed catalog or photo flush now keeps holding the home lock while dirty writes stay in memory, so another process cannot take the lock and have its committed writes overwritten by the retry.
-- A catalog or photo write whose immediate persist fails now reports success and carries the failure in `durabilityStatus()` instead of returning an error for a write that stays applied.
-- Auto-flush no longer re-raises `SIGINT`/`SIGTERM` when a one-shot listener was registered before it, so a process shutting down through its own handler is not terminated abruptly.
-- Google Drive resumable uploads now count non-progressing `308` responses against a monotonic acknowledged high-water mark, so an alternating acknowledged range can no longer reset the stall guard forever.
-- Backup staging directories are published behind a sibling `<job>.owner.json` marker written before the directory, so a concurrent cleanup can no longer delete the staging area of a starting backup or restore.
-- Restore-rollback and staging ownership now verify the owner process start time, read in a fixed locale and timezone so a marker written by the app matches what any later process reads, and the recorded hostname no longer takes part in the decision; a crashed owner whose pid was reused stops blocking recovery, a live owner is never judged dead, and a skipped rollback is logged with the owning pid.
-- Refusing an imported recovery key because this Mac already stores a different key that wrote archives now reports the new `recovery_key_conflict` code (HTTP 409, CLI exit code 57) with its own message instead of the generic "recovery key required" one.
-- The file-backed secrets store used by QA runs now serializes concurrent writes, so a set and a delete can no longer drop each other's change.
-- The file-backed secrets store is selected only for a run that drives a home other than the account's own one (QA and e2e runs) with `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` set; an install running on the account's home keeps the Keychain whatever the environment says, packaged or not.
-- Relevance (offset) collection paging ends on an exactly full last page instead of serving one extra empty page.
-- The bottom bar now warns when the catalog or photo store cannot persist its writes, polls the two stores so the warning appears and clears on its own, and explains what to check instead of printing the raw error code.
-- SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status.
-- Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal, and takes the signal back once that listener is gone instead of swallowing it forever.
-- Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever.
-- Google Drive backup listing and service-account permission checks now stop when Drive repeats a page token.
-- Restore swaps now fsync staged files and live parent directories before treating restored files as durable.
-- Post-swap restore state and pruning failures now surface `restore_incomplete`, so the UI no longer says nothing changed after live files may have changed.
-- Restore now requires a recovery key when an archive fingerprint differs from the key stored on this Mac and explains that mismatch in the dialog.
-- OAuth backup connection cancellation is now observed even when it races loopback listener startup.
-- Polish recovery-key exports now use proper diacritics in the warning sentence.
-- Face benchmark matching now ignores PHOTO LIBRA MD5 source hashes instead of truncating them as SHA-256 photo fingerprints.
-- Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard.
-- The release walkthrough's backup step is now real: `scripts/fake-drive-server.mjs` serves an in-memory Google Drive v3 stand-in, `qa:walkthrough` starts it, drives Settings > Kopia zapasowa through the actual enablement stepper with a generated service-account key, and captures the enabled section plus the bottom-bar indicator. With `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` the composition now backs backup secrets with a 0600 `secrets.json` in the driven home instead of failing every call with `keychain_unavailable`.
-- `GET /api/library/collection` now pages by a keyset cursor that carries the last-seen sort key per medium, so an item indexed while Kolekcja or a person's media panel is paging no longer repeats one tile and hides another at the page boundary; the person media panel also drops a fingerprint it has already shown. Cursors minted by an earlier build are rejected as `validation`.
-- Importing a backup recovery key is now verified against the archives already in the destination: a checksum-valid key that wrote none of them is refused with the new `recovery_key_mismatch` code (HTTP 409, CLI exit code 56), and a stored key that wrote none of them can be replaced, so a wrong paste no longer wedges enablement.
-- The backup enablement stepper no longer lets a fresh recovery key be minted over archives written on another Mac: minting stays disabled until that Mac's key is imported or the archives are explicitly acknowledged as unreadable, and the import field reappears when the stored key matches none of the archives. `GET /api/backup/status` gained an additive `recoveryKeyFingerprint` field.
-- Backup startup recovery no longer races a second running process: each backup and restore staging directory records the owning process, `cleanupBackupStaging` keeps directories a live owner still holds, and the restore rollback marker is only replayed once its owning process is gone.
-- SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur.
-- Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version.
-- PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities.
-- Face benchmark real-data mapping now derives native photo fingerprints from the first 16 hex characters of SHA-256 hashes.
-- Face benchmark IoU matching now pairs reference and native observations one-to-one instead of reusing a native detection.
-- Face benchmark reports labelled-sample pairwise F1 separately from full reference-partition pairwise F1.
-- Person media panels now page through all matching library items with cursor load-more instead of showing only the first page.
-- Restore now stages each restored file beside its live target before swapping, so folder-scoped config restores work across volumes.
-- Restore failures after rollback protection starts now surface `restore_incomplete` instead of saying nothing changed.
-- Startup restore recovery now runs before both GUI and CLI stores open, and a failed rollback stops scheduled backup evaluation.
-- Restore rollback markers are kept until backup-state persistence and pre-restore pruning both succeed.
-- Backup and restore jobs now conflict with photo proxy and photo grid thumbnail generation.
-- Google Drive resumable uploads now resend the current chunk when a `308 Resume Incomplete` response omits `Range`.
-- Service-account Shared Drive permission checks now paginate through all permission pages before rejecting membership.
-- Service-account key import now restores the previous Keychain value if fingerprint config persistence fails.
-- Google Drive backup listing now skips malformed sibling files and tags connection probes separately.
-- Disabled or unsupported Keychain configurations now block backup secret get/set/delete operations before invoking macOS `security`.
-- `backup status` no longer fails outright when the Keychain is structurally unavailable; it now reports `recoveryKeyStored: false` instead of surfacing a `keychain_unavailable` error.
-- Backup timestamps in Settings, restore dialogs and the bottom-bar indicator now render in the active locale instead of raw ISO strings.
-- Polish backup copy now names derived files, media scope, retention fields, Keychain storage and recovery-key confirmation accurately.
-- Recovery-key exports now use Polish text when the UI language is Polish.
-- The bottom-bar backup indicator now exposes an assistive status region, including polite announcements while a backup is running.
-- Backup release docs now record the archive format ADR, fake-Drive walkthrough step and OAuth packaging prerequisites.
-- `faces exemplars` normalizes existing observation crop paths to the current catalog home when the re-anchored file is present, and reports how many paths were normalized.
-- E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
-- The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests.
-- Long face-indexing runs auto-flush SQL.js catalogs by elapsed time plus mutation count, force-flush on completion or cancellation, and avoid an extra exported-buffer copy per persist.
-- Face model status now rejects truncated or checksum-mismatched ONNX artifacts and names the forced reinstall command.
-- Face-index summaries now report low-quality detections rejected by the face quality floor.
-- Face status now distinguishes `photosWithFaces` from `photosProcessed`.
-- Photo face-index resume now reconciles existing observations with missing completion rows without re-detecting or duplicating observations.
+- Settings > Kopia zapasowa now refreshes the list of remote backups while a backup job runs and when it finishes, so the first enqueued backup and "Kopia teraz" appear without closing and reopening Settings, and "Kopia teraz" stays busy until the enqueued run is observed
+  ([`339e67d`](https://github.com/coderoadpl/ai-video-cataloger/commit/339e67d7a1487a5fc64e756ebfcb85383b3382ba)).
+- The two retention fields in Settings > Kopia zapasowa are wide enough for their Polish and English labels, which no longer truncate to an ellipsis
+  ([`339e67d`](https://github.com/coderoadpl/ai-video-cataloger/commit/339e67d7a1487a5fc64e756ebfcb85383b3382ba)).
+- `qa:walkthrough` now clicks the Settings > Kopia zapasowa enable switch and the provider radio instead of calling Playwright's `check()` on controls whose checked state the server owns, waits for the recovery-key step rather than the connect alert the stepper unmounts, counts only uploaded archives in the fake Drive, reads the backup indicator's state, and captures a new `people` step over Biblioteka > Osoby
+  ([`2e561e3`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e561e3c882f683e8db74f79ba8b0a349e1467c4)).
+- The smoke gate now boots the in-process app against an isolated temp home instead of the developer home
+  ([`a03ca18`](https://github.com/coderoadpl/ai-video-cataloger/commit/a03ca1869e6749f32ec0eb3a764feef773158a03)).
+- A failed catalog or photo flush now keeps holding the home lock while dirty writes stay in memory, so another process cannot take the lock and have its committed writes overwritten by the retry
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- A catalog or photo write whose immediate persist fails now reports success and carries the failure in `durabilityStatus()` instead of returning an error for a write that stays applied
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- Auto-flush no longer re-raises `SIGINT`/`SIGTERM` when a one-shot listener was registered before it, so a process shutting down through its own handler is not terminated abruptly
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- Google Drive resumable uploads now count non-progressing `308` responses against a monotonic acknowledged high-water mark, so an alternating acknowledged range can no longer reset the stall guard forever
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- Backup staging directories are published behind a sibling `<job>.owner.json` marker written before the directory, so a concurrent cleanup can no longer delete the staging area of a starting backup or restore
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- Restore-rollback and staging ownership now verify the owner process start time, read in a fixed locale and timezone so a marker written by the app matches what any later process reads, and the recorded hostname no longer takes part in the decision; a crashed owner whose pid was reused stops blocking recovery, a live owner is never judged dead, and a skipped rollback is logged with the owning pid
+  ([`0185632`](https://github.com/coderoadpl/ai-video-cataloger/commit/0185632d4420d21bb78be91cd826915080b1b4c7)).
+- Refusing an imported recovery key because this Mac already stores a different key that wrote archives now reports the new `recovery_key_conflict` code (HTTP 409, CLI exit code 57) with its own message instead of the generic "recovery key required" one
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- The file-backed secrets store used by QA runs now serializes concurrent writes, so a set and a delete can no longer drop each other's change
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- The file-backed secrets store is selected only for a run that drives a home other than the account's own one (QA and e2e runs) with `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` set; an install running on the account's home keeps the Keychain whatever the environment says, packaged or not
+  ([`0185632`](https://github.com/coderoadpl/ai-video-cataloger/commit/0185632d4420d21bb78be91cd826915080b1b4c7)).
+- Relevance (offset) collection paging ends on an exactly full last page instead of serving one extra empty page
+  ([`2e1604d`](https://github.com/coderoadpl/ai-video-cataloger/commit/2e1604d93258049a014fe1a88f56b1859909ecf8)).
+- The bottom bar now warns when the catalog or photo store cannot persist its writes, polls the two stores so the warning appears and clears on its own, and explains what to check instead of printing the raw error code
+  ([`0185632`](https://github.com/coderoadpl/ai-video-cataloger/commit/0185632d4420d21bb78be91cd826915080b1b4c7)).
+- SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal, and takes the signal back once that listener is gone instead of swallowing it forever
+  ([`0185632`](https://github.com/coderoadpl/ai-video-cataloger/commit/0185632d4420d21bb78be91cd826915080b1b4c7)).
+- Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Google Drive backup listing and service-account permission checks now stop when Drive repeats a page token
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Restore swaps now fsync staged files and live parent directories before treating restored files as durable
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Post-swap restore state and pruning failures now surface `restore_incomplete`, so the UI no longer says nothing changed after live files may have changed
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Restore now requires a recovery key when an archive fingerprint differs from the key stored on this Mac and explains that mismatch in the dialog
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- OAuth backup connection cancellation is now observed even when it races loopback listener startup
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Polish recovery-key exports now use proper diacritics in the warning sentence
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Face benchmark matching now ignores PHOTO LIBRA MD5 source hashes instead of truncating them as SHA-256 photo fingerprints
+  ([`91d7eb5`](https://github.com/coderoadpl/ai-video-cataloger/commit/91d7eb5fa2601094990d14b9cb92ef3ea400661c)).
+- Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard
+  ([`ddd2475`](https://github.com/coderoadpl/ai-video-cataloger/commit/ddd2475aa1a523560aa32ed33c4f25fae70bf254)).
+- The release walkthrough's backup step is now real: `scripts/fake-drive-server.mjs` serves an in-memory Google Drive v3 stand-in, `qa:walkthrough` starts it, drives Settings > Kopia zapasowa through the actual enablement stepper with a generated service-account key, and captures the enabled section plus the bottom-bar indicator. With `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` the composition now backs backup secrets with a 0600 `secrets.json` in the driven home instead of failing every call with `keychain_unavailable`
+  ([`96096d0`](https://github.com/coderoadpl/ai-video-cataloger/commit/96096d0e8b0c4d01bf664196a7c9c00f6b4994c1)).
+- `GET /api/library/collection` now pages by a keyset cursor that carries the last-seen sort key per medium, so an item indexed while Kolekcja or a person's media panel is paging no longer repeats one tile and hides another at the page boundary; the person media panel also drops a fingerprint it has already shown. Cursors minted by an earlier build are rejected as `validation`
+  ([`96096d0`](https://github.com/coderoadpl/ai-video-cataloger/commit/96096d0e8b0c4d01bf664196a7c9c00f6b4994c1)).
+- Importing a backup recovery key is now verified against the archives already in the destination: a checksum-valid key that wrote none of them is refused with the new `recovery_key_mismatch` code (HTTP 409, CLI exit code 56), and a stored key that wrote none of them can be replaced, so a wrong paste no longer wedges enablement
+  ([`96096d0`](https://github.com/coderoadpl/ai-video-cataloger/commit/96096d0e8b0c4d01bf664196a7c9c00f6b4994c1)).
+- The backup enablement stepper no longer lets a fresh recovery key be minted over archives written on another Mac: minting stays disabled until that Mac's key is imported or the archives are explicitly acknowledged as unreadable, and the import field reappears when the stored key matches none of the archives. `GET /api/backup/status` gained an additive `recoveryKeyFingerprint` field
+  ([`96096d0`](https://github.com/coderoadpl/ai-video-cataloger/commit/96096d0e8b0c4d01bf664196a7c9c00f6b4994c1)).
+- Backup startup recovery no longer races a second running process: each backup and restore staging directory records the owning process, `cleanupBackupStaging` keeps directories a live owner still holds, and the restore rollback marker is only replayed once its owning process is gone
+  ([`96096d0`](https://github.com/coderoadpl/ai-video-cataloger/commit/96096d0e8b0c4d01bf664196a7c9c00f6b4994c1)).
+- SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Face benchmark real-data mapping now derives native photo fingerprints from the first 16 hex characters of SHA-256 hashes
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Face benchmark IoU matching now pairs reference and native observations one-to-one instead of reusing a native detection
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Face benchmark reports labelled-sample pairwise F1 separately from full reference-partition pairwise F1
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Person media panels now page through all matching library items with cursor load-more instead of showing only the first page
+  ([`541f12b`](https://github.com/coderoadpl/ai-video-cataloger/commit/541f12bdcb89491e1aae346bd9129028c56c6b01)).
+- Restore now stages each restored file beside its live target before swapping, so folder-scoped config restores work across volumes
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Restore failures after rollback protection starts now surface `restore_incomplete` instead of saying nothing changed
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Startup restore recovery now runs before both GUI and CLI stores open, and a failed rollback stops scheduled backup evaluation
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Restore rollback markers are kept until backup-state persistence and pre-restore pruning both succeed
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Backup and restore jobs now conflict with photo proxy and photo grid thumbnail generation
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Google Drive resumable uploads now resend the current chunk when a `308 Resume Incomplete` response omits `Range`
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Service-account Shared Drive permission checks now paginate through all permission pages before rejecting membership
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Service-account key import now restores the previous Keychain value if fingerprint config persistence fails
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Google Drive backup listing now skips malformed sibling files and tags connection probes separately
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Disabled or unsupported Keychain configurations now block backup secret get/set/delete operations before invoking macOS `security`
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- `backup status` no longer fails outright when the Keychain is structurally unavailable; it now reports `recoveryKeyStored: false` instead of surfacing a `keychain_unavailable` error
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Backup timestamps in Settings, restore dialogs and the bottom-bar indicator now render in the active locale instead of raw ISO strings
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Polish backup copy now names derived files, media scope, retention fields, Keychain storage and recovery-key confirmation accurately
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Recovery-key exports now use Polish text when the UI language is Polish
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- The bottom-bar backup indicator now exposes an assistive status region, including polite announcements while a backup is running
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- Backup release docs now record the archive format ADR, fake-Drive walkthrough step and OAuth packaging prerequisites
+  ([`7b03b00`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b03b0060cb19222cf87aaeecea366a66c7f888f)).
+- `faces exemplars` normalizes existing observation crop paths to the current catalog home when the re-anchored file is present, and reports how many paths were normalized
+  ([`ac480aa`](https://github.com/coderoadpl/ai-video-cataloger/commit/ac480aac4389a0af806f68e6ece0123cecbca32b)).
+- E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- Long face-indexing runs auto-flush SQL.js catalogs by elapsed time plus mutation count, force-flush on completion or cancellation, and avoid an extra exported-buffer copy per persist
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- Face model status now rejects truncated or checksum-mismatched ONNX artifacts and names the forced reinstall command
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- Face-index summaries now report low-quality detections rejected by the face quality floor
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- Face status now distinguishes `photosWithFaces` from `photosProcessed`
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
+- Photo face-index resume now reconciles existing observations with missing completion rows without re-detecting or duplicating observations
+  ([`9da817b`](https://github.com/coderoadpl/ai-video-cataloger/commit/9da817b208ba781a280ee7dafa6b5b08d9a05263)).
 - Read-only folder artifacts remain reachable after a registered source folder
-  is renamed or moved.
-- Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.
-- Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive.
-- Backup retention pruning now lists and deletes only the completed run's archive tier.
-- Backup archives are encrypted with a per-archive subkey derived from a random 16-byte salt (envelope format version 2), so two archives can no longer share an AES-GCM nonce; archives written in format version 1 still decrypt.
-- Backup retention only prunes archives written under the recovery key this Mac holds, so a reinstalled Mac can no longer delete the archives it cannot read.
-- Settings > Backup restore accepts a recovery key from another Mac, and the enablement stepper detects archives already in the destination before minting a new key, offering to import that key or requiring an explicit acknowledgement that the old archives stay unreadable; `POST /api/backup/enable` refuses without one.
-- A build without a Google OAuth client id now fails `Settings > Backup > Google account` with `backup_destination_error` before opening a browser, instead of showing a Google error page and hanging for five minutes.
-- Connecting a Google account shows a waiting state and can be cancelled: closing the stepper or the new `POST /api/backup/connect/cancel` aborts the loopback listener, and a second concurrent connect is refused with `conflict`.
-- `avc backup restore --recovery-key` no longer takes the key as a command-line argument; it reads it from `AVC_BACKUP_RECOVERY_KEY` or a hidden terminal prompt.
-- Google OAuth backup now verifies a saved Drive folder id and recreates the app backup folder when the saved folder is missing or trashed.
-- Google Drive resumable uploads now retry `rateLimitExceeded` and `userRateLimitExceeded` 403 responses consistently with Drive error mapping.
+  is renamed or moved
+  ([`524ccbb`](https://github.com/coderoadpl/ai-video-cataloger/commit/524ccbb6dd5a8d7c6bba777dd0af0d759312889b)).
+- Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting
+  ([`fe26abd`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe26abd40386da1de43bcd48cacd2c9dab256442)).
+- Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive
+  ([`fe26abd`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe26abd40386da1de43bcd48cacd2c9dab256442)).
+- Backup retention pruning now lists and deletes only the completed run's archive tier
+  ([`fe26abd`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe26abd40386da1de43bcd48cacd2c9dab256442)).
+- Backup archives are encrypted with a per-archive subkey derived from a random 16-byte salt (envelope format version 2), so two archives can no longer share an AES-GCM nonce; archives written in format version 1 still decrypt
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- Backup retention only prunes archives written under the recovery key this Mac holds, so a reinstalled Mac can no longer delete the archives it cannot read
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- Settings > Backup restore accepts a recovery key from another Mac, and the enablement stepper detects archives already in the destination before minting a new key, offering to import that key or requiring an explicit acknowledgement that the old archives stay unreadable; `POST /api/backup/enable` refuses without one
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- A build without a Google OAuth client id now fails `Settings > Backup > Google account` with `backup_destination_error` before opening a browser, instead of showing a Google error page and hanging for five minutes
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- Connecting a Google account shows a waiting state and can be cancelled: closing the stepper or the new `POST /api/backup/connect/cancel` aborts the loopback listener, and a second concurrent connect is refused with `conflict`
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- `avc backup restore --recovery-key` no longer takes the key as a command-line argument; it reads it from `AVC_BACKUP_RECOVERY_KEY` or a hidden terminal prompt
+  ([`8539f0d`](https://github.com/coderoadpl/ai-video-cataloger/commit/8539f0d1144eab7a73695ef53d7e004590aadaa2)).
+- Google OAuth backup now verifies a saved Drive folder id and recreates the app backup folder when the saved folder is missing or trashed
+  ([`fe26abd`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe26abd40386da1de43bcd48cacd2c9dab256442)).
+- Google Drive resumable uploads now retry `rateLimitExceeded` and `userRateLimitExceeded` 403 responses consistently with Drive error mapping
+  ([`fe26abd`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe26abd40386da1de43bcd48cacd2c9dab256442)).
 - Filtering Kolekcja by a person no longer hides every photo, so the person
-  counts in the Osoby facet and the results now agree.
+  counts in the Osoby facet and the results now agree
+  ([`fd33125`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd331257cde73c0d48c653b65183e15d31fbcbb0)).
 - `faces exemplars` repairs a photo observation's crop from the photo proxy
-  instead of reporting the photo as unavailable.
-- Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files.
-- PHOTO LIBRA geo imports now join through manifest md5 values when artifact paths no longer match scanned paths.
+  instead of reporting the photo as unavailable
+  ([`fd33125`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd331257cde73c0d48c653b65183e15d31fbcbb0)).
+- Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files
+  ([`89a2cfa`](https://github.com/coderoadpl/ai-video-cataloger/commit/89a2cfa45ebc6df36f14b523dd08b8acf1412f28)).
+- PHOTO LIBRA geo imports now join through manifest md5 values when artifact paths no longer match scanned paths
+  ([`89a2cfa`](https://github.com/coderoadpl/ai-video-cataloger/commit/89a2cfa45ebc6df36f14b523dd08b8acf1412f28)).
 
 ## [0.6.24] - 2026-09-01
 
