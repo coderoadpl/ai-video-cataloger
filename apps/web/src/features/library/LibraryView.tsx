@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
-import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, Snackbar, TextField, Typography } from '@mui/material';
+import { ApiError, isTerminalJobStatus, invalidateLibraryVisibilityConsumers } from '@core/client/index.js';
+import { z } from 'zod';
 
+import { actions } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
+import { TrashConfirmationDialog, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
 import { LibraryMediaViewer } from './LibraryMediaViewer.js';
 import {
@@ -22,10 +28,21 @@ import {
   EMPTY_LIBRARY_FILTERS,
   libraryFilterIsEmpty,
   libraryFilterReducer,
+  noHiddenSentence,
   noMatchSentence,
   videoOnlyFilterChips,
   type LibraryFilterChipLabels,
 } from './core/filter-state.js';
+import {
+  emptyLibrarySelection,
+  librarySelectionReducer,
+  selectedFingerprintCount,
+  selectedFingerprints,
+  selectionCountLabel,
+  selectionResetKey,
+  selectionScopeOf,
+  type LibrarySelectionScope,
+} from './core/selection.js';
 import type { LibrarySort } from './core/folder-groups.js';
 import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
 import { useLibrary } from './use-library.js';
@@ -52,6 +69,31 @@ interface LibraryViewProps {
 type SearchOption =
   | { kind: 'recent'; label: string }
   | { kind: 'tag'; label: string; count: number };
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof ApiError) return error.appError.message;
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
+
+const targetReadOnlyDetailsSchema = z.object({
+  roots: z.array(z.union([
+    z.string(),
+    z.object({
+      displayName: z.string().optional(),
+      currentPath: z.string().optional(),
+    }).strict(),
+  ])),
+}).strict();
+
+const readOnlyRootNamesOf = (error: unknown): string[] => {
+  if (!(error instanceof ApiError) || error.appError.code !== 'target_read_only') return [];
+  const parsed = targetReadOnlyDetailsSchema.safeParse(error.appError.details);
+  if (!parsed.success) return [];
+  return parsed.data.roots
+    .map((root) => typeof root === 'string' ? root : root.displayName ?? root.currentPath ?? '')
+    .filter((name) => name.length > 0);
+};
 
 const toLocalDay = (isoUtc: string): string => {
   const date = new Date(isoUtc);
@@ -91,10 +133,21 @@ export const LibraryView = ({
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
   const [media, setMediaState] = useState<LibraryMedia>(() => readMedia());
   const [hideUnavailable, setHideUnavailableState] = useState(() => readHideUnavailable());
+  const [hiddenActive, setHiddenActive] = useState(false);
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchDismissed, setSearchDismissed] = useState(false);
   const [viewerFingerprint, setViewerFingerprint] = useState<string | null>(null);
+  const [selection, dispatchSelection] = useReducer(librarySelectionReducer, undefined, emptyLibrarySelection);
+  const [trashScope, setTrashScope] = useState<LibrarySelectionScope | null>(null);
+  const [trashChecked, setTrashChecked] = useState(false);
+  const [trashReadOnlyRootNames, setTrashReadOnlyRootNames] = useState<string[]>([]);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [activeTrashJobId, setActiveTrashJobId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const hideMutation = useMutation(actions.libraryHide);
+  const unhideMutation = useMutation(actions.libraryUnhide);
+  const trashMutation = useMutation(actions.libraryTrash);
   const suggestions = useSearchSuggestions();
 
   const setGroupBy = (next: LibraryGroupBy) => {
@@ -131,7 +184,8 @@ export const LibraryView = ({
     dateTo: dictionary.library.chipDateTo,
   }), [dictionary]);
 
-  const library = useLibrary({ active, filters, sort, media, hideUnavailable });
+  const hidden: 'only' | 'exclude' = hiddenActive ? 'only' : 'exclude';
+  const library = useLibrary({ active, filters, sort, media, hideUnavailable, hidden });
   const facetsState = useLibraryFacets({ active });
   const photoRoots = usePhotoRoots({ active });
   const backfillFolders = useMemo(
@@ -182,10 +236,113 @@ export const LibraryView = ({
   const viewerItem = viewerFingerprint === null
     ? null
     : library.items.find((item) => item.fingerprint === viewerFingerprint) ?? null;
+  const selectionTotal = selectedFingerprintCount(selection, library.total);
+  const selectedFingerprintLookup = useMemo(() => {
+    if (selection.mode === 'all-in-filter') {
+      return new Set(library.items
+        .filter((item) => !selection.excluded.has(item.fingerprint))
+        .map((item) => item.fingerprint));
+    }
+    return new Set(selectedFingerprints(selection));
+  }, [library.items, selection]);
+  const selected = selectionTotal > 0;
+  const scopeInput = useMemo(() => ({
+    filters,
+    query: library.debouncedQuery,
+    media,
+    hideUnavailable,
+    hidden,
+  }), [filters, library.debouncedQuery, media, hideUnavailable, hidden]);
+  const currentScope = useMemo(() => selectionScopeOf(selection, scopeInput), [selection, scopeInput]);
+  const trashPreview = useQuery({
+    ...actions.librarySelectionPreview({ scope: trashScope ?? { kind: 'fingerprints', fingerprints: ['preview-placeholder'] } }),
+    enabled: active && trashScope !== null,
+  });
+  const trashRoots: TrashConfirmationRoot[] = trashPreview.data?.roots ?? [];
+  const trashCounts = trashPreview.data === undefined ? null : {
+    total: trashPreview.data.total,
+    videoCount: trashPreview.data.videoCount,
+    photoCount: trashPreview.data.photoCount,
+  };
+  const resetKey = useMemo(
+    () => selectionResetKey({ ...scopeInput, sort }),
+    [scopeInput, sort],
+  );
+  const selectionResetKeyRef = useRef(resetKey);
+
+  const clearSelection = (): void => dispatchSelection({ type: 'clear' });
+  const runVisibilityMutation = (scope: LibrarySelectionScope, restore: boolean): void => {
+    void (async () => {
+      try {
+        if (restore) await unhideMutation.mutateAsync({ scope });
+        else await hideMutation.mutateAsync({ scope });
+        clearSelection();
+        setMutationError(null);
+      } catch (error) {
+        setMutationError(`${restore ? dictionary.library.restoreFailed : dictionary.library.hideFailed}: ${messageOf(error)}`);
+      }
+    })();
+  };
+  const openTrashDialog = (scope: LibrarySelectionScope): void => {
+    setTrashScope(scope);
+    setTrashChecked(false);
+    setTrashReadOnlyRootNames([]);
+    setMutationError(null);
+  };
+  const confirmTrash = (): void => {
+    if (trashScope === null) return;
+    void (async () => {
+      try {
+        const output = await trashMutation.mutateAsync({ scope: trashScope, confirm: true, dryRun: false });
+        if (output.kind === 'job') {
+          setActiveTrashJobId(output.jobId);
+          const final = await pollJobUntilTerminal(output.jobId, {
+            intervalMs: 1000,
+            delay: sleep,
+            fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
+            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+            onSnapshot: () => undefined,
+          });
+          if (final.status !== 'completed') {
+            throw new Error(final.error?.message ?? dictionary.library.trashFailed);
+          }
+        }
+        await invalidateLibraryVisibilityConsumers(queryClient);
+        clearSelection();
+        setTrashScope(null);
+        setTrashChecked(false);
+        setMutationError(null);
+      } catch (error) {
+        const rootNames = readOnlyRootNamesOf(error);
+        if (rootNames.length > 0) setTrashReadOnlyRootNames(rootNames);
+        setMutationError(`${dictionary.library.trashFailed}: ${messageOf(error)}`);
+      } finally {
+        setActiveTrashJobId(null);
+      }
+    })();
+  };
 
   useEffect(() => {
     if (sort === 'relevance' && media === 'all') setSort('captured_desc');
   }, [sort, media]);
+
+  useEffect(() => {
+    if (selectionResetKeyRef.current === resetKey) return;
+    selectionResetKeyRef.current = resetKey;
+    dispatchSelection({ type: 'clear' });
+    setTrashScope(null);
+    setTrashChecked(false);
+    setTrashReadOnlyRootNames([]);
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') dispatchSelection({ type: 'clear' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active]);
 
   if (!active) return null;
 
@@ -202,8 +359,9 @@ export const LibraryView = ({
   };
 
   const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
-    && libraryFilterIsEmpty(filters) && !hideUnavailable && library.total === 0;
-  const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog;
+    && libraryFilterIsEmpty(filters) && !hideUnavailable && !hiddenActive && library.total === 0;
+  const isHiddenEmpty = !library.isLoading && library.error === null && hiddenActive && library.total === 0;
+  const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog && !isHiddenEmpty;
   const videoOnlyFilterActive = filters.place !== null || filters.hasGps !== null;
   const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
   const body = () => {
@@ -273,6 +431,29 @@ export const LibraryView = ({
         </Box>
       );
     }
+    if (isHiddenEmpty) {
+      return (
+        <Box
+          data-testid="library-hidden-empty"
+          sx={{
+            flex: 1,
+            minHeight: 260,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            gap: 1,
+            color: 'text.secondary',
+          }}
+        >
+          <Typography variant="h2" color="text.primary">{dictionary.library.hiddenEmptyTitle}</Typography>
+          <Typography variant="body2" sx={{ maxWidth: 420 }} data-testid="library-hidden-empty-body">
+            {noHiddenSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.hiddenEmptyBody)}
+          </Typography>
+        </Box>
+      );
+    }
     return (
       <>
         {showVideoOnlyFilterNotice ? (
@@ -283,7 +464,18 @@ export const LibraryView = ({
         <LibraryGrid
           sections={sections}
           onOpen={(item) => setViewerFingerprint(item.fingerprint)}
+          onSelect={(item, event) => {
+            if (event.shiftKey) {
+              dispatchSelection({ type: 'extendTo', fingerprint: item.fingerprint, order: viewerOrder });
+              return;
+            }
+            dispatchSelection({ type: 'toggle', fingerprint: item.fingerprint });
+          }}
           onOpenInAnalysis={openInAnalysis}
+          selectedFingerprints={selectedFingerprintLookup}
+          hiddenView={hiddenActive}
+          onHideItem={(item) => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, false)}
+          onRestoreItem={(item) => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, true)}
         />
         {library.hasMore ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
@@ -408,7 +600,64 @@ export const LibraryView = ({
           mediaTotals={library.mediaTotals}
           hideUnavailable={hideUnavailable}
           onHideUnavailableChange={setHideUnavailable}
+          hiddenActive={hiddenActive}
+          hiddenCount={facetsState.facets.counts.hidden}
+          onHiddenChange={setHiddenActive}
         />
+        {selected ? (
+          <Box
+            data-testid="library-selection-bar"
+            sx={{
+              mt: 1.25,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography variant="body2" data-testid="library-selection-count" sx={{ fontWeight: 600 }}>
+              {selectionCountLabel(selection, library.total, {
+                items: dictionary.library.selectionCount,
+                allInFilter: dictionary.library.selectionCount,
+              })}
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => dispatchSelection({ type: 'selectAllInFilter' })}
+              data-testid="library-select-all"
+            >
+              {dictionary.library.selectAll}
+            </Button>
+            <Button size="small" onClick={() => dispatchSelection({ type: 'clear' })} data-testid="library-clear-selection">
+              {dictionary.library.clearSelection}
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={currentScope === null || hideMutation.isPending || unhideMutation.isPending}
+              onClick={() => { if (currentScope !== null) runVisibilityMutation(currentScope, hiddenActive); }}
+              data-testid={hiddenActive ? 'library-unhide-selected' : 'library-hide-selected'}
+            >
+              {hiddenActive ? dictionary.library.restoreSelected : dictionary.library.hideSelected}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              disabled={currentScope === null || trashMutation.isPending || activeTrashJobId !== null}
+              onClick={() => { if (currentScope !== null) openTrashDialog(currentScope); }}
+              data-testid="library-trash-selected"
+            >
+              {dictionary.library.trashSelected}
+            </Button>
+          </Box>
+        ) : null}
+        {activeTrashJobId === null ? null : (
+          <Alert severity="info" data-testid="library-trash-active-job" sx={{ mt: 1 }}>
+            {dictionary.library.trashStarted}
+          </Alert>
+        )}
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>
       {viewerItem === null ? null : (
@@ -428,6 +677,32 @@ export const LibraryView = ({
           }
         />
       )}
+      <TrashConfirmationDialog
+        open={trashScope !== null}
+        counts={trashCounts}
+        roots={trashRoots}
+        loading={trashPreview.isLoading || trashPreview.isFetching}
+        error={trashPreview.isError ? messageOf(trashPreview.error) : null}
+        checked={trashChecked}
+        confirming={trashMutation.isPending}
+        readOnlyRootNames={trashReadOnlyRootNames}
+        onCheckedChange={setTrashChecked}
+        onClose={() => {
+          setTrashScope(null);
+          setTrashChecked(false);
+          setTrashReadOnlyRootNames([]);
+        }}
+        onConfirm={confirmTrash}
+      />
+      <Snackbar
+        open={mutationError !== null}
+        onClose={() => setMutationError(null)}
+        autoHideDuration={8000}
+      >
+        <Alert severity="error" onClose={() => setMutationError(null)} data-testid="library-mutation-error">
+          {mutationError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

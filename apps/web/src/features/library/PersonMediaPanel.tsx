@@ -106,7 +106,12 @@ export const PersonMediaPanel = ({
             <LibraryGrid
               sections={[{ key: personId, label: dictionary.people.personMediaSection, offline: false, offlineReason: null, items }]}
               onOpen={(item) => setViewerFingerprint(item.fingerprint)}
+              onSelect={() => undefined}
               onOpenInAnalysis={openInAnalysis}
+              selectedFingerprints={new Set()}
+              hiddenView={false}
+              onHideItem={() => undefined}
+              onRestoreItem={() => undefined}
             />
             {page.hasNextPage ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>

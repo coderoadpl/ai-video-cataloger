@@ -167,3 +167,10 @@ export const noMatchSentence = (
   const parts = libraryFilterChips(state, labels).map((chip) => chip.label);
   return parts.length === 0 ? genericBody : build(parts);
 };
+
+export const noHiddenSentence = (
+  state: LibraryFilterState,
+  labels: LibraryFilterChipLabels,
+  build: (parts: string[]) => string,
+  genericBody: string,
+): string => noMatchSentence(state, labels, build, genericBody);

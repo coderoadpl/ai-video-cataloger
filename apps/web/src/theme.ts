@@ -36,14 +36,22 @@ export interface MapPalette {
   clusterText: string;
 }
 
+export interface LibraryPalette {
+  selectionOutline: string;
+  selectionOverlay: string;
+  actionBarBackground: string;
+}
+
 declare module '@mui/material/styles' {
   interface Palette {
     status: StatusPalette;
     map: MapPalette;
+    library: LibraryPalette;
   }
   interface PaletteOptions {
     status?: StatusPalette;
     map?: MapPalette;
+    library?: LibraryPalette;
   }
 }
 
@@ -82,6 +90,11 @@ const LIGHT = {
     cluster: '#007AFF',
     clusterText: '#ffffff',
   } satisfies MapPalette,
+  library: {
+    selectionOutline: '#007AFF',
+    selectionOverlay: 'rgba(0, 122, 255, 0.18)',
+    actionBarBackground: '#ffffff',
+  } satisfies LibraryPalette,
 };
 
 const DARK = {
@@ -113,6 +126,11 @@ const DARK = {
     cluster: '#0a84ff',
     clusterText: '#0b0b0c',
   } satisfies MapPalette,
+  library: {
+    selectionOutline: '#0a84ff',
+    selectionOverlay: 'rgba(10, 132, 255, 0.24)',
+    actionBarBackground: '#2c2c2e',
+  } satisfies LibraryPalette,
 };
 
 const PLACEHOLDER_HUE_BASE = 210;
@@ -144,6 +162,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       divider: c.border,
       status: c.status,
       map: c.map,
+      library: c.library,
     },
     shape: { borderRadius: RADIUS },
     typography: {

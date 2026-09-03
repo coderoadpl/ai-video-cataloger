@@ -193,6 +193,63 @@ const stubPeople = (input: {
   );
 };
 
+const personLibraryRequests: unknown[] = [];
+
+const stubPersonLibraryActions = () => {
+  personLibraryRequests.length = 0;
+  server.use(
+    http.post('/api/library/selection/preview', async ({ request }) => {
+      personLibraryRequests.push(await request.json());
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          total: 2,
+          videoCount: 1,
+          photoCount: 1,
+          hiddenCount: 0,
+          visibleCount: 2,
+          sharedWithOtherPeople: 1,
+          roots: [{
+            folderId: '11111111-1111-4111-8111-111111111111',
+            displayName: 'Sample root',
+            currentPath: '/fixtures/root',
+            fileCount: 2,
+            writable: true,
+            online: true,
+          }],
+        },
+      });
+    }),
+    http.post('/api/library/hide', async ({ request }) => {
+      personLibraryRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { requested: 2, changed: 2, unchanged: 0, videos: 1, photos: 1 } });
+    }),
+    http.post('/api/library/trash', async ({ request }) => {
+      personLibraryRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { kind: 'job', jobId: 'job-trash-person' } });
+    }),
+    http.get('/api/jobs/status', () => HttpResponse.json({
+      ok: true,
+      data: terminalJob('job-trash-person', 'library_trash', {
+        kind: 'library_trash',
+        filesTrashed: 2,
+        videosTrashed: 1,
+        photosTrashed: 1,
+        filesFailed: 0,
+        filesNotAttempted: 0,
+        failedFingerprint: null,
+        cancelled: false,
+        analysesDeleted: 2,
+        observationsDeleted: 2,
+        peopleDeleted: 0,
+        artifactPathsDeleted: 2,
+        snapshotsRewritten: 1,
+        roots: ['/fixtures/root'],
+      }),
+    })),
+  );
+};
+
 describe('PeopleView', () => {
   beforeEach(() => window.localStorage.clear());
 
@@ -348,6 +405,76 @@ describe('PeopleView', () => {
     const menuItem = await screen.findByTestId('people-search-library');
     fireEvent.click(menuItem);
     expect(onSearchInLibrary).toHaveBeenCalledWith('p1', 'Alex');
+  });
+
+  it('adds person-card hide and trash shortcuts below the library search action', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+
+    expect(await screen.findByTestId('people-search-library')).toBeDefined();
+    expect(screen.getByTestId('people-hide-files').textContent).toBe('Hide this person’s files');
+    expect(screen.getByTestId('people-trash-files').textContent).toBe('Move this person’s files to Trash');
+  });
+
+  it('opens the hide dialog with shared-file copy and skip off by default', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 2,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 2 })],
+    });
+    stubPersonLibraryActions();
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    fireEvent.click(await screen.findByTestId('people-hide-files'));
+
+    expect((await screen.findByTestId('people-library-action-summary')).textContent).toContain('2 files, including 1 that also contains other recognized people');
+    expect(screen.getByTestId('people-library-skip-shared').querySelector('input')?.checked).toBe(false);
+    expect(personLibraryRequests[0]).toEqual({
+      scope: { kind: 'person', personId: 'p1', skipSharedWithOtherPeople: false },
+    });
+  });
+
+  it('opens the trash dialog with skip on by default and re-previews when toggled', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 2,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 2 })],
+    });
+    stubPersonLibraryActions();
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    fireEvent.click(await screen.findByTestId('people-trash-files'));
+
+    expect((await screen.findByTestId('library-trash-person-summary')).textContent).toContain('2 files, including 1 that also contains other recognized people');
+    expect(screen.getByTestId('people-library-skip-shared').querySelector('input')?.checked).toBe(true);
+    fireEvent.click(screen.getByTestId('people-library-skip-shared'));
+
+    await waitFor(() => expect(personLibraryRequests).toContainEqual({
+      scope: { kind: 'person', personId: 'p1', skipSharedWithOtherPeople: false },
+    }));
   });
 
   it('keeps the destructive delete action off the card face, behind an overflow menu', async () => {

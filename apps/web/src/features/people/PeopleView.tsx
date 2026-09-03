@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Box,
@@ -13,6 +14,7 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   Menu,
   MenuItem,
@@ -23,13 +25,18 @@ import {
   ToggleButtonGroup,
 } from '@mui/material';
 
+import { ApiError, invalidateLibraryVisibilityConsumers, isTerminalJobStatus } from '@core/client/index.js';
+
+import { actions } from '../../api.js';
 import { MoreVertIcon } from '../../components/ui/icons.js';
 import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
+import { TrashConfirmationDialog, type TrashConfirmationCounts, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
@@ -69,6 +76,19 @@ interface RenameState {
   value: string;
 }
 
+interface PersonLibraryAction {
+  kind: 'hide' | 'trash';
+  personId: string;
+  name: string;
+  skipSharedWithOtherPeople: boolean;
+}
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof ApiError) return error.appError.message;
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
+
 const displayName = (dictionary: Dictionary, person: FacePerson, index: number): string =>
   person.displayName ?? dictionary.people.personName(index);
 
@@ -92,6 +112,7 @@ export const PeopleView = ({
   intervalMs,
 }: PeopleViewProps) => {
   const dictionary = useDictionary();
+  const queryClient = useQueryClient();
   const people = usePeople({ active, folder, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const mutationsBlocked = lockReason !== undefined;
   const [rename, setRename] = useState<RenameState | null>(null);
@@ -102,6 +123,11 @@ export const PeopleView = ({
   const [media, setMedia] = useState<PeopleMedia>('all');
   const [sort, setSortState] = useState<PeopleSort>(() => readPeopleSort());
   const [openPerson, setOpenPerson] = useState<{ personId: string; label: string } | null>(null);
+  const [libraryAction, setLibraryAction] = useState<PersonLibraryAction | null>(null);
+  const [trashChecked, setTrashChecked] = useState(false);
+  const [libraryActionError, setLibraryActionError] = useState<string | null>(null);
+  const hideMutation = useMutation(actions.libraryHide);
+  const trashMutation = useMutation(actions.libraryTrash);
   const setSort = (next: PeopleSort) => {
     setSortState(next);
     writeStorageItem('local', PEOPLE_SORT_KEY, next);
@@ -123,6 +149,88 @@ export const PeopleView = ({
   const mergeTarget = selected.length === 2 && selected[0] !== undefined && selected[1] !== undefined
     ? { to: selected[0], from: selected[1] }
     : null;
+  const libraryActionScope = libraryAction === null
+    ? { kind: 'person' as const, personId: 'preview-placeholder', skipSharedWithOtherPeople: false }
+    : {
+      kind: 'person' as const,
+      personId: libraryAction.personId,
+      skipSharedWithOtherPeople: libraryAction.skipSharedWithOtherPeople,
+    };
+  const libraryActionPreview = useQuery({
+    ...actions.librarySelectionPreview({ scope: libraryActionScope }),
+    enabled: active && libraryAction !== null,
+  });
+  const libraryActionCounts: TrashConfirmationCounts | null = libraryActionPreview.data === undefined ? null : {
+    total: libraryActionPreview.data.total,
+    videoCount: libraryActionPreview.data.videoCount,
+    photoCount: libraryActionPreview.data.photoCount,
+    sharedWithOtherPeople: libraryActionPreview.data.sharedWithOtherPeople,
+  };
+  const libraryActionRoots: TrashConfirmationRoot[] = libraryActionPreview.data?.roots ?? [];
+  const personSummary = libraryAction === null || libraryActionPreview.data === undefined
+    ? ''
+    : dictionary.people.personSelectionSummary(
+      libraryActionPreview.data.total,
+      libraryActionPreview.data.sharedWithOtherPeople,
+    );
+  const closeLibraryAction = (): void => {
+    setLibraryAction(null);
+    setTrashChecked(false);
+    setLibraryActionError(null);
+  };
+  const skipSharedControl = libraryAction === null ? null : (
+    <FormControlLabel
+      data-testid="people-library-skip-shared"
+      control={(
+        <Checkbox
+          checked={libraryAction.skipSharedWithOtherPeople}
+          onChange={(event) => setLibraryAction({
+            ...libraryAction,
+            skipSharedWithOtherPeople: event.target.checked,
+          })}
+        />
+      )}
+      label={dictionary.people.skipSharedWithOtherPeople}
+    />
+  );
+  const runPersonHide = (): void => {
+    if (libraryAction === null) return;
+    void (async () => {
+      try {
+        await hideMutation.mutateAsync({ scope: libraryActionScope });
+        addLine(dictionary.people.hiddenPersonFilesLog(libraryAction.name), 'success');
+        await invalidateLibraryVisibilityConsumers(queryClient);
+        closeLibraryAction();
+      } catch (error) {
+        setLibraryActionError(`${dictionary.people.hidePersonFilesFailedLog}: ${messageOf(error)}`);
+      }
+    })();
+  };
+  const runPersonTrash = (): void => {
+    if (libraryAction === null) return;
+    void (async () => {
+      try {
+        const output = await trashMutation.mutateAsync({ scope: libraryActionScope, confirm: true, dryRun: false });
+        if (output.kind === 'job') {
+          const final = await pollJobUntilTerminal(output.jobId, {
+            intervalMs: intervalMs ?? 1000,
+            delay: sleep,
+            fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
+            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+            onSnapshot: () => undefined,
+          });
+          if (final.status !== 'completed') {
+            throw new Error(final.error?.message ?? dictionary.people.trashPersonFilesFailedLog);
+          }
+        }
+        addLine(dictionary.people.trashPersonFilesLog(libraryAction.name), 'success');
+        await invalidateLibraryVisibilityConsumers(queryClient);
+        closeLibraryAction();
+      } catch (error) {
+        setLibraryActionError(`${dictionary.people.trashPersonFilesFailedLog}: ${messageOf(error)}`);
+      }
+    })();
+  };
 
   if (!active) return null;
 
@@ -237,6 +345,21 @@ export const PeopleView = ({
                   onForget={() => setForgetTarget(person)}
                   onOpen={() => setOpenPerson({ personId: person.personId, label: name })}
                   onSearchInLibrary={() => onSearchInLibrary(person.personId, name)}
+                  onHidePersonFiles={() => setLibraryAction({
+                    kind: 'hide',
+                    personId: person.personId,
+                    name,
+                    skipSharedWithOtherPeople: false,
+                  })}
+                  onTrashPersonFiles={() => {
+                    setTrashChecked(false);
+                    setLibraryAction({
+                      kind: 'trash',
+                      personId: person.personId,
+                      name,
+                      skipSharedWithOtherPeople: true,
+                    });
+                  }}
                 />
               );
             })}
@@ -407,6 +530,53 @@ export const PeopleView = ({
         }}
       />
 
+      <Dialog open={libraryAction?.kind === 'hide'} onClose={closeLibraryAction} fullWidth maxWidth="sm">
+        <DialogTitle>
+          {libraryAction === null ? dictionary.people.hidePersonFiles : dictionary.people.personSelectionTitle(libraryAction.name)}
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {libraryActionPreview.isLoading || libraryActionPreview.isFetching ? (
+            <DialogContentText>{dictionary.library.trashDialogLoading}</DialogContentText>
+          ) : libraryActionPreview.isError ? (
+            <Alert severity="error" data-testid="people-library-action-error">{messageOf(libraryActionPreview.error)}</Alert>
+          ) : (
+            <DialogContentText data-testid="people-library-action-summary">{personSummary}</DialogContentText>
+          )}
+          {skipSharedControl}
+          {libraryActionError === null ? null : (
+            <Alert severity="error" data-testid="people-library-action-error">{libraryActionError}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={closeLibraryAction}>{dictionary.common.cancel}</Button>
+          <Button
+            variant="contained"
+            disabled={libraryActionCounts === null || hideMutation.isPending}
+            onClick={runPersonHide}
+            data-testid="people-hide-files-confirm"
+          >
+            {dictionary.people.hidePersonConfirm}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <TrashConfirmationDialog
+        open={libraryAction?.kind === 'trash'}
+        counts={libraryActionCounts}
+        roots={libraryActionRoots}
+        loading={libraryActionPreview.isLoading || libraryActionPreview.isFetching}
+        error={libraryActionPreview.isError || libraryActionError !== null
+          ? libraryActionError ?? messageOf(libraryActionPreview.error)
+          : null}
+        checked={trashChecked}
+        confirming={trashMutation.isPending}
+        personSummary={personSummary}
+        skipSharedControl={skipSharedControl}
+        onCheckedChange={setTrashChecked}
+        onClose={closeLibraryAction}
+        onConfirm={runPersonTrash}
+      />
+
       {openPerson === null || renderPersonMedia === undefined
         ? null
         : renderPersonMedia({
@@ -511,6 +681,8 @@ interface PersonCardProps {
   onForget: () => void;
   onOpen: () => void;
   onSearchInLibrary: () => void;
+  onHidePersonFiles: () => void;
+  onTrashPersonFiles: () => void;
 }
 
 const PersonCard = ({
@@ -527,6 +699,8 @@ const PersonCard = ({
   onForget,
   onOpen,
   onSearchInLibrary,
+  onHidePersonFiles,
+  onTrashPersonFiles,
 }: PersonCardProps) => {
   const dictionary = useDictionary();
   const [imageFailed, setImageFailed] = useState(false);
@@ -605,6 +779,23 @@ const PersonCard = ({
           data-testid="people-search-library"
         >
           {dictionary.people.searchInLibrary}
+        </MenuItem>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onHidePersonFiles(); }}
+          disabled={disabled || mutationsDisabled}
+          title={lockReason}
+          data-testid="people-hide-files"
+        >
+          {dictionary.people.hidePersonFiles}
+        </MenuItem>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onTrashPersonFiles(); }}
+          disabled={disabled || mutationsDisabled}
+          title={lockReason}
+          data-testid="people-trash-files"
+          sx={{ color: 'error.main' }}
+        >
+          {dictionary.people.trashPersonFiles}
         </MenuItem>
       </Menu>
     </Box>

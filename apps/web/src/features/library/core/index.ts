@@ -28,6 +28,7 @@ export {
   libraryFilterIsEmpty,
   libraryFilterReducer,
   noMatchSentence,
+  noHiddenSentence,
   toSearchParams,
   videoOnlyFilterChips,
   type LibraryFilterAction,
@@ -36,6 +37,20 @@ export {
   type LibraryFilterState,
   type LibrarySearchParams,
 } from './filter-state.js';
+export {
+  emptyLibrarySelection,
+  librarySelectionReducer,
+  selectedFingerprintCount,
+  selectedFingerprints,
+  selectionCountLabel,
+  selectionResetKey,
+  selectionScopeOf,
+  type LibrarySelectionAction,
+  type LibrarySelectionScope,
+  type LibrarySelectionState,
+  type SelectionCountParts,
+  type SelectionFilterProjection,
+} from './selection.js';
 export { adjacentFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
 export { photoViewerSourceCandidates } from './photo-source.js';
 export { videoViewerStage, viewerTitle, type LibraryVideoStage } from './viewer-media.js';

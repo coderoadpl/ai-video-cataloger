@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import { SqlJsGlobalCatalogStore } from '../../adapters/db/index.js';
+import { type AppError, type Result } from '../../core/domain/index.js';
 import { addSampleTo, runCli } from './helpers.js';
 import { matrixAllowsSkip, missingLegMessage, systemOllamaModelMissingReason } from './matrix-support.js';
 import {
@@ -20,6 +22,7 @@ test.describe.configure({ mode: 'serial' });
 
 const DETECTION_CELL = 'ro-mount × index-only detection';
 const ANALYSIS_CELL = 'ro-mount × local-system × skip';
+const LIBRARY_TRASH_CELL = 'ro-mount × library trash read-only refusal';
 const MATRIX_MODEL = 'gemma3:4b';
 const DETECTION_TIMEOUT_MS = 300_000;
 const ANALYSIS_TIMEOUT_MS = 1_800_000;
@@ -36,6 +39,10 @@ const sampleById = (id: string): VideoSample => {
   return sample;
 };
 
+const expectResult = <T>(result: Result<T, AppError>): asserts result is { ok: true; value: T } => {
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+};
+
 const populateClips = async (root: string): Promise<void> => {
   const clipsDirectory = join(root, 'clips');
   mkdirSync(clipsDirectory, { recursive: true });
@@ -44,6 +51,12 @@ const populateClips = async (root: string): Promise<void> => {
   // AppleDouble sidecar; remove it so the mount holds only the one clip we asked for.
   const sidecar = join(clipsDirectory, `._${fileName}`);
   if (existsSync(sidecar)) unlinkSync(sidecar);
+};
+
+const populateTrashClip = async (root: string): Promise<void> => {
+  const clipsDirectory = join(root, 'clips');
+  mkdirSync(clipsDirectory, { recursive: true });
+  writeFileSync(join(clipsDirectory, 'readonly-trash.mp4'), Buffer.from([1]));
 };
 
 const roHome = (): string => mkdtempSync(join(tmpdir(), 'avc-ro-home-'));
@@ -107,6 +120,79 @@ const analysisScanOutputSchema = z.object({
 const findRawScanOutput = (jsonValues: readonly unknown[]): z.infer<typeof detectionScanOutputSchema> => {
   const match = jsonValues.find((value) => detectionScanOutputSchema.safeParse(value).success);
   return detectionScanOutputSchema.parse(match);
+};
+
+const targetReadOnlyErrorSchema = z.object({
+  type: z.literal('error'),
+  code: z.literal('TARGET_READ_ONLY'),
+  data: z.object({
+    roots: z.array(z.string()),
+  }).passthrough(),
+}).passthrough();
+
+const seedTrashCatalog = async (home: string, entries: readonly {
+  folderId: string;
+  root: string;
+  displayName: string;
+  fingerprint: string;
+  fileName: string;
+}[]): Promise<void> => {
+  const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+  try {
+    for (const entry of entries) {
+      expectResult(await globalCatalog.upsertFolder({
+        folderId: entry.folderId,
+        currentPath: entry.root,
+        displayName: entry.displayName,
+        firstSeenAt: '2026-08-16T12:00:00.000Z',
+        lastSeenAt: '2026-08-16T12:00:00.000Z',
+      }));
+      expectResult(await globalCatalog.upsertFile({
+        fingerprint: entry.fingerprint,
+        folderId: entry.folderId,
+        fileName: entry.fileName,
+        size: 1,
+        durationS: null,
+        width: null,
+        height: null,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: '2026-08-16T12:00:00.000Z',
+        analyzer: 'harness',
+        model: 'catalog-fixture',
+        missingAt: null,
+        hiddenAt: null,
+        capturedAt: '2026-08-16T12:00:00.000Z',
+        capturedAtSource: 'container',
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
+      }));
+      expectResult(await globalCatalog.upsertAnalysis({
+        fingerprint: entry.fingerprint,
+        finalName: null,
+        description: `A fixture clip named ${entry.fileName}.`,
+        transcript: null,
+        language: 'en',
+        tags: [],
+      }));
+    }
+  } finally {
+    expectResult(await globalCatalog.dispose());
+  }
+};
+
+const catalogFileExists = async (home: string, fingerprint: string): Promise<boolean> => {
+  const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+  try {
+    const file = await globalCatalog.getFile(fingerprint);
+    expectResult(file);
+    return file.value !== null;
+  } finally {
+    expectResult(await globalCatalog.dispose());
+  }
 };
 
 test(DETECTION_CELL, async () => {
@@ -255,5 +341,71 @@ test(ANALYSIS_CELL, async () => {
   } finally {
     releaseReadOnlyMount(mount);
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test(LIBRARY_TRASH_CELL, async () => {
+  test.setTimeout(DETECTION_TIMEOUT_MS);
+  const unavailable = diskImageUnavailableReason();
+  if (unavailable !== null) {
+    if (process.platform !== 'darwin') failOrSkip(LIBRARY_TRASH_CELL, unavailable);
+    throw new Error(missingLegMessage(LIBRARY_TRASH_CELL, unavailable));
+  }
+
+  const mount = await createReadOnlyMount({ tag: 'ro-library-trash', populate: populateTrashClip });
+  const home = roHome();
+  const environment = roEnvironment(home);
+  const readOnlyRoot = join(mount.mountpoint, 'clips');
+  const writableRoot = mkdtempSync(join(tmpdir(), 'avc-trash-writable-'));
+  const writablePath = join(writableRoot, 'writable-trash.mp4');
+  writeFileSync(writablePath, Buffer.from([2]));
+  try {
+    await seedTrashCatalog(home, [
+      {
+        folderId: '44444444-4444-4444-8444-444444444444',
+        root: writableRoot,
+        displayName: 'Writable Trash Fixture',
+        fingerprint: 'fp-trash-writable',
+        fileName: 'writable-trash.mp4',
+      },
+      {
+        folderId: '55555555-5555-4555-8555-555555555555',
+        root: readOnlyRoot,
+        displayName: 'Read Only Trash Fixture',
+        fingerprint: 'fp-trash-readonly',
+        fileName: 'readonly-trash.mp4',
+      },
+    ]);
+
+    const before = describeTree(mount.mountpoint);
+    const result = await runCli(
+      [
+        'library',
+        'trash',
+        '--fingerprint',
+        'fp-trash-writable',
+        '--fingerprint',
+        'fp-trash-readonly',
+        '--yes',
+        '--json',
+      ],
+      home,
+      120_000,
+      environment,
+    );
+    expect(result.code, `${LIBRARY_TRASH_CELL}: ${result.stdout}\n${result.stderr}`).toBe(46);
+    const error = targetReadOnlyErrorSchema.parse(
+      result.jsonValues.find((value) => targetReadOnlyErrorSchema.safeParse(value).success),
+    );
+    expect(error.data.roots).toContain(readOnlyRoot);
+    expect(existsSync(writablePath)).toBe(true);
+    expect(existsSync(join(readOnlyRoot, 'readonly-trash.mp4'))).toBe(true);
+    await expect.poll(() => catalogFileExists(home, 'fp-trash-writable')).toBe(true);
+    await expect.poll(() => catalogFileExists(home, 'fp-trash-readonly')).toBe(true);
+    expect(treeDifference(before, describeTree(mount.mountpoint))).toEqual([]);
+  } finally {
+    releaseReadOnlyMount(mount);
+    rmSync(home, { recursive: true, force: true });
+    rmSync(writableRoot, { recursive: true, force: true });
   }
 });

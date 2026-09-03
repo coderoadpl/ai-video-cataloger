@@ -459,6 +459,7 @@ E2E:
 pnpm run test:e2e:cli
 pnpm run test:e2e:gui
 pnpm run test:e2e:parity
+pnpm run test:e2e:library-hide-trash
 ```
 
 `test:e2e:cli` only runs the CLI project. The GUI and parity projects build Electron and launch the desktop app.

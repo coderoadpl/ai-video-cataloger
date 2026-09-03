@@ -33,7 +33,7 @@ export interface InfiniteQueryDescriptor<TQueryFnData, TQueryKey extends QueryKe
 
 type ReadCall<TQueryFnData, TQueryKey extends QueryKey> = (
   context: QueryFunctionContext<TQueryKey>,
-) => Promise<ReadResult<TQueryFnData>>;
+) => Promise<ReadResult<TQueryFnData> | WriteResult<TQueryFnData>>;
 
 type DefineQueryInput<TQueryFnData, TQueryKey extends QueryKey> = Omit<
   QueryDescriptor<TQueryFnData, TQueryKey>,
@@ -106,6 +106,10 @@ export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
 export type SearchInput = z.input<typeof API_ROUTES.searchQuery.input>;
 export type CollectionInput = z.input<typeof API_ROUTES.libraryCollection.input>;
 export type LibraryPreviewInput = z.input<typeof API_ROUTES.libraryPreview.input>;
+export type LibrarySelectionPreviewInput = z.input<typeof API_ROUTES.librarySelectionPreview.input>;
+export type LibraryHideInput = z.input<typeof API_ROUTES.libraryHide.input>;
+export type LibraryUnhideInput = z.input<typeof API_ROUTES.libraryUnhide.input>;
+export type LibraryTrashInput = z.input<typeof API_ROUTES.libraryTrash.input>;
 export type InstallFaceArtifactsInput = z.input<typeof API_ROUTES.faceArtifactsInstall.input>;
 export type FacesIndexInput = z.input<typeof API_ROUTES.facesIndex.input>;
 export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
@@ -134,6 +138,8 @@ export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 export type CollectionOutput = z.output<typeof API_ROUTES.libraryCollection.output>;
 export type LibraryFacetsOutput = z.output<typeof API_ROUTES.libraryFacets.output>;
+export type LibrarySelectionPreviewOutput = z.output<typeof API_ROUTES.librarySelectionPreview.output>;
+export type LibraryTrashOutput = z.output<typeof API_ROUTES.libraryTrash.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
 export type CatalogLocationsOutput = z.output<typeof API_ROUTES.catalogLocations.output>;
 
@@ -237,6 +243,7 @@ export const searchScopes = {
     input.to ?? null,
     input.hasGps ?? null,
     input.folderId ?? null,
+    input.hidden,
     input.sort ?? null,
     input.thumbnails,
     input.limit,
@@ -259,6 +266,7 @@ export const collectionScopes = {
     input.sort ?? null,
     input.media,
     input.hideUnavailable,
+    input.hidden,
     input.limit,
     input.cursor ?? null,
   ] as const,
@@ -276,12 +284,26 @@ export const collectionScopes = {
     input.sort ?? null,
     input.media,
     input.hideUnavailable,
+    input.hidden,
     input.limit,
   ] as const,
 };
 
 export const invalidateCollectionQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
   client.invalidateQueries({ queryKey: collectionScopes.all() });
+
+export const invalidateLibraryVisibilityConsumers = async (
+  client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> },
+): Promise<void> => {
+  await Promise.all([
+    client.invalidateQueries({ queryKey: collectionScopes.all() }),
+    client.invalidateQueries({ queryKey: searchScopes.all() }),
+    client.invalidateQueries({ queryKey: libraryFacetsScopes.all() }),
+    client.invalidateQueries({ queryKey: catalogLocationsScopes.all() }),
+    client.invalidateQueries({ queryKey: facesScopes.all() }),
+    client.invalidateQueries({ queryKey: photosScopes.all() }),
+  ]);
+};
 
 export const tagsScopes = {
   all: () => ['tags'] as const,
@@ -293,6 +315,16 @@ export const catalogLocationsScopes = {
 
 export const libraryFacetsScopes = {
   all: () => ['library', 'facets'] as const,
+};
+
+export const libraryPreviewScopes = {
+  all: () => ['libraryPreview'] as const,
+  detail: (input: z.output<typeof API_ROUTES.libraryPreview.input>) => ['libraryPreview', input.fingerprint] as const,
+};
+
+export const librarySelectionPreviewScopes = {
+  all: () => ['librarySelectionPreview'] as const,
+  scope: (input: z.output<typeof API_ROUTES.librarySelectionPreview.input>) => ['librarySelectionPreview', input.scope] as const,
 };
 
 export const variantsScopes = {
@@ -382,6 +414,9 @@ export const mutationScopes = {
   deleteVariant: () => ['variants', 'delete'] as const,
   setFolderDefaultVariant: () => ['variants', 'folder-default'] as const,
   photosVariantsSelect: () => ['photos', 'variants', 'select'] as const,
+  libraryHide: () => ['library', 'hide'] as const,
+  libraryUnhide: () => ['library', 'unhide'] as const,
+  libraryTrash: () => ['library', 'trash'] as const,
   backupRun: () => ['backup', 'run'] as const,
   backupConnect: () => ['backup', 'connect'] as const,
   backupTest: () => ['backup', 'test'] as const,
@@ -632,10 +667,43 @@ export const searchQuery = (api: ApiClient, input: SearchInput) => {
   });
 };
 
-export const libraryPreviewQuery = (api: ApiClient, input: LibraryPreviewInput) =>
-  defineQuery({
-    queryKey: ['libraryPreview', input.fingerprint] as const,
-    call: ({ signal }) => api.libraryPreview(input, signal),
+export const libraryPreviewQuery = (api: ApiClient, input: LibraryPreviewInput) => {
+  const result = API_ROUTES.libraryPreview.input.safeParse(input);
+  return defineQuery({
+    queryKey: result.success ? libraryPreviewScopes.detail(result.data) : ['libraryPreview', input.fingerprint] as const,
+    call: ({ signal }) => api.libraryPreview(API_ROUTES.libraryPreview.input.parse(input), signal),
+  });
+};
+
+export const librarySelectionPreviewQuery = (api: ApiClient, input: LibrarySelectionPreviewInput) => {
+  const result = API_ROUTES.librarySelectionPreview.input.safeParse(input);
+  return defineQuery({
+    queryKey: result.success ? librarySelectionPreviewScopes.scope(result.data) : ['librarySelectionPreview', input.scope] as const,
+    staleTime: 0,
+    call: ({ signal }) => api.librarySelectionPreview(API_ROUTES.librarySelectionPreview.input.parse(input), signal),
+  });
+};
+
+export const libraryHideMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.libraryHide(),
+    call: (variables: LibraryHideInput) => api.libraryHide(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) =>
+      invalidateLibraryVisibilityConsumers(mutationContext.client),
+  });
+
+export const libraryUnhideMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.libraryUnhide(),
+    call: (variables: LibraryUnhideInput) => api.libraryUnhide(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) =>
+      invalidateLibraryVisibilityConsumers(mutationContext.client),
+  });
+
+export const libraryTrashMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.libraryTrash(),
+    call: (variables: LibraryTrashInput) => api.libraryTrash(variables),
   });
 
 export const libraryCollectionQuery = (api: ApiClient, input: CollectionInput) => {

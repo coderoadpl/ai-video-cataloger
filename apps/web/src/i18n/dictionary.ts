@@ -528,6 +528,16 @@ export interface Dictionary {
     rename: string;
     delete: string;
     searchInLibrary: string;
+    hidePersonFiles: string;
+    trashPersonFiles: string;
+    personSelectionTitle: (name: string) => string;
+    personSelectionSummary: (total: number, shared: number) => string;
+    skipSharedWithOtherPeople: string;
+    hidePersonConfirm: string;
+    hiddenPersonFilesLog: (name: string) => string;
+    hidePersonFilesFailedLog: string;
+    trashPersonFilesLog: (name: string) => string;
+    trashPersonFilesFailedLog: string;
     personMediaSection: string;
     personMediaEmpty: string;
     moreActions: (name: string) => string;
@@ -952,6 +962,32 @@ export interface Dictionary {
     groupByFolderUnavailableTooltip: string;
     hideUnavailable: string;
     hideUnavailableTooltip: string;
+    hiddenFilter: string;
+    hiddenEmptyTitle: string;
+    hiddenEmptyBody: string;
+    selectAll: string;
+    clearSelection: string;
+    selectionCount: (count: number) => string;
+    hideSelected: string;
+    restoreSelected: string;
+    trashSelected: string;
+    hideItem: string;
+    restoreItem: string;
+    trashDialogTitle: string;
+    trashDialogCount: (total: number, videos: number, photos: number) => string;
+    trashDialogErases: string;
+    trashDialogRoots: string;
+    trashDialogRootCount: (count: number) => string;
+    trashDialogConfirmCheckbox: string;
+    trashDialogConfirm: string;
+    trashDialogReadOnlyTitle: string;
+    trashDialogReadOnlyBody: string;
+    trashDialogLoading: string;
+    trashDialogNoPreview: string;
+    trashStarted: string;
+    trashFailed: string;
+    hideFailed: string;
+    restoreFailed: string;
     mediaAll: string;
     mediaVideo: string;
     mediaPhoto: string;
@@ -1551,6 +1587,16 @@ export const en: Dictionary = {
     rename: 'Rename',
     delete: 'Delete',
     searchInLibrary: 'Search in Library',
+    hidePersonFiles: 'Hide this person’s files',
+    trashPersonFiles: 'Move this person’s files to Trash',
+    personSelectionTitle: (name) => `Files for ${name}`,
+    personSelectionSummary: (total, shared) => `${String(total)} ${total === 1 ? 'file' : 'files'}, including ${String(shared)} that also ${shared === 1 ? 'contains' : 'contain'} other recognized people`,
+    skipSharedWithOtherPeople: 'Skip files with other people',
+    hidePersonConfirm: 'Hide files',
+    hiddenPersonFilesLog: (name) => `Hid files for ${name}`,
+    hidePersonFilesFailedLog: 'Failed to hide files for this person',
+    trashPersonFilesLog: (name) => `Started moving files for ${name} to Trash`,
+    trashPersonFilesFailedLog: 'Failed to move files for this person to Trash',
     personMediaSection: 'Photos and videos',
     personMediaEmpty: 'No photos or videos for this person yet.',
     moreActions: (name) => `More actions for ${name}`,
@@ -2024,6 +2070,32 @@ export const en: Dictionary = {
     groupByFolderUnavailableTooltip: 'Folder grouping is only available for Videos.',
     hideUnavailable: 'Hide unavailable',
     hideUnavailableTooltip: 'Hide items whose drive is disconnected or whose file is missing.',
+    hiddenFilter: 'Hidden',
+    hiddenEmptyTitle: 'Nothing is hidden',
+    hiddenEmptyBody: 'No hidden files match this view.',
+    selectAll: 'Select all',
+    clearSelection: 'Clear selection',
+    selectionCount: (count) => `${String(count)} ${count === 1 ? 'file selected' : 'files selected'}`,
+    hideSelected: 'Hide',
+    restoreSelected: 'Restore selected',
+    trashSelected: 'Move to Trash',
+    hideItem: 'Hide',
+    restoreItem: 'Restore',
+    trashDialogTitle: 'Move files to Trash',
+    trashDialogCount: (total, videos, photos) => `${String(total)} ${total === 1 ? 'file' : 'files'}: ${String(videos)} ${videos === 1 ? 'video' : 'videos'}, ${String(photos)} ${photos === 1 ? 'photo' : 'photos'}`,
+    trashDialogErases: 'The files will be moved to the macOS Trash. Analyses, tags, faces, places, thumbnails and proxies for them will be erased from the app.',
+    trashDialogRoots: 'Affected roots',
+    trashDialogRootCount: (count) => `${String(count)} ${count === 1 ? 'sighting' : 'sightings'}`,
+    trashDialogConfirmCheckbox: 'I understand this removes the files from the app and moves them to the macOS Trash.',
+    trashDialogConfirm: 'Move to Trash',
+    trashDialogReadOnlyTitle: 'Read-only root',
+    trashDialogReadOnlyBody: 'Move to Trash is unavailable because at least one affected root is read-only.',
+    trashDialogLoading: 'Preparing trash plan...',
+    trashDialogNoPreview: 'The trash plan is not available.',
+    trashStarted: 'Move to Trash started',
+    trashFailed: 'Move to Trash failed',
+    hideFailed: 'Hide failed',
+    restoreFailed: 'Restore failed',
     mediaAll: 'All',
     mediaVideo: 'Videos',
     mediaPhoto: 'Photos',
@@ -2637,6 +2709,17 @@ export const pl: Dictionary = {
     rename: 'Zmień nazwę',
     delete: 'Usuń',
     searchInLibrary: 'Szukaj w Bibliotece',
+    hidePersonFiles: 'Ukryj pliki tej osoby',
+    trashPersonFiles: 'Przenieś do Kosza pliki tej osoby',
+    personSelectionTitle: (name) => `Pliki osoby ${name}`,
+    personSelectionSummary: (total, shared) =>
+      `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}, z czego ${String(shared)} ${plPlural(shared, 'zawiera', 'zawierają', 'zawiera')} także inne rozpoznane osoby`,
+    skipSharedWithOtherPeople: 'Pomiń pliki z innymi osobami',
+    hidePersonConfirm: 'Ukryj pliki',
+    hiddenPersonFilesLog: (name) => `Ukryto pliki osoby ${name}`,
+    hidePersonFilesFailedLog: 'Nie udało się ukryć plików tej osoby',
+    trashPersonFilesLog: (name) => `Rozpoczęto przenoszenie plików osoby ${name} do Kosza`,
+    trashPersonFilesFailedLog: 'Nie udało się przenieść plików tej osoby do Kosza',
     personMediaSection: 'Zdjęcia i filmy',
     personMediaEmpty: 'Brak zdjęć i filmów dla tej osoby.',
     moreActions: (name) => `Więcej działań dla ${name}`,
@@ -3114,6 +3197,33 @@ export const pl: Dictionary = {
     groupByFolderUnavailableTooltip: 'Grupowanie po folderze jest dostępne tylko dla filmów.',
     hideUnavailable: 'Ukryj niedostępne',
     hideUnavailableTooltip: 'Ukrywa pozycje z odłączonego dysku oraz te, których plik zniknął.',
+    hiddenFilter: 'Ukryte',
+    hiddenEmptyTitle: 'Nic nie jest ukryte',
+    hiddenEmptyBody: 'Żadne ukryte pliki nie pasują do tego widoku.',
+    selectAll: 'Zaznacz wszystko',
+    clearSelection: 'Wyczyść zaznaczenie',
+    selectionCount: (count) => `${String(count)} ${plPlural(count, 'zaznaczony plik', 'zaznaczone pliki', 'zaznaczonych plików')}`,
+    hideSelected: 'Ukryj',
+    restoreSelected: 'Przywróć zaznaczone',
+    trashSelected: 'Przenieś do Kosza',
+    hideItem: 'Ukryj',
+    restoreItem: 'Przywróć',
+    trashDialogTitle: 'Przenieś pliki do Kosza',
+    trashDialogCount: (total, videos, photos) =>
+      `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}: ${String(videos)} ${plPlural(videos, 'film', 'filmy', 'filmów')}, ${String(photos)} ${plPlural(photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
+    trashDialogErases: 'Pliki trafią do macOS Kosza. Analizy, tagi, twarze, miejsca, miniatury i proxy tych plików zostaną usunięte z aplikacji.',
+    trashDialogRoots: 'Dotknięte foldery',
+    trashDialogRootCount: (count) => `${String(count)} ${plPlural(count, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
+    trashDialogConfirmCheckbox: 'Rozumiem, że to usuwa pliki z aplikacji i przenosi je do macOS Kosza.',
+    trashDialogConfirm: 'Przenieś do Kosza',
+    trashDialogReadOnlyTitle: 'Folder tylko do odczytu',
+    trashDialogReadOnlyBody: 'Przeniesienie do Kosza jest niedostępne, ponieważ co najmniej jeden dotknięty folder jest tylko do odczytu.',
+    trashDialogLoading: 'Przygotowywanie planu przeniesienia do Kosza...',
+    trashDialogNoPreview: 'Plan przeniesienia do Kosza jest niedostępny.',
+    trashStarted: 'Rozpoczęto przenoszenie do Kosza',
+    trashFailed: 'Przeniesienie do Kosza nie powiodło się',
+    hideFailed: 'Ukrywanie nie powiodło się',
+    restoreFailed: 'Przywracanie nie powiodło się',
     mediaAll: 'Wszystko',
     mediaVideo: 'Filmy',
     mediaPhoto: 'Zdjęcia',

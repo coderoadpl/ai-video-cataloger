@@ -54,6 +54,7 @@ export const useLibrary = (input: {
   sort: LibrarySort;
   media: LibraryMedia;
   hideUnavailable: boolean;
+  hidden: 'exclude' | 'only' | 'include';
 }): LibraryState => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -61,7 +62,7 @@ export const useLibrary = (input: {
   const [pagination, setPagination] = useState<{ requestKey: string; cursor: string } | null>(null);
   const searchParams = toSearchParams(input.filters);
   const filtersKey = searchParamsKey(searchParams);
-  const requestKey = `${filtersKey}|${input.sort}|${input.media}|${String(input.hideUnavailable)}|${debouncedQuery}`;
+  const requestKey = `${filtersKey}|${input.sort}|${input.media}|${String(input.hideUnavailable)}|${input.hidden}|${debouncedQuery}`;
   const cursor = pagination !== null && pagination.requestKey === requestKey ? pagination.cursor : null;
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export const useLibrary = (input: {
       sort: effectiveSort,
       media: input.media,
       hideUnavailable: input.hideUnavailable,
+      hidden: input.hidden,
       limit: PAGE_LIMIT,
       ...(cursor === null ? {} : { cursor }),
     }),
