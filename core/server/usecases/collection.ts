@@ -33,6 +33,7 @@ export interface CollectionFiltersInput {
   hasGps: boolean | null;
   folderId: string | null;
   hideUnavailable: boolean;
+  hidden?: 'exclude' | 'only' | 'include' | undefined;
 }
 
 export type CollectionMedia = 'all' | 'video' | 'photo';
@@ -265,6 +266,7 @@ export const libraryCollection = async (
       fingerprints: photoFingerprints,
       tagTermSets: photoTagTermSets.value,
       excludeMissing: input.filters.hideUnavailable,
+      hidden: input.filters.hidden ?? 'exclude',
       sort,
       limit: input.limit,
       offset: cursor.value.photo,
@@ -300,6 +302,7 @@ export const libraryCollection = async (
         fingerprints: photoFingerprints,
         tagTermSets: photoTagTermSets.value,
         excludeMissing: input.filters.hideUnavailable,
+        hidden: input.filters.hidden ?? 'exclude',
         sort,
         limit: 0,
         offset: 0,
@@ -440,6 +443,7 @@ const fetchVideoPage = async (
       folderId: input.filters.folderId,
       excludeFolderIds: input.excludeFolderIds,
       excludeMissing: input.filters.hideUnavailable,
+        hidden: input.filters.hidden ?? 'exclude',
     },
     sort: input.sort,
     limit: input.limit,

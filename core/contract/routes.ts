@@ -29,6 +29,8 @@ import {
   credentialsBackendStatusSchema,
   folderIdSchema,
   geminiCostEstimateSchema,
+  hiddenScopeSchema,
+  librarySelectionScopeSchema,
   photoExtensionSchema,
   photoFingerprintSchema,
   remoteBackupSchema,
@@ -885,6 +887,7 @@ export const photosSearchResultSchema = z.object({
 
 export const photosSearchInputSchema = z.object({
   query: z.string().min(1),
+  hidden: hiddenScopeSchema.default('exclude'),
   limit: queryInteger(50, 1, 200),
   offset: queryInteger(0, 0, 100_000),
 });
@@ -1559,6 +1562,7 @@ export const jobKindSchema = z.enum([
   'photo_process',
   'photo_gps_backfill',
   'photo_import_libra',
+  'library_trash',
   'backup',
   'restore',
 ]);
@@ -1629,6 +1633,10 @@ export const jobProgressStepSchema = z.enum([
   'photo-faces-skipped',
   'photo-import-libra-scanning',
   'photo-import-libra-summary',
+  'library-trash-preflight',
+  'library-trash-file',
+  'library-trash-artifacts',
+  'library-trash-summary',
   'idle',
   'fingerprinting',
   'snapshotting',
@@ -1640,6 +1648,23 @@ export const jobProgressStepSchema = z.enum([
   'decrypting',
   'restoring',
 ]);
+
+export const libraryTrashSummarySchema = z.object({
+  kind: z.literal('library_trash'),
+  filesTrashed: z.number().int().nonnegative(),
+  videosTrashed: z.number().int().nonnegative(),
+  photosTrashed: z.number().int().nonnegative(),
+  filesFailed: z.number().int().nonnegative(),
+  filesNotAttempted: z.number().int().nonnegative(),
+  failedFingerprint: z.string().nullable(),
+  cancelled: z.boolean(),
+  analysesDeleted: z.number().int().nonnegative(),
+  observationsDeleted: z.number().int().nonnegative(),
+  peopleDeleted: z.number().int().nonnegative(),
+  artifactPathsDeleted: z.number().int().nonnegative(),
+  snapshotsRewritten: z.number().int().nonnegative(),
+  roots: z.array(z.string()),
+}).strict();
 
 export const jobProgressSchema = z.object({
   step: jobProgressStepSchema,
@@ -1686,6 +1711,7 @@ export const facesIndexOutputSchema = z.object({
 });
 
 export const jobResultSchema = z.union([
+  libraryTrashSummarySchema,
   processCompletedOutputSchema,
   driveRunSummarySchema,
   whisperModelDownloadOutputSchema,
@@ -1848,6 +1874,7 @@ export const searchInputSchema = z.object({
   to: z.iso.date().or(z.iso.datetime()).optional(),
   hasGps: queryBooleanTriState,
   folderId: folderIdSchema.optional(),
+  hidden: hiddenScopeSchema.default('exclude'),
   sort: z.enum(SEARCH_SORTS).optional(),
   thumbnails: z.enum(['ensure', 'existing']).default('ensure'),
   limit: queryInteger(50, 1, 200),
@@ -1963,9 +1990,79 @@ export const collectionInputSchema = z.object({
   sort: z.enum(SEARCH_SORTS).optional(),
   media: collectionMediaSchema.default('all'),
   hideUnavailable: queryBoolean,
+  hidden: hiddenScopeSchema.default('exclude'),
   limit: queryInteger(50, 1, 200),
   cursor: z.string().optional(),
 });
+
+const nonNegativeIntegerSchema = z.number().int().nonnegative();
+
+export const librarySelectionPreviewInputSchema = z.object({
+  scope: librarySelectionScopeSchema,
+}).strict();
+
+export const libraryHideInputSchema = z.object({
+  scope: librarySelectionScopeSchema,
+}).strict();
+
+export const libraryUnhideInputSchema = z.object({
+  scope: librarySelectionScopeSchema,
+}).strict();
+
+export const libraryHideOutputSchema = z.object({
+  requested: nonNegativeIntegerSchema,
+  changed: nonNegativeIntegerSchema,
+  unchanged: nonNegativeIntegerSchema,
+  videos: nonNegativeIntegerSchema,
+  photos: nonNegativeIntegerSchema,
+}).strict();
+
+export const libraryUnhideOutputSchema = z.object({
+  requested: nonNegativeIntegerSchema,
+  changed: nonNegativeIntegerSchema,
+  unchanged: nonNegativeIntegerSchema,
+  videos: nonNegativeIntegerSchema,
+  photos: nonNegativeIntegerSchema,
+}).strict();
+
+export const librarySelectionRootSchema = z.object({
+  folderId: folderIdSchema,
+  displayName: z.string(),
+  currentPath: z.string().min(1),
+  fileCount: nonNegativeIntegerSchema,
+  writable: z.boolean(),
+  online: z.boolean(),
+}).strict();
+
+export const librarySelectionPreviewOutputSchema = z.object({
+  total: nonNegativeIntegerSchema,
+  videoCount: nonNegativeIntegerSchema,
+  photoCount: nonNegativeIntegerSchema,
+  hiddenCount: nonNegativeIntegerSchema,
+  visibleCount: nonNegativeIntegerSchema,
+  sharedWithOtherPeople: nonNegativeIntegerSchema,
+  roots: z.array(librarySelectionRootSchema),
+}).strict();
+
+export const libraryTrashPlanSchema = z.object({
+  kind: z.literal('plan'),
+  total: nonNegativeIntegerSchema,
+  videoCount: nonNegativeIntegerSchema,
+  photoCount: nonNegativeIntegerSchema,
+  roots: z.array(librarySelectionRootSchema),
+  artifactPaths: z.array(z.string()),
+}).strict();
+
+export const libraryTrashInputSchema = z.object({
+  scope: librarySelectionScopeSchema,
+  confirm: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
+}).strict();
+
+export const libraryTrashOutputSchema = z.discriminatedUnion('kind', [
+  libraryTrashPlanSchema,
+  z.object({ kind: z.literal('job'), jobId: z.string() }).strict(),
+]);
 
 export const collectionOutputSchema = z.object({
   query: z.string().nullable(),
@@ -2065,6 +2162,7 @@ export const libraryFacetsOutputSchema = z.object({
     withGps: z.number().int().nonnegative(),
     withoutCaptureDate: z.number().int().nonnegative(),
     missing: z.number().int().nonnegative(),
+    hidden: z.number().int().nonnegative(),
     offlineFolders: z.number().int().nonnegative(),
   }).strict(),
 }).strict();
@@ -2460,6 +2558,30 @@ export const API_ROUTES = {
     input: libraryPreviewInputSchema,
     output: libraryPreviewOutputSchema,
   },
+  librarySelectionPreview: {
+    method: 'POST',
+    path: '/api/library/selection/preview',
+    input: librarySelectionPreviewInputSchema,
+    output: librarySelectionPreviewOutputSchema,
+  },
+  libraryHide: {
+    method: 'POST',
+    path: '/api/library/hide',
+    input: libraryHideInputSchema,
+    output: libraryHideOutputSchema,
+  },
+  libraryUnhide: {
+    method: 'POST',
+    path: '/api/library/unhide',
+    input: libraryUnhideInputSchema,
+    output: libraryUnhideOutputSchema,
+  },
+  libraryTrash: {
+    method: 'POST',
+    path: '/api/library/trash',
+    input: libraryTrashInputSchema,
+    output: libraryTrashOutputSchema,
+  },
   libraryCollection: {
     method: 'GET',
     path: '/api/library/collection',
@@ -2692,6 +2814,10 @@ export const API_PATHS = {
   tagsAlias: API_ROUTES.tagsAlias.path,
   tagsSuggestAliases: API_ROUTES.tagsSuggestAliases.path,
   searchQuery: API_ROUTES.searchQuery.path,
+  librarySelectionPreview: API_ROUTES.librarySelectionPreview.path,
+  libraryHide: API_ROUTES.libraryHide.path,
+  libraryUnhide: API_ROUTES.libraryUnhide.path,
+  libraryTrash: API_ROUTES.libraryTrash.path,
   libraryCollection: API_ROUTES.libraryCollection.path,
   variantsList: API_ROUTES.variantsList.path,
   variantsSelect: API_ROUTES.variantsSelect.path,

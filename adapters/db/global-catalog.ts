@@ -103,6 +103,7 @@ import {
   migrateGlobalCatalogSchemaSqlV12,
   migrateGlobalCatalogSchemaSqlV13,
   migrateGlobalCatalogSchemaSqlV14,
+  migrateGlobalCatalogSchemaSqlV17,
   schemaMeta,
   tagAliases,
   tags,
@@ -870,9 +871,35 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async setHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>> {
+    if (fingerprints.length === 0) return ok({ changed: 0, unchanged: 0 });
+    return this.write((_db, client) => {
+      const unique = [...new Set(fingerprints)];
+      let changed = 0;
+      let unchanged = 0;
+      runCatalogTransaction(client, () => {
+        for (const fingerprint of unique) {
+          const current = client.exec('SELECT hidden_at FROM files WHERE fingerprint = ?', [fingerprint])[0]?.values[0]?.[0];
+          if (current === undefined) {
+            unchanged += 1;
+            continue;
+          }
+          const currentValue = typeof current === 'number' ? current : null;
+          if ((hiddenAt === null && currentValue === null) || (hiddenAt !== null && currentValue !== null)) {
+            unchanged += 1;
+            continue;
+          }
+          client.run('UPDATE files SET hidden_at = ? WHERE fingerprint = ?', [hiddenAt, fingerprint]);
+          changed += 1;
+        }
+      });
+      return { changed, unchanged };
+    });
+  }
+
   async listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
     return this.read((db, client) => {
-      const totalFiles = db.select().from(files).all().length;
+      const totalFiles = db.select().from(files).where(isNull(files.hiddenAt)).all().length;
       const result = client.exec(
         `SELECT
           f.fingerprint,
@@ -899,7 +926,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         JOIN folders fo ON fo.folder_id = f.folder_id
         LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
           AND a.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
-        WHERE f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL
+        WHERE f.hidden_at IS NULL AND f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL
         ORDER BY f.file_name`,
       );
       const values = result[0]?.values ?? [];
@@ -918,7 +945,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           JOIN file_tags ft ON ft.tag_id = t.tag_id
           JOIN files f ON f.fingerprint = ft.fingerprint
           JOIN folders fo ON fo.folder_id = f.folder_id
-          WHERE ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
+          WHERE f.hidden_at IS NULL AND ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
           GROUP BY t.name
           ORDER BY COUNT(DISTINCT f.fingerprint) DESC, t.name`,
       )[0]?.values ?? [];
@@ -928,7 +955,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         `SELECT p.person_id, p.display_name, COUNT(DISTINCT o.fingerprint)
           FROM face_observations o
           JOIN people p ON p.person_id = o.person_id
-          WHERE o.person_id IS NOT NULL
+          LEFT JOIN files f ON f.fingerprint = o.fingerprint
+          WHERE o.person_id IS NOT NULL AND (f.fingerprint IS NULL OR f.hidden_at IS NULL)
           GROUP BY p.person_id, p.display_name
           ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
       )[0]?.values ?? [];
@@ -941,7 +969,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const placeRows = client.exec(
         `SELECT f.place_name, f.place_country, f.place_country_code, COUNT(*)
           FROM files f
-          WHERE f.place_name IS NOT NULL
+          WHERE f.hidden_at IS NULL AND f.place_name IS NOT NULL
           GROUP BY f.place_name, f.place_country, f.place_country_code
           ORDER BY f.place_name`,
       )[0]?.values ?? [];
@@ -955,7 +983,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const yearRows = client.exec(
         `SELECT strftime('%Y', f.captured_at) AS year, COUNT(*)
           FROM files f
-          WHERE f.captured_at IS NOT NULL
+          WHERE f.hidden_at IS NULL AND f.captured_at IS NOT NULL
           GROUP BY year
           ORDER BY year DESC`,
       )[0]?.values ?? [];
@@ -964,7 +992,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const folderRows = client.exec(
         `SELECT fo.folder_id, fo.display_name, fo.current_path, COUNT(f.fingerprint)
           FROM folders fo
-          LEFT JOIN files f ON f.folder_id = fo.folder_id
+          LEFT JOIN files f ON f.folder_id = fo.folder_id AND f.hidden_at IS NULL
           GROUP BY fo.folder_id, fo.display_name, fo.current_path
           ORDER BY fo.display_name`,
       )[0]?.values ?? [];
@@ -980,17 +1008,27 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           COUNT(*),
           SUM(CASE WHEN f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL THEN 1 ELSE 0 END),
           SUM(CASE WHEN f.captured_at IS NULL THEN 1 ELSE 0 END),
-          SUM(CASE WHEN f.missing_at IS NOT NULL THEN 1 ELSE 0 END)
-        FROM files f`,
+          SUM(CASE WHEN f.missing_at IS NOT NULL THEN 1 ELSE 0 END),
+          (SELECT COUNT(*) FROM files WHERE hidden_at IS NOT NULL)
+        FROM files f
+        WHERE f.hidden_at IS NULL`,
       )[0]?.values[0] ?? [0, 0, 0, 0];
       const counts: LibraryFacets['counts'] = {
         total: numberValue(countsRow[0]),
         withGps: numberValue(countsRow[1] ?? 0),
         withoutCaptureDate: numberValue(countsRow[2] ?? 0),
         missing: numberValue(countsRow[3] ?? 0),
+        hidden: numberValue(countsRow[4] ?? 0),
       };
 
       return { tags: facetTags, people: facetPeople, places, years, folders: facetFolders, counts };
+    });
+  }
+
+  async listHiddenFingerprints(): Promise<Result<string[], AppError>> {
+    return this.read((_db, client) => {
+      const rows = client.exec('SELECT fingerprint FROM files WHERE hidden_at IS NOT NULL ORDER BY fingerprint')[0]?.values ?? [];
+      return rows.map((row) => stringValue(row[0]));
     });
   }
 
@@ -1686,6 +1724,10 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
     backupAndDeleteImportedPhotoObservations(client, backupDirectory);
     migrated = true;
   }
+  if (currentVersion < 17) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV17) runMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: globalCatalogSchema });
@@ -1808,6 +1850,7 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   analyzer: row.analyzer,
   model: row.model,
   missingAt: row.missingAt,
+  hiddenAt: row.hiddenAt,
   capturedAt: row.capturedAt,
   capturedAtSource: row.capturedAtSource === 'container' || row.capturedAtSource === 'manual' ? row.capturedAtSource : null,
   gpsSource: parseGpsSource(row.gpsSource),
@@ -1844,6 +1887,7 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   analyzer: file.analyzer,
   model: file.model,
   missingAt: file.missingAt,
+  hiddenAt: file.hiddenAt ?? null,
   capturedAt: file.capturedAt,
   capturedAtSource: file.capturedAtSource,
   gpsSource: file.gpsSource,
@@ -2422,6 +2466,13 @@ const buildSearchFilterClauses = (filters: CatalogSearchFilters): SearchWhereCla
 
   if (filters.excludeMissing) {
     clauses.push({ sql: `f.missing_at IS NULL`, params: {} });
+  }
+
+  const hidden = filters.hidden ?? 'exclude';
+  if (hidden === 'exclude') {
+    clauses.push({ sql: `f.hidden_at IS NULL`, params: {} });
+  } else if (hidden === 'only') {
+    clauses.push({ sql: `f.hidden_at IS NOT NULL`, params: {} });
   }
 
   return clauses;

@@ -71,6 +71,7 @@ import {
   createPhotosSchemaSqlV2,
   createPhotosSchemaSqlV3,
   createPhotosSchemaSqlV4,
+  createPhotosSchemaSqlV7,
   photoAnalysisErrors,
   photoAnalyses,
   photoAnalysisConfigs,
@@ -316,7 +317,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         .values(row)
         .onConflictDoUpdate({
           target: photos.fingerprint,
-          set: row,
+          set: photoToConflictUpdateRow(photo),
         })
         .run();
       syncPhotoSearchDocument(db, client, photo.fingerprint);
@@ -591,7 +592,7 @@ export class SqlJsPhotosStore implements PhotosStore {
 
   async listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>> {
     return this.read((db, client) => {
-      const totalPhotos = db.select().from(photos).all().length;
+      const totalPhotos = db.select().from(photos).where(isNull(photos.hiddenAt)).all().length;
       const result = client.exec(
         `SELECT
             p.fingerprint, p.file_name, p.gps_lat, p.gps_lon, p.missing_at, p.captured_at, p.thumb_state,
@@ -600,7 +601,7 @@ export class SqlJsPhotosStore implements PhotosStore {
             p.place_name, p.place_region, p.place_country, p.place_country_code, p.place_distance_m, p.place_dataset
           FROM photos p
           JOIN photo_folders f ON f.folder_id = p.folder_id
-          WHERE p.gps_lat IS NOT NULL AND p.gps_lon IS NOT NULL
+          WHERE p.hidden_at IS NULL AND p.gps_lat IS NOT NULL AND p.gps_lon IS NOT NULL
           ORDER BY p.fingerprint`,
       );
       const values = result[0]?.values ?? [];
@@ -942,10 +943,12 @@ export class SqlJsPhotosStore implements PhotosStore {
   async searchPhotos(input: {
     match: string;
     rankingTerms: readonly string[];
+    hidden?: 'exclude' | 'only' | 'include' | undefined;
     limit: number;
     offset: number;
   }): Promise<Result<PhotoSearchRow[], AppError>> {
     return this.read((_db, client) => {
+      const hiddenClause = photoHiddenWhereClause(input.hidden);
       const result = client.exec(
         `SELECT
             p.fingerprint,
@@ -964,7 +967,7 @@ export class SqlJsPhotosStore implements PhotosStore {
           FROM photo_search_documents_fts
           JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
           JOIN photos p ON p.fingerprint = sd.fingerprint
-          WHERE photo_search_documents_fts MATCH $match`,
+          WHERE photo_search_documents_fts MATCH $match${hiddenClause}`,
         { $match: input.match },
       );
       return (result[0]?.values ?? [])
@@ -987,6 +990,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
+    hidden?: 'exclude' | 'only' | 'include' | undefined;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
@@ -1004,6 +1008,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         ...folderWhere.clauses,
         ...fingerprintWhere.clauses,
         ...(input.excludeMissing ? ['p.missing_at IS NULL'] : []),
+        ...photoHiddenClauses(input.hidden),
       ];
       const params = { ...tagWhere.params, ...dateWhere.params, ...folderWhere.params, ...fingerprintWhere.params };
 
@@ -1193,6 +1198,46 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async setPhotosHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>> {
+    if (fingerprints.length === 0) return ok({ changed: 0, unchanged: 0 });
+    return this.write((_db, client) => {
+      const unique = [...new Set(fingerprints)];
+      let changed = 0;
+      let unchanged = 0;
+      runPhotosTransaction(client, () => {
+        for (const fingerprint of unique) {
+          const current = client.exec('SELECT hidden_at FROM photos WHERE fingerprint = ?', [fingerprint])[0]?.values[0]?.[0];
+          if (current === undefined) {
+            unchanged += 1;
+            continue;
+          }
+          const currentValue = typeof current === 'number' ? current : null;
+          if ((hiddenAt === null && currentValue === null) || (hiddenAt !== null && currentValue !== null)) {
+            unchanged += 1;
+            continue;
+          }
+          client.run('UPDATE photos SET hidden_at = ? WHERE fingerprint = ?', [hiddenAt, fingerprint]);
+          changed += 1;
+        }
+      });
+      return { changed, unchanged };
+    });
+  }
+
+  async countHidden(): Promise<Result<number, AppError>> {
+    return this.read((_db, client) => {
+      const row = client.exec('SELECT COUNT(*) FROM photos WHERE hidden_at IS NOT NULL')[0]?.values[0]?.[0];
+      return numberValue(row);
+    });
+  }
+
+  async listHiddenFingerprints(): Promise<Result<string[], AppError>> {
+    return this.read((_db, client) => {
+      const rows = client.exec('SELECT fingerprint FROM photos WHERE hidden_at IS NOT NULL ORDER BY fingerprint')[0]?.values ?? [];
+      return rows.map((row) => stringValue(row[0]));
+    });
+  }
+
   private async read<T>(operation: (db: PhotosDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen(false);
@@ -1332,6 +1377,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 6) {
     client.run('DELETE FROM photo_face_index_state');
+    migrated = true;
+  }
+  if (currentVersion < 7) {
+    for (const statement of createPhotosSchemaSqlV7) runPhotosMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {
@@ -1647,10 +1696,53 @@ const rowToPhoto = (row: typeof photos.$inferSelect): PhotoRecord => ({
   proxyHeight: row.proxyHeight,
   thumbState: parseThumbState(row.thumbState),
   missingAt: row.missingAt,
+  hiddenAt: row.hiddenAt,
   selectedConfigId: row.selectedConfigId,
 });
 
 const photoToRow = (photo: PhotoRecord): typeof photos.$inferInsert => ({
+  fingerprint: photo.fingerprint,
+  folderId: photo.folderId,
+  fileName: photo.fileName,
+  currentPath: canonicalPath(photo.currentPath),
+  ext: photo.ext,
+  size: photo.size,
+  width: photo.width,
+  height: photo.height,
+  orientation: photo.orientation,
+  cameraMake: photo.cameraMake,
+  cameraModel: photo.cameraModel,
+  lens: photo.lens,
+  iso: photo.iso,
+  fNumber: photo.fNumber,
+  exposureTime: photo.exposureTime,
+  exifRating: photo.exifRating,
+  capturedAt: photo.capturedAt,
+  capturedAtSource: photo.capturedAtSource,
+  gpsLat: photo.gpsLat,
+  gpsLon: photo.gpsLon,
+  gpsSource: photo.gpsSource,
+  gpsAccuracyM: photo.gpsAccuracyM,
+  gpsIntervalKind: photo.gpsIntervalKind,
+  gpsResolvedAt: photo.gpsResolvedAt,
+  placeName: photo.placeName,
+  placeRegion: photo.placeRegion,
+  placeCountry: photo.placeCountry,
+  placeCountryCode: photo.placeCountryCode,
+  placeDistanceM: photo.placeDistanceM,
+  placeDataset: photo.placeDataset,
+  discoveredAt: photo.discoveredAt,
+  exifReadAt: photo.exifReadAt,
+  proxyState: photo.proxyState,
+  proxyWidth: photo.proxyWidth,
+  proxyHeight: photo.proxyHeight,
+  thumbState: photo.thumbState,
+  missingAt: photo.missingAt,
+  hiddenAt: photo.hiddenAt ?? null,
+  selectedConfigId: photo.selectedConfigId,
+});
+
+const photoToConflictUpdateRow = (photo: PhotoRecord): Omit<typeof photos.$inferInsert, 'hiddenAt'> => ({
   fingerprint: photo.fingerprint,
   folderId: photo.folderId,
   fileName: photo.fileName,
@@ -1948,6 +2040,18 @@ const photoFingerprintWhereClause = (
     return name;
   });
   return { clauses: [`p.fingerprint IN (${placeholders.join(', ')})`], params };
+};
+
+const photoHiddenClauses = (hidden: 'exclude' | 'only' | 'include' | undefined): string[] => {
+  const scope = hidden ?? 'exclude';
+  if (scope === 'exclude') return ['p.hidden_at IS NULL'];
+  if (scope === 'only') return ['p.hidden_at IS NOT NULL'];
+  return [];
+};
+
+const photoHiddenWhereClause = (hidden: 'exclude' | 'only' | 'include' | undefined): string => {
+  const clauses = photoHiddenClauses(hidden);
+  return clauses.length === 0 ? '' : ` AND ${clauses.join(' AND ')}`;
 };
 
 type PhotoCollectionSort = 'captured_desc' | 'captured_asc' | 'name_asc';

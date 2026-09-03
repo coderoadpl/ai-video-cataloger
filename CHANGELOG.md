@@ -14,6 +14,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- Library hide/unhide and move-to-Trash operations are available through contract routes and CLI commands, including dry-run trash plans and NDJSON progress events.
+- Search accepts `--hidden exclude|only|include`, and library search, collection, map, facet, and people queries exclude hidden media by default.
+- The Osoby facet's people counts exclude hidden videos without dropping photo observations, which have no `hidden` state of their own.
+
 ### Changed
 
 - Osoby now shows distinct video/photo file counts on person cards and person media panels, sorts people by file frequency by default, and uses plain-language rebuild copy with the dry-run name-loss count in the final confirmation.

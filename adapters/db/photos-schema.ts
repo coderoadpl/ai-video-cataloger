@@ -47,6 +47,7 @@ export const photos = sqliteTable('photos', {
   proxyHeight: integer('proxy_height'),
   thumbState: text('thumb_state').notNull().default('pending'),
   missingAt: integer('missing_at'),
+  hiddenAt: integer('hidden_at'),
   selectedConfigId: text('selected_config_id'),
 });
 
@@ -164,7 +165,7 @@ export const photosSchema = {
   photosSchemaMeta,
 };
 
-export const PHOTOS_SCHEMA_VERSION = 6;
+export const PHOTOS_SCHEMA_VERSION = 7;
 
 export const createPhotosSchemaSqlV1 = [
   'CREATE TABLE schema_meta (version INTEGER PRIMARY KEY)',
@@ -199,6 +200,7 @@ export const createPhotosSchemaSqlV1 = [
       proxy_width   INTEGER, proxy_height INTEGER,
       thumb_state   TEXT NOT NULL DEFAULT 'pending',
       missing_at    INTEGER,
+      hidden_at     INTEGER,
       selected_config_id TEXT
     )`,
   'CREATE INDEX idx_photos_folder      ON photos(folder_id)',
@@ -276,4 +278,9 @@ export const createPhotosSchemaSqlV4 = [
       created_at TEXT NOT NULL,
       PRIMARY KEY (fingerprint, config_id)
     )`,
+] as const;
+
+export const createPhotosSchemaSqlV7 = [
+  'ALTER TABLE photos ADD COLUMN hidden_at INTEGER',
+  'CREATE INDEX IF NOT EXISTS photos_hidden_at_idx ON photos(hidden_at)',
 ] as const;

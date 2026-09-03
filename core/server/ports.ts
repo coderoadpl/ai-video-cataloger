@@ -104,6 +104,7 @@ export interface CatalogSearchFilters {
   folderId: string | null;
   excludeFolderIds: string[];
   excludeMissing: boolean;
+  hidden?: 'exclude' | 'only' | 'include' | undefined;
 }
 
 export type CatalogSearchSort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -257,6 +258,7 @@ export interface LibraryFacetCounts {
   withGps: number;
   withoutCaptureDate: number;
   missing: number;
+  hidden: number;
 }
 
 export interface CatalogFilePerson {
@@ -396,6 +398,7 @@ export interface PhotoRecord {
   proxyHeight: number | null;
   thumbState: 'pending' | 'done' | 'failed';
   missingAt: number | null;
+  hiddenAt?: number | null | undefined;
   selectedConfigId: string | null;
 }
 
@@ -661,7 +664,7 @@ export interface PhotosStore {
   upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>>;
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
   recordPhotoAnalysisFailure(input: RecordPhotoAnalysisFailureInput): Promise<Result<void, AppError>>;
-  searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
+  searchPhotos(input: { match: string; rankingTerms: readonly string[]; hidden?: 'exclude' | 'only' | 'include' | undefined; limit: number; offset: number }):
     Promise<Result<PhotoSearchRow[], AppError>>;
   collectionPage(input: {
     match: string | null;
@@ -672,6 +675,7 @@ export interface PhotosStore {
     fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
+    hidden?: 'exclude' | 'only' | 'include' | undefined;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
@@ -691,6 +695,9 @@ export interface PhotosStore {
   listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>>;
   applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>>;
+  setPhotosHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>>;
+  countHidden(): Promise<Result<number, AppError>>;
+  listHiddenFingerprints(): Promise<Result<string[], AppError>>;
 }
 
 export interface DriveRunRecord {
@@ -745,6 +752,8 @@ export interface GlobalCatalogStore {
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
   listLibraryFacets(): Promise<Result<LibraryFacets, AppError>>;
+  setHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>>;
+  listHiddenFingerprints(): Promise<Result<string[], AppError>>;
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
   listFingerprintsForPeople(input: { personIds: readonly string[]; media: FaceObservation['media'] }):
     Promise<Result<string[], AppError>>;
@@ -828,6 +837,10 @@ export interface CredentialsStore {
 
 export interface FileSavePort {
   save(input: { suggestedName: string; contents: string }): Promise<Result<{ path: string } | null, AppError>>;
+}
+
+export interface TrashPort {
+  moveToTrash(path: string): Promise<Result<void, AppError>>;
 }
 
 export type SecretsAvailability = 'available' | 'disabled' | 'unsupported' | 'unavailable';
@@ -1364,6 +1377,7 @@ export type JobKind =
   | 'photo_process'
   | 'photo_gps_backfill'
   | 'photo_import_libra'
+  | 'library_trash'
   | 'backup'
   | 'restore';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -1431,7 +1445,11 @@ export type ProcessJobStep =
   | 'photo-faces-summary'
   | 'photo-faces-skipped'
   | 'photo-import-libra-scanning'
-  | 'photo-import-libra-summary';
+  | 'photo-import-libra-summary'
+  | 'library-trash-preflight'
+  | 'library-trash-file'
+  | 'library-trash-artifacts'
+  | 'library-trash-summary';
 
 export interface JobProgress {
   step: ProcessJobStep | BackupPhase | 'downloading' | 'runtime_setup' | 'model_download';

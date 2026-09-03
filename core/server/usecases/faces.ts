@@ -318,8 +318,18 @@ export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: Fac
   if (!people.ok) return people;
   const observations = await deps.globalCatalog.listFaceObservations();
   if (!observations.ok) return observations;
+  const hiddenVideos = await deps.globalCatalog.listHiddenFingerprints();
+  if (!hiddenVideos.ok) return hiddenVideos;
+  const hiddenPhotos = await deps.photos.listHiddenFingerprints();
+  if (!hiddenPhotos.ok) return hiddenPhotos;
+  const hidden = new Set([...hiddenVideos.value, ...hiddenPhotos.value]);
+  const visibleObservations = observations.value.filter((observation) => !hidden.has(observation.fingerprint));
   const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
-  return ok({ people: people.value.map((person) => personView(person, observations.value, currentCatalogDir)) });
+  return ok({
+    people: people.value
+      .map((person) => personView(person, visibleObservations, currentCatalogDir))
+      .filter((person) => person.observationCount > 0),
+  });
 };
 
 export const facesName = async (

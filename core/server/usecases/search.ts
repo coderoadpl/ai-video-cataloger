@@ -20,6 +20,7 @@ export interface SearchFiltersInput {
   to: string | null;
   hasGps: boolean | null;
   folderId: string | null;
+  hidden?: 'exclude' | 'only' | 'include' | undefined;
 }
 
 export type ThumbnailsMode = 'ensure' | 'existing';
@@ -83,7 +84,8 @@ const filtersAreEmpty = (filters: SearchFiltersInput): boolean =>
   && filters.from === null
   && filters.to === null
   && filters.hasGps === null
-  && filters.folderId === null;
+  && filters.folderId === null
+  && (filters.hidden ?? 'exclude') === 'exclude';
 
 const resolveSort = (requested: CatalogSearchSort | undefined, hasQuery: boolean): CatalogSearchSort =>
   requested ?? (hasQuery ? 'relevance' : 'captured_desc');
@@ -133,6 +135,7 @@ export const search = async (
       folderId: input.filters.folderId,
       excludeFolderIds: [],
       excludeMissing: false,
+      hidden: input.filters.hidden ?? 'exclude',
     },
     sort,
     limit: input.limit,

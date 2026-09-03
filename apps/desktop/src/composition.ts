@@ -44,6 +44,10 @@ export const createDesktopApp = async (options: DesktopCompositionOptions): Prom
     processName: 'gui',
     catalogLockMode: 'lazy',
     openExternal: (url: string) => shell.openExternal(url),
+    moveToTrash: (targetPath: string) => shell.trashItem(targetPath).then(() => ok(undefined)).catch(() => ({
+      ok: false as const,
+      error: appError('delete_error', 'Could not move the file to Trash'),
+    })),
     saveFile: saveThroughNativeDialog,
   } as const;
   if (options.isPackaged || !inMemoryDbRequested()) return createApp(config);

@@ -1310,8 +1310,33 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
-    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName) });
+    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName), hiddenAt: file.hiddenAt ?? null });
     return Promise.resolve(ok(undefined));
+  }
+
+  setHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>> {
+    let changed = 0;
+    let unchanged = 0;
+    for (const fingerprint of new Set(fingerprints)) {
+      const file = this.files.get(fingerprint);
+      if (file === undefined) continue;
+      const current = file.hiddenAt ?? null;
+      if ((hiddenAt === null && current === null) || (hiddenAt !== null && current !== null)) {
+        unchanged += 1;
+        continue;
+      }
+      this.files.set(fingerprint, { ...file, hiddenAt });
+      changed += 1;
+    }
+    return Promise.resolve(ok({ changed, unchanged }));
+  }
+
+  listHiddenFingerprints(): Promise<Result<string[], AppError>> {
+    const fingerprints = [...this.files.values()]
+      .filter((file) => (file.hiddenAt ?? null) !== null)
+      .map((file) => file.fingerprint)
+      .sort(compareUtf8Bytes);
+    return Promise.resolve(ok(fingerprints));
   }
 
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>> {
@@ -1609,11 +1634,14 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     if (filters.folderId !== null && filters.folderId !== folderId) return false;
     if (filters.excludeFolderIds.includes(folderId)) return false;
     if (filters.excludeMissing && file.missingAt !== null) return false;
+    if ((filters.hidden ?? 'exclude') === 'exclude' && (file.hiddenAt ?? null) !== null) return false;
+    if (filters.hidden === 'only' && (file.hiddenAt ?? null) === null) return false;
     return true;
   }
 
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
     const rows = [...this.files.values()]
+      .filter((file) => (file.hiddenAt ?? null) === null)
       .map((file) => {
         if (file.gpsLat === null || file.gpsLon === null) return null;
         const folder = this.folders.get(file.folderId);
@@ -1635,12 +1663,15 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       })
       .filter((row): row is CatalogLocationRow => row !== null)
       .sort((left, right) => left.fileName.localeCompare(right.fileName));
-    return Promise.resolve(ok({ totalFiles: this.files.size, rows }));
+    return Promise.resolve(ok({ totalFiles: [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null).length, rows }));
   }
 
   listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+    const visibleFiles = [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null);
+    const visibleFileByFingerprint = new Map(visibleFiles.map((file) => [file.fingerprint, file]));
     const tagCounts = new Map<string, number>();
     for (const analysis of this.analyses.values()) {
+      if (!visibleFileByFingerprint.has(analysis.fingerprint)) continue;
       for (const tag of analysis.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     }
     const tags = [...tagCounts.entries()]
@@ -1650,6 +1681,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const peopleCounts = new Map<string, number>();
     for (const observation of this.faceObservations.values()) {
       if (observation.personId === null) continue;
+      const file = this.files.get(observation.fingerprint);
+      if (file !== undefined && (file.hiddenAt ?? null) !== null) continue;
       peopleCounts.set(observation.personId, (peopleCounts.get(observation.personId) ?? 0) + 1);
     }
     const people = [...peopleCounts.entries()]
@@ -1657,9 +1690,9 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
 
     const placeCounts = new Map<string, { name: string; country: string | null; countryCode: string | null; count: number }>();
-    for (const file of this.files.values()) {
+    for (const file of visibleFiles) {
       if (file.place === null) continue;
-      const key = `${file.place.name} ${file.place.country ?? ''} ${file.place.countryCode ?? ''}`;
+      const key = `${file.place.name}\u0000${file.place.country ?? ''}\u0000${file.place.countryCode ?? ''}`;
       const existing = placeCounts.get(key);
       if (existing === undefined) {
         placeCounts.set(key, { name: file.place.name, country: file.place.country, countryCode: file.place.countryCode, count: 1 });
@@ -1670,7 +1703,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const places = [...placeCounts.values()].sort((left, right) => left.name.localeCompare(right.name));
 
     const yearCounts = new Map<string, number>();
-    for (const file of this.files.values()) {
+    for (const file of visibleFiles) {
       if (file.capturedAt === null) continue;
       const year = file.capturedAt.slice(0, 4);
       yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
@@ -1679,12 +1712,13 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .map(([year, count]) => ({ year, count }))
       .sort((left, right) => right.year.localeCompare(left.year));
 
-    const files = [...this.files.values()];
+    const files = visibleFiles;
     const counts = {
       total: files.length,
       withGps: files.filter((file) => file.gpsLat !== null && file.gpsLon !== null).length,
       withoutCaptureDate: files.filter((file) => file.capturedAt === null).length,
       missing: files.filter((file) => file.missingAt !== null).length,
+      hidden: [...this.files.values()].filter((file) => (file.hiddenAt ?? null) !== null).length,
     };
 
     const facetFolders = [...this.folders.values()]
@@ -1939,10 +1973,26 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
     this.deleteFaceObservationsForFileCalls += 1;
     const cropPaths: string[] = [];
+    const affectedPersonIds = new Set<string>();
     for (const observation of [...this.faceObservations.values()]) {
       if (observation.fingerprint !== fingerprint) continue;
       if (typeof observation.cropPath === 'string' && observation.cropPath.length > 0) cropPaths.push(observation.cropPath);
+      if (observation.personId !== null) affectedPersonIds.add(observation.personId);
       this.faceObservations.delete(observation.obsId);
+    }
+    for (const personId of affectedPersonIds) {
+      const remaining = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
+      const person = this.people.get(personId);
+      if (person === undefined) continue;
+      if (remaining.length === 0) {
+        this.people.delete(personId);
+        continue;
+      }
+      this.people.set(personId, {
+        ...person,
+        centroid: fakeCentroid(remaining.map((observation) => observation.embedding)),
+        exemplarCount: remaining.length,
+      });
     }
     return Promise.resolve(ok({ cropPaths }));
   }
@@ -2245,7 +2295,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   }
 
   upsertPhoto(photo: PhotoRecord): Promise<Result<void, AppError>> {
-    this.photoRows.set(photo.fingerprint, { ...photo, currentPath: canonicalPath(photo.currentPath) });
+    this.photoRows.set(photo.fingerprint, { ...photo, currentPath: canonicalPath(photo.currentPath), hiddenAt: photo.hiddenAt ?? null });
     return Promise.resolve(ok(undefined));
   }
 
@@ -2613,13 +2663,15 @@ export class InMemoryPhotosStore implements PhotosStore {
       right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
   }
 
-  lastSearchInput: { match: string; rankingTerms: readonly string[]; limit: number; offset: number } | null = null;
+  lastSearchInput: { match: string; rankingTerms: readonly string[]; hidden?: 'exclude' | 'only' | 'include' | undefined; limit: number; offset: number } | null = null;
 
-  searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
+  searchPhotos(input: { match: string; rankingTerms: readonly string[]; hidden?: 'exclude' | 'only' | 'include' | undefined; limit: number; offset: number }):
   Promise<Result<PhotoSearchRow[], AppError>> {
     this.lastSearchInput = input;
     const rows = [...this.photoRows.values()]
       .map((photo): PhotoSearchRow | null => {
+        if ((input.hidden ?? 'exclude') === 'exclude' && (photo.hiddenAt ?? null) !== null) return null;
+        if (input.hidden === 'only' && (photo.hiddenAt ?? null) === null) return null;
         const selected = this.resolvePhotoAnalysis(photo.fingerprint);
         const searchable = [photo.fileName, selected?.description ?? '', ...(selected?.tags ?? []), photo.placeName ?? '']
           .join(' ')
@@ -2656,6 +2708,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
+    hidden?: 'exclude' | 'only' | 'include' | undefined;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
@@ -2663,6 +2716,8 @@ export class InMemoryPhotosStore implements PhotosStore {
   }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>> {
     const rows = [...this.photoRows.values()]
       .map((photo): PhotoSearchRow | null => {
+        if ((input.hidden ?? 'exclude') === 'exclude' && (photo.hiddenAt ?? null) !== null) return null;
+        if (input.hidden === 'only' && (photo.hiddenAt ?? null) === null) return null;
         if (this.analysesFor(photo.fingerprint).length === 0) return null;
         if (input.fingerprints !== null && !input.fingerprints.includes(photo.fingerprint)) return null;
         const selected = this.resolvePhotoAnalysis(photo.fingerprint);
@@ -2909,6 +2964,7 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>> {
     const rows: PhotoLocationRow[] = [...this.photoRows.values()]
+      .filter((photo) => (photo.hiddenAt ?? null) === null)
       .filter((photo) => photo.gpsLat !== null && photo.gpsLon !== null)
       .map((photo): PhotoLocationRow => {
         const folder = this.folders.get(photo.folderId);
@@ -2932,7 +2988,36 @@ export class InMemoryPhotosStore implements PhotosStore {
         };
       })
       .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
-    return Promise.resolve(ok({ totalPhotos: this.photoRows.size, rows }));
+    return Promise.resolve(ok({ totalPhotos: [...this.photoRows.values()].filter((photo) => (photo.hiddenAt ?? null) === null).length, rows }));
+  }
+
+  setPhotosHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>> {
+    let changed = 0;
+    let unchanged = 0;
+    for (const fingerprint of new Set(fingerprints)) {
+      const photo = this.photoRows.get(fingerprint);
+      if (photo === undefined) continue;
+      const current = photo.hiddenAt ?? null;
+      if ((hiddenAt === null && current === null) || (hiddenAt !== null && current !== null)) {
+        unchanged += 1;
+        continue;
+      }
+      this.photoRows.set(fingerprint, { ...photo, hiddenAt });
+      changed += 1;
+    }
+    return Promise.resolve(ok({ changed, unchanged }));
+  }
+
+  countHidden(): Promise<Result<number, AppError>> {
+    return Promise.resolve(ok([...this.photoRows.values()].filter((photo) => (photo.hiddenAt ?? null) !== null).length));
+  }
+
+  listHiddenFingerprints(): Promise<Result<string[], AppError>> {
+    const fingerprints = [...this.photoRows.values()]
+      .filter((photo) => (photo.hiddenAt ?? null) !== null)
+      .map((photo) => photo.fingerprint)
+      .sort(compareUtf8Bytes);
+    return Promise.resolve(ok(fingerprints));
   }
 }
 

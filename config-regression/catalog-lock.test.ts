@@ -59,6 +59,8 @@ const NO_LOCK_REASON: Record<string, string> = {
   backupRecoveryKeyConfirm: 'records the in-session recovery-key confirmation, performs no write',
   backupRecoveryKeyImport: 'stores the pasted recovery key in the OS keychain, not the global catalog',
   backupConnectCancel: 'aborts the pending destination connection, performs no write',
+  librarySelectionPreview: 'read-only selection preview, performs no write',
+  libraryTrash: 'acquires the catalog lease itself and holds it across the trash job, not a synchronous lock-wrapped write',
 };
 
 describe('catalog write-lock funnel (hotspot 4)', () => {

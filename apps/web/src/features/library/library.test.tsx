@@ -169,7 +169,7 @@ const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>
         places: [],
         years: [],
         folders: [],
-        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0 },
+        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 0, offlineFolders: 0 },
         ...overrides,
       },
     })),

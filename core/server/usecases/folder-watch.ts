@@ -2,7 +2,7 @@ import { ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FolderWatcherPort, JobKind, JobsPort } from '../ports.js';
 
-const RUN_JOB_KINDS: ReadonlySet<JobKind> = new Set<JobKind>(['process', 'process_drive', 'photo_process']);
+const RUN_JOB_KINDS: ReadonlySet<JobKind> = new Set<JobKind>(['process', 'process_drive', 'photo_process', 'library_trash']);
 const RESUME_POLL_MS = 2000;
 
 export type WatchScheduler = (callback: () => void, delayMs: number) => () => void;

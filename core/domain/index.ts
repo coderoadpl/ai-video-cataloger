@@ -11,6 +11,7 @@ export * from './result.js';
 export * from './errors.js';
 export * from './video.js';
 export * from './global-catalog.js';
+export * from './library-selection.js';
 export * from './faces.js';
 export * from './paths.js';
 export * from './photo.js';

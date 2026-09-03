@@ -92,6 +92,7 @@ const photo = (overrides: Partial<PhotoRecord> = {}): PhotoRecord => ({
   proxyHeight: null,
   thumbState: 'pending',
   missingAt: null,
+  hiddenAt: null,
   selectedConfigId: null,
   ...overrides,
 });
@@ -265,7 +266,7 @@ describe('SqlJsPhotosStore', () => {
     const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
     migrated.close();
     expect(stateRows).toEqual([]);
-    expect(version).toBe(6);
+    expect(version).toBe(PHOTOS_SCHEMA_VERSION);
   });
 
   it('checkpoint persists mid-batch work without ending the batch', async () => {
@@ -1229,6 +1230,53 @@ describe('SqlJsPhotosStore', () => {
     const byPlace = await store.searchPhotos({ match: 'krakow*', rankingTerms: ['krakow'], limit: 50, offset: 0 });
     expect(byPlace.ok).toBe(true);
     if (byPlace.ok) expect(byPlace.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+  });
+
+  it('excludes hidden photos from default search, collection pages, and map locations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000001',
+      fileName: 'hidden.jpg',
+      currentPath: '/media/photos/hidden.jpg',
+      gpsLat: 52,
+      gpsLon: 21,
+    }));
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000002',
+      fileName: 'visible.jpg',
+      currentPath: '/media/photos/visible.jpg',
+      gpsLat: 50,
+      gpsLon: 19,
+    }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001', description: 'hidden photo' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002', description: 'visible photo' }));
+    expect(await store.setPhotosHidden(['ph_0000000000000001'], 1)).toMatchObject({ ok: true, value: { changed: 1, unchanged: 0 } });
+
+    const defaultSearch = await store.searchPhotos({ match: 'photo*', rankingTerms: ['photo'], limit: 10, offset: 0 });
+    const hiddenSearch = await store.searchPhotos({ match: 'photo*', rankingTerms: ['photo'], hidden: 'only', limit: 10, offset: 0 });
+    const page = await store.collectionPage({
+      match: null,
+      rankingTerms: [],
+      from: null,
+      to: null,
+      folderId: null,
+      fingerprints: null,
+      tagTermSets: [],
+      excludeMissing: false,
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+    const locations = await store.listPhotoLocations();
+
+    expect(defaultSearch.ok && defaultSearch.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+    expect(hiddenSearch.ok && hiddenSearch.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001']);
+    expect(page.ok && page.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+    expect(locations.ok && locations.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+    expect(await store.countHidden()).toMatchObject({ ok: true, value: 1 });
   });
 
   it('collectionPage browses newest-first with nulls-last, pushes total via COUNT(*), and applies limit/offset', async () => {
