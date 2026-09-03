@@ -1,4 +1,9 @@
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 
 import { z } from 'zod';
 
@@ -30,6 +35,80 @@ export interface KeychainSecretsAdapterOptions {
   keychainPath?: string | undefined;
   securityPath?: string | undefined;
   commandRunner?: SecretsCommandRunner | undefined;
+}
+
+export const keychainDisabledByEnvironment = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean => disabledKeychainSchema.safeParse(env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN).success;
+
+const fileSecretsSchema = z.record(z.string(), z.string());
+
+export interface JsonSecretsStoreOptions {
+  homeDirectory?: string | undefined;
+}
+
+// Plaintext on purpose: only for runs that set AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1, never shipped.
+export class JsonSecretsStore implements SecretsStore {
+  private readonly filePath: string;
+
+  constructor(options: JsonSecretsStoreOptions = {}) {
+    this.filePath = path.join(options.homeDirectory ?? homedir(), '.ai-video-cataloger', 'secrets.json');
+  }
+
+  path(): string {
+    return this.filePath;
+  }
+
+  availability(): Promise<SecretsAvailability> {
+    return Promise.resolve('available');
+  }
+
+  async get(account: string): Promise<Result<string | null, AppError>> {
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    return ok(entries.value[account] ?? null);
+  }
+
+  async set(account: string, secret: string): Promise<Result<void, AppError>> {
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    return this.write({ ...entries.value, [account]: secret });
+  }
+
+  async delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    if (entries.value[account] === undefined) return ok({ existed: false });
+    const remaining = Object.fromEntries(
+      Object.entries(entries.value).filter(([stored]) => stored !== account),
+    );
+    const written = await this.write(remaining);
+    return written.ok ? ok({ existed: true }) : written;
+  }
+
+  private async read(): Promise<Result<Record<string, string>, AppError>> {
+    if (!existsSync(this.filePath)) return ok({});
+    try {
+      const parsed = fileSecretsSchema.safeParse(JSON.parse(await readFile(this.filePath, 'utf8')));
+      return parsed.success ? ok(parsed.data) : fileSecretsUnavailable();
+    } catch {
+      return fileSecretsUnavailable();
+    }
+  }
+
+  private async write(entries: Record<string, string>): Promise<Result<void, AppError>> {
+    const temporaryPath = `${this.filePath}.${process.pid.toString(36)}.${randomBytes(6).toString('hex')}.tmp`;
+    try {
+      await mkdir(path.dirname(this.filePath), { recursive: true });
+      await writeFile(temporaryPath, `${JSON.stringify(entries, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+      await rename(temporaryPath, this.filePath);
+      await chmod(this.filePath, 0o600);
+      return ok(undefined);
+    } catch {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      return { ok: false, error: appError('internal', 'Could not write the file-backed secrets store') };
+    }
+  }
 }
 
 export class KeychainSecretsAdapter implements SecretsStore {
@@ -165,6 +244,11 @@ const customKeychainUnavailable = (): Result<never, AppError> => ({
     'keychain_unavailable',
     'The configured macOS Keychain could not be read. Check AI_VIDEO_CATALOGER_KEYCHAIN and try again.',
   ),
+});
+
+const fileSecretsUnavailable = (): Result<never, AppError> => ({
+  ok: false,
+  error: appError('keychain_unavailable', 'The file-backed secrets store could not be read.'),
 });
 
 const structuralKeychainUnavailable = (): Result<never, AppError> => ({

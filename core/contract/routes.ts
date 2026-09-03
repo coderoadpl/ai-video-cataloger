@@ -423,6 +423,7 @@ export const backupStatusOutputSchema = z.object({
   supportedSchemaVersions: backupSchemaVersionsSchema,
   connection: backupConnectionSchema.nullable(),
   recoveryKeyStored: z.boolean(),
+  recoveryKeyFingerprint: z.string().nullable(),
 });
 
 export const processCompletedOutputSchema = z.object({

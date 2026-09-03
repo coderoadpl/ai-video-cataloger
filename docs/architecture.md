@@ -1230,6 +1230,15 @@ archives written under another key, unless the caller imported that key
 (`POST /api/backup/recovery-key/import`) or acknowledged that they stay
 unreadable.
 
+`POST /api/backup/recovery-key/import` verifies the pasted key against the
+destination before it is written to the Keychain: a key whose fingerprint
+matches none of the archives already there is refused with
+`recovery_key_mismatch`, and a key already stored on this Mac is replaced only
+while no archive in the destination carries its fingerprint, so a wrong but
+checksum-valid paste cannot wedge enablement. `GET /api/backup/status` carries
+`recoveryKeyFingerprint`, which is how the stepper decides whether the archives
+in the destination were written under the key this Mac holds.
+
 Backup surfaces deviate from the PRD in six recorded places. (a) The
 enablement flow reaches the destination through
 `BackupDestinationPort.connect`, and the service-account path resolves — or

@@ -36,6 +36,8 @@ import { BackupStateFile } from './state-store.js';
 import { extractTarZstd, writeTarZstd } from './tar.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
+const TEST_OWNER = { pid: process.pid, hostname: 'test-host' } as const;
+
 describe('backup restore pipeline', () => {
   it('restores a critical backup and reports relaunch required', async () => {
     const fixture = await createRestoreFixture();
@@ -165,7 +167,11 @@ describe('backup restore pipeline', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'restore_incomplete' } });
     const marker = path.join(fixture.targetHome, '.ai-video-cataloger', 'restore-incomplete.json');
     expect(existsSync(marker)).toBe(true);
-    expect(await performRestoreStartupRecovery({ fs: fixture.fs, homeDirectory: fixture.targetHome })).toEqual(ok(undefined));
+    expect(await performRestoreStartupRecovery({
+      fs: fixture.fs,
+      homeDirectory: fixture.targetHome,
+      isOwnerAlive: () => false,
+    })).toEqual(ok(undefined));
     expect(existsSync(marker)).toBe(false);
     expect(readFileSync(path.join(fixture.targetHome, '.ai-video-cataloger', 'config.json'), 'utf8')).toContain('current-target');
     await expectCatalogCounts(fixture.targetHome, { folders: 0, files: 0 });
@@ -199,6 +205,30 @@ describe('backup restore pipeline', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(existsSync(marker)).toBe(true);
+  });
+
+  it('leaves the rollback marker and live files untouched while another live process owns the restore', async () => {
+    const fixture = await createRestoreFixture();
+    const failingFs = new FailingRenameFs(fixture.fs, 2);
+    const owner = { pid: 424242, hostname: 'test-host' } as const;
+    const result = await runRestore(
+      { ...fixture.restoreDeps, fs: failingFs, owner },
+      { remoteId: fixture.remoteId },
+      context('foreign-owner'),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'restore_incomplete' } });
+    const marker = path.join(fixture.targetHome, '.ai-video-cataloger', 'restore-incomplete.json');
+    await expectCatalogCounts(fixture.targetHome, { folders: 1, files: 1 });
+
+    const recovered = await performRestoreStartupRecovery({
+      fs: fixture.fs,
+      homeDirectory: fixture.targetHome,
+      isOwnerAlive: (candidate) => candidate.pid === owner.pid,
+    });
+
+    expect(recovered).toEqual(ok(undefined));
+    expect(existsSync(marker)).toBe(true);
+    await expectCatalogCounts(fixture.targetHome, { folders: 1, files: 1 });
   });
 
   it('refuses an unknown remote id', async () => {
@@ -405,6 +435,7 @@ const createRestoreFixture = async (): Promise<{
   const key = Buffer.alloc(32, 7);
   const backupDeps: BackupRunDeps = {
     homeDirectory: source.home,
+    owner: TEST_OWNER,
     appVersion: '1.0.0',
     fs: source.fs,
     globalCatalog: source.globalCatalog,
@@ -424,6 +455,7 @@ const createRestoreFixture = async (): Promise<{
   const restoreState = new BackupStateFile({ homeDirectory: target.home });
   const restoreDeps: BackupRestoreDeps = {
     homeDirectory: target.home,
+    owner: TEST_OWNER,
     supportedSchemaVersions: { globalCatalog: 16, photos: 6 },
     fs: target.fs,
     globalCatalog: target.globalCatalog,

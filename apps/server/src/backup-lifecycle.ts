@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import initSqlJs from 'sql.js';
 
 import { PHOTOS_SCHEMA_VERSION, sqlJsWasmConfig } from '@adapters/db/index.js';
@@ -39,6 +40,7 @@ import {
   prepareBackupScope,
   readBackupSettings,
   readBackupStatus,
+  writeBackupStagingOwner,
   runBackupNow,
   testBackupDestination,
   type BackupConnectRequest,
@@ -47,6 +49,8 @@ import {
   type BackupEnableRequest,
   type BackupEnablementDeps,
   type BackupListResult,
+  type BackupOwner,
+  type BackupOwnerLiveness,
   type BackupRestoreDeps,
   type BackupRestoreInput,
   type BackupRunDeps,
@@ -73,6 +77,8 @@ export interface BackupLifecycleOptions {
   fileSave: FileSavePort;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
   now?: (() => Date) | undefined;
+  owner?: BackupOwner | undefined;
+  isOwnerAlive?: BackupOwnerLiveness | undefined;
 }
 
 export interface BackupLifecycle {
@@ -94,11 +100,14 @@ export interface BackupLifecycle {
 export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLifecycle => {
   const state = new BackupStateFile({ homeDirectory: options.homeDirectory });
   const now = options.now ?? (() => new Date());
+  const owner = options.owner ?? { pid: process.pid, hostname: hostname() };
+  const isOwnerAlive = options.isOwnerAlive ?? defaultOwnerLiveness;
   const runDeps = async (): Promise<Result<BackupRunDeps, AppError>> => {
     const destination = await options.destination();
     if (!destination.ok) return destination;
     return ok({
       homeDirectory: options.homeDirectory,
+      owner,
       appVersion: options.appVersion,
       fs: options.fs,
       globalCatalog: options.globalCatalog,
@@ -117,6 +126,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     if (!destination.ok) return destination;
     return ok({
       homeDirectory: options.homeDirectory,
+      owner,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       fs: options.fs,
       globalCatalog: options.globalCatalog,
@@ -181,14 +191,18 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
   };
   return {
     cleanup: async () => {
-      const recovered = await performRestoreStartupRecovery({ fs: options.fs, homeDirectory: options.homeDirectory });
+      const recovered = await performRestoreStartupRecovery({
+        fs: options.fs,
+        homeDirectory: options.homeDirectory,
+        isOwnerAlive,
+      });
       if (!recovered.ok) return recovered;
-      return cleanupBackupStaging(options.fs, options.homeDirectory);
+      return cleanupBackupStaging(options.fs, options.homeDirectory, isOwnerAlive);
     },
     evaluate: async () => {
       const evaluated = await evaluateScheduledBackup({
         enabled: () => readEnabled(options.config),
-        fingerprint: () => scheduledFingerprint(options),
+        fingerprint: () => scheduledFingerprint(options, owner),
         readState: () => state.read(),
         listJobs: () => options.jobs.list(),
         enqueue,
@@ -213,6 +227,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       secrets: options.secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: options.destination,
+      fingerprintKey: backupKeyFingerprint,
     }, input),
     connect: (request, signal) => connectBackupDestination(enablementDeps, request, signal),
     test: (signal) => testBackupDestination(enablementDeps, signal),
@@ -245,8 +260,20 @@ const verifySqliteIntegrity = async (
   }
 };
 
+const defaultOwnerLiveness: BackupOwnerLiveness = (owner) => {
+  if (owner.hostname !== hostname()) return true;
+  if (owner.pid === process.pid) return true;
+  try {
+    process.kill(owner.pid, 0);
+    return true;
+  } catch (cause) {
+    return !(cause instanceof Error && 'code' in cause && cause.code === 'ESRCH');
+  }
+};
+
 const scheduledFingerprint = async (
   options: BackupLifecycleOptions,
+  owner: BackupOwner,
 ): Promise<Result<string, AppError>> => {
   const stagingDirectory = options.fs.join(
     options.homeDirectory,
@@ -256,6 +283,8 @@ const scheduledFingerprint = async (
   );
   const created = await options.fs.ensureDirectory(stagingDirectory);
   if (!created.ok) return created;
+  const owned = await writeBackupStagingOwner(options.fs, stagingDirectory, owner);
+  if (!owned.ok) return owned;
   try {
     const prepared = await prepareBackupScope(options, 'critical', stagingDirectory, undefined, options.jobs);
     return prepared.ok ? ok(prepared.value.fingerprint) : prepared;

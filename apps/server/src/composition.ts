@@ -27,7 +27,7 @@ import { SipsPhotoMediaAdapter } from '@adapters/photo-media/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
-import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
+import { JsonSecretsStore, KeychainSecretsAdapter, keychainDisabledByEnvironment } from '@adapters/secrets/index.js';
 import { NdjsonSpendLedger } from '@adapters/spend-ledger/index.js';
 import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
 import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
@@ -83,6 +83,7 @@ import type {
   PlacesPort,
   ProvidersPort,
   ProviderTestResult,
+  SecretsStore,
   SpendLedgerPort,
   TranscriberPort,
   WhisperRuntimePort,
@@ -223,9 +224,10 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     lockMode: config.catalogLockMode ?? 'lazy',
   });
   const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
+  const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
   const backupDestination = () => createGoogleBackupDestination({
     config: configStore,
-    secrets,
+    secrets: backupSecrets,
     oauthClientId: config.googleOAuthClientId ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '',
     oauthClientSecret: config.googleOAuthClientSecret ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '',
     openExternal: config.openExternal ?? (() => Promise.reject(new Error('System browser integration is unavailable'))),
@@ -239,7 +241,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     globalCatalog,
     photos,
     config: configStore,
-    secrets,
+    secrets: backupSecrets,
     jobs,
     destination: backupDestination,
     fileSave: { save: config.saveFile ?? (() => Promise.resolve(unavailableSaveDialog())) },
@@ -284,6 +286,17 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     runBackup: backupLifecycle.run,
     readiness,
   };
+};
+
+// The Keychain is the only store for backup secrets in a shipped build. QA and e2e runs set
+// AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1 to keep the developer's login keychain untouched, which
+// would otherwise fail every backup call with keychain_unavailable; those runs get a 0600
+// file-backed store instead (docs/qa/release-walkthrough.md).
+const backupSecretsStore = (keychain: SecretsStore, homeDirectory: string): SecretsStore => {
+  if (!keychainDisabledByEnvironment()) return keychain;
+  const store = new JsonSecretsStore({ homeDirectory });
+  console.warn(`[backup] Keychain disabled: backup secrets are stored unencrypted in ${store.path()}`);
+  return store;
 };
 
 class InvalidatingConfigStore implements ConfigStore {

@@ -29,7 +29,16 @@ Every run launches with:
 - `HOME`/`USERPROFILE` — a throwaway temp home unless `--home` names a prepared
   QA home, so the home-scoped catalog, config and models are never the owner's.
 - `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` — the login keychain is never read,
-  written or prompted for.
+  written or prompted for. Under that flag the composition
+  (`apps/server/src/composition.ts`) gives the backup lifecycle and the Drive
+  destination a 0600 file-backed secrets store at
+  `<home>/.ai-video-cataloger/secrets.json` instead of the Keychain adapter,
+  which would otherwise fail every backup call with `keychain_unavailable`; a
+  shipped build never selects it, and the composition logs a warning whenever it
+  does.
+- `AVC_GOOGLE_DRIVE_BASE_URL` / `AVC_GOOGLE_UPLOAD_BASE_URL` — pointed at the
+  in-memory fake Drive the run starts for itself (see below), so the backup step
+  needs no Google account and no network.
 - `ui_language: "pl"` — seeded into the home's `.ai-video-cataloger/config.json`
   before launch (merged with whatever else a prepared QA home already has
   there), so every captured screenshot shows production Polish copy instead of
@@ -103,6 +112,32 @@ local model under test regardless of whatever analyzer that home was last
 configured with. A folder-scoped analyzer inside the fixtures tree would still
 win; release runs point `--fixtures` at a clean fixture set, which has none.
 
+### The backup step
+
+`scripts/fake-drive-server.mjs` is a runnable, in-memory stand-in for the Google
+Drive v3 API — token exchange, `drives`/`permissions` reads, `files` list, create
+and delete, multipart and resumable uploads, `alt=media` download — sufficient
+for the **service-account** destination. `scripts/fake-drive-server.test.ts`
+drives the real `GoogleServiceAccountBackupDestination` against it over loopback
+HTTP, so the fake is held to the adapter's actual request shapes rather than to a
+description of them.
+
+The walkthrough starts it on a random loopback port before launching the app,
+generates a throwaway service-account key whose `token_uri` points at it, and the
+`backup` step drives the real Settings > Kopia zapasowa flow: the enable switch,
+the stepper's service-account provider, the Shared Drive id and key JSON, the
+connection test, the mandatory recovery-key export (the native save dialog is
+stubbed in the Electron main process, the in-app button is clicked for real), the
+confirmation checkbox and Finish. The step is `ok` only when the archive list
+renders **and** the fake Drive actually holds an object; the following
+`backup-indicator` step closes Settings and requires the bottom-bar indicator.
+Both screenshots are part of the reviewed set.
+
+Because the fake Drive is in-memory and re-ported every run, the runner clears
+every `backup_*` config key and the file-backed `secrets.json` in the driven home
+before launch — environment setup, not a stand-in for the flow: every click in
+the stepper is still real.
+
 ### The analyze step's outcome
 
 The step maps to the analysis's **real** result, read from the UI state it
@@ -144,19 +179,7 @@ covers the grid and intercepts the preview tile click.
    pnpm run verify:package
    ```
 
-3. For a release that includes backup changes, start the local fake Google
-   Drive endpoint and export the app to it before the walkthrough:
-
-   ```bash
-   export AVC_GOOGLE_DRIVE_BASE_URL="http://127.0.0.1:<fake-drive-port>/drive/v3"
-   export AVC_GOOGLE_UPLOAD_BASE_URL="http://127.0.0.1:<fake-drive-port>/upload/drive/v3"
-   ```
-
-   The backup portion of the walkthrough must enable the Google-account
-   destination against that fake endpoint, run a backup, show the remote list,
-   restore the archive, and confirm the restored catalog state in the UI.
-
-4. Set `AVC_SCRATCH_DIR` to a scratch directory outside the repository, then
+3. Set `AVC_SCRATCH_DIR` to a scratch directory outside the repository, then
    run the walkthrough against the built `.app` and a fixture folder of sample
    videos, archiving the finished set as part of the same command:
 
@@ -201,8 +224,8 @@ covers the grid and intercepts the preview tile click.
    the process exits — run it **before any worktree cleanup**; a set that
    only exists inside a worktree does not survive the worktree being removed.
 
-5. Hand the archived set to an **independent reviewer** — someone other than
-   whoever ran step 4 — and have them work the checklist below against the
+4. Hand the archived set to an **independent reviewer** — someone other than
+   whoever ran step 3 — and have them work the checklist below against the
    archived PNGs, not against a description of them. This reviewer has
    authority to fail the release: a release does not proceed on the release
    agent's own "looks correct" verdict.
@@ -224,7 +247,7 @@ The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`
 `analyze`, `search`, `library-preview`, `photos-sidebar`,
 `analysis-photos`, `photos-tree`, `photos-tree-analyze`,
 `collection-photo-analyzed`, `collection-photo-viewer`,
-`settings`, `wizard`.
+`settings`, `backup`, `backup-indicator`, `wizard`.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
 workspace steps run in Analysis mode, while `search` and the collection photo
 steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the
@@ -366,6 +389,11 @@ Read every screenshot against the sensitivities that have burned us before:
   Biblioteka → Kolekcja read `Zdjęcia (N)` with `N >= 1`, and does the
   timeline itself show a photo tile (not just an incremented chip with an
   empty grid)?
+- **Kopia zapasowa enabled (F14)** — in the `backup` screenshot, does Settings >
+  Kopia zapasowa show the connected destination, the last-backup readout and a
+  non-empty archive list in Polish, with no error alert; and in
+  `backup-indicator`, does the bottom bar carry the backup indicator once
+  Settings is closed?
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

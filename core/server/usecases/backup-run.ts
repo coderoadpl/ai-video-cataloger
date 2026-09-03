@@ -24,6 +24,13 @@ import {
   type PhotosStore,
 } from '../ports.js';
 import { computeBackupFingerprint } from './backup-fingerprint.js';
+import {
+  backupStagingRoot,
+  readBackupStagingOwner,
+  writeBackupStagingOwner,
+  type BackupOwner,
+  type BackupOwnerLiveness,
+} from './backup-owner.js';
 import { selectForDeletion } from './backup-retention.js';
 import { collectBackupScope, type BackupScopeEntry } from './backup-scope.js';
 
@@ -58,6 +65,7 @@ export interface BackupPreparationDeps {
 
 export interface BackupRunDeps extends BackupPreparationDeps {
   appVersion: string;
+  owner: BackupOwner;
   destination: BackupDestinationPort;
   state: BackupStatePort;
   now(): Date;
@@ -116,6 +124,8 @@ const runBackupAttempt = async (
   try {
     const staging = await deps.fs.ensureDirectory(stagingDirectory);
     if (!staging.ok) return staging;
+    const owned = await writeBackupStagingOwner(deps.fs, stagingDirectory, deps.owner);
+    if (!owned.ok) return owned;
     const fingerprinting = await report(context, 'fingerprinting', 5);
     if (!fingerprinting.ok) return fingerprinting;
     const snapshotting = await report(context, 'snapshotting', 15);
@@ -223,10 +233,31 @@ export const backupAdmissionError = (incoming: JobKind, records: readonly JobRec
   return null;
 };
 
-export const cleanupBackupStaging = (
+export const cleanupBackupStaging = async (
   fs: FileSystemPort,
   homeDirectory: string,
-): Promise<Result<void, AppError>> => fs.deletePath(fs.join(homeDirectory, '.ai-video-cataloger', 'backup-staging'));
+  isOwnerAlive: BackupOwnerLiveness,
+): Promise<Result<void, AppError>> => {
+  const root = backupStagingRoot(fs, homeDirectory);
+  const exists = await fs.isDirectory(root);
+  if (!exists.ok) return exists;
+  if (!exists.value) return ok(undefined);
+  const listed = await fs.listDirectory(root);
+  if (!listed.ok) return listed;
+  for (const entry of listed.value) {
+    if (entry.kind !== 'directory') {
+      const removed = await fs.deleteFile(entry.path);
+      if (!removed.ok) return removed;
+      continue;
+    }
+    const owner = await readBackupStagingOwner(fs, entry.path);
+    if (!owner.ok) return owner;
+    if (owner.value !== null && isOwnerAlive(owner.value)) continue;
+    const removed = await fs.deletePath(entry.path);
+    if (!removed.ok) return removed;
+  }
+  return ok(undefined);
+};
 
 export const prepareBackupScope = async (
   deps: BackupPreparationDeps,

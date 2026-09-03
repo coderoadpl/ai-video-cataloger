@@ -44,7 +44,10 @@ The Google-account backup destination is a build-time secret: export
 `Settings > Backup > Google account` fails immediately with
 `backup_destination_error` instead of opening a browser, and only the
 service-account path works. Record that the variables were present, not their
-values, in the release notes handed to the owner.
+values, in the release notes handed to the owner. The walkthrough's own `backup`
+step exercises the **service-account** destination against the in-memory fake
+Drive it starts for itself, so it proves the enablement flow without either
+variable and without a Google account; the OAuth path stays a manual check.
 
 | Step | Command | Pass condition |
 |---|---|---|

@@ -203,6 +203,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
       config: configStore,
       state: backupState,
       jobs,
+      fingerprintKey: backupKeyFingerprint,
       secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: () => Promise.resolve(ok(backupDestination)),

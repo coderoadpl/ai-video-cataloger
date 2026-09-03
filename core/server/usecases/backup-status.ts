@@ -51,6 +51,7 @@ export interface BackupStatusView extends BackupIndicator {
   supportedSchemaVersions: BackupSchemaVersions;
   connection: BackupConnectionReport | null;
   recoveryKeyStored: boolean;
+  recoveryKeyFingerprint: string | null;
 }
 
 export interface BackupStatusDeps {
@@ -60,6 +61,7 @@ export interface BackupStatusDeps {
   secrets: SecretsStore;
   supportedSchemaVersions: BackupSchemaVersions;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
+  fingerprintKey(key: Buffer): string;
 }
 
 export const deriveBackupIndicator = (input: {
@@ -107,7 +109,8 @@ export const readBackupStatus = async (
   if (!connection.ok) return connection;
   const storedKey = await deps.secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
   if (!storedKey.ok && storedKey.error.code !== 'keychain_unavailable') return storedKey;
-  const recoveryKeyStored = storedKey.ok && storedKey.value !== null;
+  const storedKeyMaterial = storedKey.ok ? storedKey.value : null;
+  const recoveryKeyStored = storedKeyMaterial !== null;
   const indicator = deriveBackupIndicator({
     enabled: settings.value.enabled,
     jobs: jobs.value,
@@ -133,6 +136,7 @@ export const readBackupStatus = async (
     supportedSchemaVersions: deps.supportedSchemaVersions,
     connection: connection.value,
     recoveryKeyStored,
+    recoveryKeyFingerprint: storedKeyMaterial === null ? null : deps.fingerprintKey(Buffer.from(storedKeyMaterial, 'base64')),
   });
 };
 

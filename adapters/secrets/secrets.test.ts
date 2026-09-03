@@ -1,9 +1,17 @@
+import { mkdtempSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { ok } from '@core/domain/index.js';
 
 import {
   DEFAULT_KEYCHAIN_SERVICE,
+  JsonSecretsStore,
   KeychainSecretsAdapter,
   SECURITY_COMMAND_PATH,
+  keychainDisabledByEnvironment,
   type SecretsCommandResult,
   type SecretsCommandRunner,
 } from './index.js';
@@ -255,5 +263,37 @@ describe('KeychainSecretsAdapter', () => {
     const result = await adapter.set('openai', 'sk-must-not-leak');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.message).not.toContain('sk-must-not-leak');
+  });
+});
+
+describe('JsonSecretsStore', () => {
+  const store = () => new JsonSecretsStore({ homeDirectory: mkdtempSync(path.join(tmpdir(), 'avc-secrets-')) });
+
+  it('round-trips a secret through an owner-only file', async () => {
+    const secrets = store();
+
+    expect(await secrets.availability()).toBe('available');
+    expect(await secrets.get('backup.encryption_key')).toEqual(ok(null));
+    expect(await secrets.set('backup.encryption_key', 'key-material')).toEqual(ok(undefined));
+    expect(await secrets.get('backup.encryption_key')).toEqual(ok('key-material'));
+    expect(statSync(secrets.path()).mode & 0o777).toBe(0o600);
+  });
+
+  it('reports whether a deleted secret existed and keeps the other entries', async () => {
+    const secrets = store();
+    await secrets.set('backup.encryption_key', 'key-material');
+    await secrets.set('backup.google.refresh_token', 'refresh-token');
+
+    expect(await secrets.delete('backup.encryption_key')).toEqual(ok({ existed: true }));
+    expect(await secrets.delete('backup.encryption_key')).toEqual(ok({ existed: false }));
+    expect(await secrets.get('backup.google.refresh_token')).toEqual(ok('refresh-token'));
+  });
+});
+
+describe('keychainDisabledByEnvironment', () => {
+  it('is true only for the exact opt-out value', () => {
+    expect(keychainDisabledByEnvironment({ AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' })).toBe(true);
+    expect(keychainDisabledByEnvironment({ AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: 'true' })).toBe(false);
+    expect(keychainDisabledByEnvironment({})).toBe(false);
   });
 });

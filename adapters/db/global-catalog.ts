@@ -68,6 +68,7 @@ import type {
   CatalogTagAlias,
   CatalogTagAliasResult,
   CatalogTagSummary,
+  CollectionRowAnchor,
   DriveRunRecord,
   ForgetEntryResult,
   GlobalCatalogCounts,
@@ -809,6 +810,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>> {
     return this.read((db, client) => {
       const clauses = buildSearchFilterClauses(input.filters);
+      const anchor = input.after ?? null;
 
       if (input.match !== null) {
         const where = combineSearchWhere('search_documents_fts MATCH $match', clauses);
@@ -826,6 +828,11 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         const sorted = input.sort === 'relevance'
           ? rows.sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
           : sortSearchRows(rows, input.sort);
+        const matchSort = input.sort;
+        if (anchor !== null && matchSort !== 'relevance') {
+          const remaining = sorted.filter((row) => compareSearchRowToAnchor(matchSort, row, anchor) > 0);
+          return { total: sorted.length, rows: remaining.slice(0, input.limit) };
+        }
         return { total: sorted.length, rows: sorted.slice(input.offset, input.offset + input.limit) };
       }
 
@@ -836,13 +843,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const countResult = client.exec(`SELECT COUNT(*) ${baseFrom} WHERE ${where.sql}`, where.params);
       const total = numberValue(countResult[0]?.values[0]?.[0]);
       const sort = input.sort === 'relevance' ? 'captured_desc' : input.sort;
+      const keyset = anchor === null || input.sort === 'relevance'
+        ? { sql: '', params: {} }
+        : searchAfterClause(sort, anchor);
       const result = client.exec(
         `SELECT ${SEARCH_COLUMNS_UNMATCHED}
           ${baseFrom}
-          WHERE ${where.sql}
+          WHERE ${where.sql}${keyset.sql}
           ORDER BY ${searchOrderBySql(sort)}
           LIMIT $limit OFFSET $offset`,
-        { ...where.params, $limit: input.limit, $offset: input.offset },
+        { ...where.params, ...keyset.params, $limit: input.limit, $offset: keyset.sql === '' ? input.offset : 0 },
       );
       const values = result[0]?.values ?? [];
       const rows = values.map((row) => searchRowFromValues(row, input.rankingTerms));
@@ -2395,12 +2405,61 @@ const combineSearchWhere = (base: string | null, clauses: readonly SearchWhereCl
 const searchOrderBySql = (sort: Exclude<CatalogSearchInput['sort'], 'relevance'>): string => {
   switch (sort) {
     case 'captured_desc':
-      return `f.captured_at IS NULL, f.captured_at DESC, f.file_name ASC`;
+      return `f.captured_at IS NULL, f.captured_at DESC, f.file_name ASC, f.fingerprint ASC`;
     case 'captured_asc':
-      return `f.captured_at IS NULL, f.captured_at ASC, f.file_name ASC`;
+      return `f.captured_at IS NULL, f.captured_at ASC, f.file_name ASC, f.fingerprint ASC`;
     case 'name_asc':
-      return `COALESCE(NULLIF(sd.final_name, ''), f.file_name) ASC`;
+      return `COALESCE(NULLIF(sd.final_name, ''), f.file_name) ASC, f.file_name ASC, f.fingerprint ASC`;
   }
+};
+
+const SEARCH_DISPLAY_NAME_SQL = `COALESCE(NULLIF(sd.final_name, ''), f.file_name)`;
+
+const searchAfterClause = (
+  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
+  anchor: CollectionRowAnchor,
+): { sql: string; params: Record<string, string | number | null> } => {
+  const params = {
+    $afterCaptured: anchor.capturedAt,
+    $afterFileName: anchor.fileName,
+    $afterDisplayName: anchor.displayName,
+    $afterFingerprint: anchor.fingerprint,
+    $afterCapturedNull: anchor.capturedAt === null ? 1 : 0,
+  };
+  const nameTail = `(f.file_name > $afterFileName OR (f.file_name = $afterFileName AND f.fingerprint > $afterFingerprint))`;
+  if (sort === 'name_asc') {
+    return {
+      sql: ` AND (${SEARCH_DISPLAY_NAME_SQL} > $afterDisplayName OR (${SEARCH_DISPLAY_NAME_SQL} = $afterDisplayName AND ${nameTail}))`,
+      params,
+    };
+  }
+  const capturedComparison = sort === 'captured_desc' ? '<' : '>';
+  return {
+    sql: ` AND ((f.captured_at IS NULL) > $afterCapturedNull OR ((f.captured_at IS NULL) = $afterCapturedNull AND (`
+      + `($afterCapturedNull = 1 AND ${nameTail})`
+      + ` OR ($afterCapturedNull = 0 AND (f.captured_at ${capturedComparison} $afterCaptured`
+      + ` OR (f.captured_at = $afterCaptured AND ${nameTail}))))))`,
+    params,
+  };
+};
+
+const compareSearchRowToAnchor = (
+  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
+  row: CatalogSearchRow,
+  anchor: CollectionRowAnchor,
+): number => {
+  const displayName = (name: string, finalName: string | null): string =>
+    finalName !== null && finalName.length > 0 ? finalName : name;
+  const nameTail = compareUtf8Bytes(row.fileName, anchor.fileName)
+    || compareUtf8Bytes(row.fingerprint, anchor.fingerprint);
+  if (sort === 'name_asc') {
+    return compareUtf8Bytes(displayName(row.fileName, row.finalName), anchor.displayName) || nameTail;
+  }
+  const direction = sort === 'captured_desc' ? -1 : 1;
+  if (row.capturedAt === null && anchor.capturedAt === null) return nameTail;
+  if (row.capturedAt === null) return 1;
+  if (anchor.capturedAt === null) return -1;
+  return direction * compareUtf8Bytes(row.capturedAt, anchor.capturedAt) || nameTail;
 };
 
 const sortSearchRows = (
@@ -2415,15 +2474,20 @@ const sortSearchRows = (
     case 'captured_asc':
       return sorted.sort((left, right) => capturedAtCompare(left, right, 1));
     case 'name_asc':
-      return sorted.sort((left, right) => compareUtf8Bytes(displayName(left), displayName(right)));
+      return sorted.sort((left, right) =>
+        compareUtf8Bytes(displayName(left), displayName(right))
+        || compareUtf8Bytes(left.fileName, right.fileName)
+        || compareUtf8Bytes(left.fingerprint, right.fingerprint));
   }
 };
 
 const capturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
-  if (left.capturedAt === null && right.capturedAt === null) return compareUtf8Bytes(left.fileName, right.fileName);
+  const nameTieBreak = compareUtf8Bytes(left.fileName, right.fileName)
+    || compareUtf8Bytes(left.fingerprint, right.fingerprint);
+  if (left.capturedAt === null && right.capturedAt === null) return nameTieBreak;
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return compareUtf8Bytes(left.fileName, right.fileName);
+  if (left.capturedAt === right.capturedAt) return nameTieBreak;
   return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 

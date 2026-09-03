@@ -6,6 +6,7 @@ import type {
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogSearchSort,
+  CollectionRowAnchor,
   FileSystemPort,
   GlobalCatalogStore,
   MediaPort,
@@ -97,10 +98,19 @@ export interface CollectionOutput {
   nextCursor: string | null;
 }
 
+const collectionAnchorSchema = z.object({
+  capturedAt: z.string().nullable(),
+  fileName: z.string(),
+  displayName: z.string(),
+  fingerprint: z.string(),
+}).strict();
+
 const collectionCursorSchema = z.object({
-  v: z.literal(1),
+  v: z.literal(2),
   video: z.number().int().nonnegative(),
   photo: z.number().int().nonnegative(),
+  videoAfter: collectionAnchorSchema.nullable(),
+  photoAfter: collectionAnchorSchema.nullable(),
 });
 
 type CollectionCursor = z.output<typeof collectionCursorSchema>;
@@ -173,7 +183,7 @@ export const libraryCollection = async (
   }
 
   const cursor: Result<CollectionCursor, AppError> = input.cursor === null
-    ? ok({ v: 1, video: 0, photo: 0 })
+    ? ok({ v: 2, video: 0, photo: 0, videoAfter: null, photoAfter: null })
     : decodeCollectionCursor(input.cursor);
   if (!cursor.ok) return cursor;
 
@@ -239,6 +249,7 @@ export const libraryCollection = async (
       sort,
       limit: input.limit,
       offset: cursor.value.video,
+      after: cursor.value.videoAfter,
     })
     : ok(emptyVideoPage);
   if (!videoPage.ok) return videoPage;
@@ -257,6 +268,7 @@ export const libraryCollection = async (
       sort,
       limit: input.limit,
       offset: cursor.value.photo,
+      after: cursor.value.photoAfter,
     })
     : ok(emptyPhotoPage);
   if (!photoPage.ok) return photoPage;
@@ -304,13 +316,24 @@ export const libraryCollection = async (
   });
   if (!merged.ok) return merged;
 
+  const keyset = sort !== 'relevance';
   const nextVideoOffset = cursor.value.video + merged.value.videoConsumed;
   const nextPhotoOffset = cursor.value.photo + merged.value.photoConsumed;
-  const videoExhausted = !videoEnabled || nextVideoOffset >= videoPage.value.total;
-  const photoExhausted = !photoEnabled || nextPhotoOffset >= photoPage.value.total;
+  const videoExhausted = !videoEnabled || sourceExhausted(videoPage.value.rows.length, merged.value.videoConsumed, input.limit);
+  const photoExhausted = !photoEnabled || sourceExhausted(photoPage.value.rows.length, merged.value.photoConsumed, input.limit);
   const nextCursor = videoExhausted && photoExhausted
     ? null
-    : encodeCollectionCursor({ v: 1, video: nextVideoOffset, photo: nextPhotoOffset });
+    : encodeCollectionCursor({
+      v: 2,
+      video: keyset ? 0 : nextVideoOffset,
+      photo: keyset ? 0 : nextPhotoOffset,
+      videoAfter: keyset
+        ? videoAnchor(videoPage.value.rows[merged.value.videoConsumed - 1]) ?? cursor.value.videoAfter
+        : null,
+      photoAfter: keyset
+        ? photoAnchor(photoPage.value.rows[merged.value.photoConsumed - 1]) ?? cursor.value.photoAfter
+        : null,
+    });
 
   return ok({
     query: input.query,
@@ -329,6 +352,29 @@ export const libraryCollection = async (
     nextCursor,
   });
 };
+
+const sourceExhausted = (fetched: number, consumed: number, limit: number): boolean =>
+  fetched < limit && consumed === fetched;
+
+const videoAnchor = (row: CatalogSearchRow | undefined): CollectionRowAnchor | null =>
+  row === undefined
+    ? null
+    : {
+      capturedAt: row.capturedAt,
+      fileName: row.fileName,
+      displayName: row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName,
+      fingerprint: row.fingerprint,
+    };
+
+const photoAnchor = (row: PhotoSearchRow | undefined): CollectionRowAnchor | null =>
+  row === undefined
+    ? null
+    : {
+      capturedAt: row.capturedAt,
+      fileName: row.fileName,
+      displayName: row.fileName,
+      fingerprint: row.fingerprint,
+    };
 
 const tagTermSetsFor = async (
   deps: CollectionDeps,
@@ -372,6 +418,7 @@ const fetchVideoPage = async (
     sort: CatalogSearchSort;
     limit: number;
     offset: number;
+    after?: CollectionRowAnchor | null | undefined;
   },
 ): Promise<Result<{ total: number; rows: CatalogSearchRow[] }, AppError>> => {
   const searched: CatalogSearchInput = {
@@ -391,6 +438,7 @@ const fetchVideoPage = async (
     sort: input.sort,
     limit: input.limit,
     offset: input.offset,
+    after: input.after ?? null,
   };
   return deps.globalCatalog.search(searched);
 };

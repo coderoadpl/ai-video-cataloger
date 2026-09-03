@@ -1771,6 +1771,7 @@ export const en: Dictionary = {
       restore_incomplete: 'Restore did not finish. Restart the app so it can roll back from the local pre-restore copy.',
       restore_refused: 'Restore is blocked while another catalog job is running.',
       recovery_key_required: 'The recovery key is required.',
+      recovery_key_mismatch: 'This recovery key does not match any archive in this destination. Paste the key from the Mac that wrote them.',
     },
   },
   errors: {
@@ -2843,6 +2844,7 @@ export const pl: Dictionary = {
       restore_incomplete: 'Przywracanie nie zakończyło się. Uruchom aplikację ponownie, żeby mogła wycofać zmiany z lokalnej kopii sprzed przywracania.',
       restore_refused: 'Przywracanie jest zablokowane, dopóki trwa inne zadanie katalogu.',
       recovery_key_required: 'Wymagany jest klucz odzyskiwania.',
+      recovery_key_mismatch: 'Ten klucz odzyskiwania nie pasuje do żadnej kopii w tym miejscu docelowym. Wklej klucz z Maca, który je zapisał.',
     },
   },
   errors: {
