@@ -52,7 +52,12 @@ acquired per `lockMode` — `none` (CLI reads), `lazy` (acquire on first
 write), or `eager` (acquire at startup) — with a process-alive check that
 lets a live peer block and a dead peer's stale lock be taken over. A running
 job holds the lease for its whole run; one-off mutations flush without
-dropping it. When the lock can't be acquired the renderer drops to a
+dropping it. A flush that fails to persist keeps its dirty rows in memory and
+keeps the lock, because dropping it would let a peer write the file that the
+retry is about to overwrite; the failure is reported through
+`durabilityStatus()` (`degraded`, `pendingWrites`, `lastErrorCode`), which the
+bottom bar, `index status` and `photos status` surface, while the write itself
+still reports success. When the lock can't be acquired the renderer drops to a
 read-only banner and offers retry. See ADR-0002 Consequences.
 
 ## Delta 2 — no identity

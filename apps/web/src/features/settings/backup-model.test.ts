@@ -23,6 +23,7 @@ const messages: Record<BackupErrorCode, string> = {
   restore_refused: 'message for restore_refused',
   recovery_key_required: 'message for recovery_key_required',
   recovery_key_mismatch: 'message for recovery_key_mismatch',
+  recovery_key_conflict: 'message for recovery_key_conflict',
 };
 
 const remote = (globalCatalog: number, photos: number): RemoteBackupView => ({

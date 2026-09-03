@@ -319,8 +319,14 @@ export const libraryCollection = async (
   const keyset = sort !== 'relevance';
   const nextVideoOffset = cursor.value.video + merged.value.videoConsumed;
   const nextPhotoOffset = cursor.value.photo + merged.value.photoConsumed;
-  const videoExhausted = !videoEnabled || sourceExhausted(videoPage.value.rows.length, merged.value.videoConsumed, input.limit);
-  const photoExhausted = !photoEnabled || sourceExhausted(photoPage.value.rows.length, merged.value.photoConsumed, input.limit);
+  const videoExhausted = !videoEnabled
+    || (keyset
+      ? sourceExhausted(videoPage.value.rows.length, merged.value.videoConsumed, input.limit)
+      : nextVideoOffset >= videoPage.value.total);
+  const photoExhausted = !photoEnabled
+    || (keyset
+      ? sourceExhausted(photoPage.value.rows.length, merged.value.photoConsumed, input.limit)
+      : nextPhotoOffset >= photoPage.value.total);
   const nextCursor = videoExhausted && photoExhausted
     ? null
     : encodeCollectionCursor({

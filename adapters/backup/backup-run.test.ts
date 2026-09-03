@@ -336,9 +336,11 @@ describe('cleanupBackupStaging', () => {
     const live = path.join(stagingRoot, 'live-job');
     const dead = path.join(stagingRoot, 'dead-job');
     const unowned = path.join(stagingRoot, 'unowned-job');
+    const claimed = path.join(stagingRoot, 'claimed-job');
     for (const directory of [live, dead, unowned]) mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(live, 'owner.json'), JSON.stringify({ pid: 424242, hostname: 'test-host' }));
-    writeFileSync(path.join(dead, 'owner.json'), JSON.stringify({ pid: 424243, hostname: 'test-host' }));
+    writeFileSync(`${live}.owner.json`, JSON.stringify({ pid: 424242, hostname: 'test-host' }));
+    writeFileSync(`${dead}.owner.json`, JSON.stringify({ pid: 424243, hostname: 'test-host' }));
+    writeFileSync(`${claimed}.owner.json`, JSON.stringify({ pid: 424242, hostname: 'test-host' }));
     writeFileSync(path.join(live, 'backup.tar.zst'), 'streaming');
 
     const cleaned = await cleanupBackupStaging(
@@ -349,8 +351,28 @@ describe('cleanupBackupStaging', () => {
 
     expect(cleaned).toEqual(ok(undefined));
     expect(existsSync(path.join(live, 'backup.tar.zst'))).toBe(true);
+    expect(existsSync(`${live}.owner.json`)).toBe(true);
+    expect(existsSync(`${claimed}.owner.json`)).toBe(true);
     expect(existsSync(dead)).toBe(false);
+    expect(existsSync(`${dead}.owner.json`)).toBe(false);
     expect(existsSync(unowned)).toBe(false);
+  });
+
+  it('keeps a starting backup alive when a cleanup sweeps the staging root mid-run', async () => {
+    const fixture = await createFixture();
+    const owner = { pid: 424242, hostname: 'test-host' } as const;
+    const sweeping = new SweepingFileSystem(
+      fixture.fs,
+      () => cleanupBackupStaging(fixture.fs, fixture.home, (candidate) => candidate.pid === owner.pid),
+    );
+
+    const result = await runBackup(
+      { ...fixture.deps, fs: sweeping, owner },
+      { tier: 'critical', keepLast: 7, keepWeekly: 8 },
+      context('swept-job'),
+    );
+
+    expect(result).toMatchObject({ ok: true });
   });
 
   it('marks a running backup staging directory with the owning process', async () => {
@@ -362,7 +384,7 @@ describe('cleanupBackupStaging', () => {
       ...fixture.deps,
       owner,
       archive: (entries, targetPath, createdAt, signal) => {
-        stagedOwner = readFileSync(path.join(fixture.home, '.ai-video-cataloger', 'backup-staging', 'owner-job', 'owner.json'), 'utf8');
+        stagedOwner = readFileSync(path.join(fixture.home, '.ai-video-cataloger', 'backup-staging', 'owner-job.owner.json'), 'utf8');
         return writeTarZstd(entries, targetPath, createdAt, { signal });
       },
     }, { tier: 'critical', keepLast: 7, keepWeekly: 8 }, context('owner-job'));
@@ -371,10 +393,26 @@ describe('cleanupBackupStaging', () => {
   });
 });
 
+class SweepingFileSystem extends NodeFileSystemPort {
+  constructor(
+    private readonly delegate: NodeFileSystemPort,
+    private readonly sweep: () => Promise<Result<void, AppError>>,
+  ) {
+    super({ homeDirectory: delegate.homeDirectory(), workingDirectory: delegate.cwd() });
+  }
+
+  override async ensureDirectory(target: string): Promise<Result<void, AppError>> {
+    const created = await this.delegate.ensureDirectory(target);
+    await this.sweep();
+    return created;
+  }
+}
+
 const createFixture = async (destination = new MemoryBackupDestination()): Promise<{
   home: string;
   destination: MemoryBackupDestination;
   state: BackupStateFile;
+  fs: NodeFileSystemPort;
   deps: BackupRunDeps;
 }> => {
   const home = mkdtempSync(path.join(tmpdir(), 'avc-backup-run-'));
@@ -409,6 +447,7 @@ const createFixture = async (destination = new MemoryBackupDestination()): Promi
     home,
     destination,
     state,
+    fs,
     deps: {
       homeDirectory: home,
       owner: { pid: process.pid, hostname: 'test-host' },

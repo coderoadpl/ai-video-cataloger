@@ -293,7 +293,7 @@ describe('backup enablement', () => {
     ];
 
     expect(await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY }))
-      .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
+      .toMatchObject({ ok: false, error: { code: 'recovery_key_conflict' } });
     expect(secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(otherKey.toString('base64'));
   });
 

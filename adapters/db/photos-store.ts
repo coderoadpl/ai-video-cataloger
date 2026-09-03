@@ -224,7 +224,6 @@ export class SqlJsPhotosStore implements PhotosStore {
     } catch (cause) {
       const failed = failure<undefined>(cause);
       if (!failed.ok) this.markDurabilityFailure(failed.error);
-      this.lock.releaseIfIdle();
       this.lastPersistedAtMs = this.nowMs();
       this.scheduleAutoFlush();
       return failed;
@@ -274,14 +273,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     } finally {
       this.batchDepth -= 1;
       if (this.batchDepth === 0 && this.state !== null && this.dirtyCount > 0) {
-        try {
-          this.persist(this.state);
-        } catch (cause) {
-          const failed = failure<T>(cause);
-          if (!failed.ok) this.markDurabilityFailure(failed.error);
-          this.lastPersistedAtMs = this.nowMs();
-          this.scheduleAutoFlush();
-        }
+        this.recordPersistAttempt(this.state);
       }
     }
   }
@@ -1217,15 +1209,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
       if (this.batchDepth === 0 && this.shouldAutoFlush()) {
-        try {
-          this.persist(state);
-        } catch (cause) {
-          const failed = failure<T>(cause);
-          if (!failed.ok) this.markDurabilityFailure(failed.error);
-          this.lastPersistedAtMs = this.nowMs();
-          this.scheduleAutoFlush();
-          return failed;
-        }
+        this.recordPersistAttempt(state);
       } else if (this.batchDepth === 0) this.scheduleAutoFlush();
       return ok(value);
     } catch (cause) {
@@ -1246,6 +1230,17 @@ export class SqlJsPhotosStore implements PhotosStore {
     this.dirtyCount = 0;
     this.durabilityErrorCode = null;
     this.lastPersistedAtMs = this.nowMs();
+  }
+
+  private recordPersistAttempt(state: NonNullable<SqlJsPhotosStore['state']>): void {
+    try {
+      this.persist(state);
+    } catch (cause) {
+      const failed = failure<undefined>(cause);
+      if (!failed.ok) this.markDurabilityFailure(failed.error);
+      this.lastPersistedAtMs = this.nowMs();
+      this.scheduleAutoFlush();
+    }
   }
 
   private markDurabilityFailure(error: AppError): void {

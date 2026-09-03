@@ -13,31 +13,41 @@ const runExitFlushes = (): void => {
   for (const flush of [...activeExitFlushes]) flush();
 };
 
+type TerminationSignal = 'SIGINT' | 'SIGTERM';
+
+const TERMINATION_SIGNALS: readonly TerminationSignal[] = ['SIGINT', 'SIGTERM'];
+const ownedSignals = new Set<TerminationSignal>();
+
 const onBeforeExit = (): void => runExitFlushes();
 const onExit = (): void => runExitFlushes();
-const onSignal = (signal: 'SIGINT' | 'SIGTERM'): void => {
+const onSignal = (signal: TerminationSignal): void => {
   runExitFlushes();
+  const owned = ownedSignals.has(signal);
   removeProcessHooks();
-  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+  if (owned && process.listenerCount(signal) === 0) process.kill(process.pid, signal);
 };
-const onSigInt = (): void => onSignal('SIGINT');
-const onSigTerm = (): void => onSignal('SIGTERM');
+const signalHandlers: Record<TerminationSignal, () => void> = {
+  SIGINT: () => onSignal('SIGINT'),
+  SIGTERM: () => onSignal('SIGTERM'),
+};
 
 const ensureProcessHooks = (): void => {
   if (processHooksRegistered) return;
   processHooksRegistered = true;
   process.once('beforeExit', onBeforeExit);
   process.once('exit', onExit);
-  process.once('SIGINT', onSigInt);
-  process.once('SIGTERM', onSigTerm);
+  for (const signal of TERMINATION_SIGNALS) {
+    if (process.listenerCount(signal) === 0) ownedSignals.add(signal);
+    process.on(signal, signalHandlers[signal]);
+  }
 };
 
 const removeProcessHooks = (): void => {
   if (!processHooksRegistered) return;
   process.removeListener('beforeExit', onBeforeExit);
   process.removeListener('exit', onExit);
-  process.removeListener('SIGINT', onSigInt);
-  process.removeListener('SIGTERM', onSigTerm);
+  for (const signal of TERMINATION_SIGNALS) process.removeListener(signal, signalHandlers[signal]);
+  ownedSignals.clear();
   processHooksRegistered = false;
 };
 

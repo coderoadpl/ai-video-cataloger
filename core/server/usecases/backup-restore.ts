@@ -24,7 +24,8 @@ import {
   type PhotosStore,
 } from '../ports.js';
 import {
-  writeBackupStagingOwner,
+  claimBackupStaging,
+  releaseBackupStaging,
   backupOwnerSchema,
   type BackupOwner,
   type BackupOwnerLiveness,
@@ -103,10 +104,8 @@ export const runRestore = async (
     if (!remote.ok) return remote;
     const compatible = schemaCompatible(remote.value, deps.supportedSchemaVersions);
     if (!compatible.ok) return compatible;
-    const created = await deps.fs.ensureDirectory(stagingDirectory);
+    const created = await claimBackupStaging(deps.fs, stagingDirectory, deps.owner);
     if (!created.ok) return created;
-    const owned = await writeBackupStagingOwner(deps.fs, stagingDirectory, deps.owner);
-    if (!owned.ok) return owned;
     const downloading = await report(context, 'downloading', 15);
     if (!downloading.ok) return downloading;
     const encryptedPath = deps.fs.join(stagingDirectory, remote.value.name);
@@ -169,13 +168,13 @@ export const runRestore = async (
     if (!markerRemoved.ok) return markerRemoved;
     return ok({ restored: remote.value, relaunchRequired: true, preRestoreDirectory: preRestore.value.directory });
   } finally {
-    await deps.fs.deletePath(stagingDirectory);
+    await releaseBackupStaging(deps.fs, stagingDirectory);
   }
 };
 
 export const performRestoreStartupRecovery = async (
   deps: { fs: FileSystemPort; homeDirectory: string; isOwnerAlive: BackupOwnerLiveness },
-): Promise<Result<void, AppError>> => {
+): Promise<Result<{ pendingOwner: BackupOwner | null }, AppError>> => {
   const markerPath = restoreMarkerPath(deps.fs, deps.homeDirectory);
   const markerText = await deps.fs.readTextFile(markerPath);
   if (!markerText.ok) return markerText;
@@ -189,7 +188,7 @@ export const performRestoreStartupRecovery = async (
     const parsed = restoreMarkerSchema.safeParse(decoded);
     if (!parsed.success) return { ok: false, error: appError('backup_integrity_failed', 'Restore rollback marker is invalid') };
     const owner = parsed.data.owner;
-    if (owner !== undefined && deps.isOwnerAlive(owner)) return ok(undefined);
+    if (owner !== undefined && deps.isOwnerAlive(owner)) return ok({ pendingOwner: owner });
     const preRestorePaths = new Set(parsed.data.preRestoreArchivePaths);
     for (const file of parsed.data.restoredFiles) {
       const backupPath = deps.fs.join(parsed.data.preRestoreDirectory, ...file.archivePath.split('/'));
@@ -206,7 +205,8 @@ export const performRestoreStartupRecovery = async (
     const deleted = await deps.fs.deleteFile(markerPath);
     if (!deleted.ok) return deleted;
   }
-  return prunePreRestoreDirectories(deps.fs, deps.homeDirectory);
+  const pruned = await prunePreRestoreDirectories(deps.fs, deps.homeDirectory);
+  return pruned.ok ? ok({ pendingOwner: null }) : pruned;
 };
 
 export const restoreAdmissionError = (records: readonly JobRecord[]): AppError | null => {

@@ -50,6 +50,7 @@ export interface JsonSecretsStoreOptions {
 // Plaintext on purpose: only for runs that set AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1, never shipped.
 export class JsonSecretsStore implements SecretsStore {
   private readonly filePath: string;
+  private pending: Promise<unknown> = Promise.resolve();
 
   constructor(options: JsonSecretsStoreOptions = {}) {
     this.filePath = path.join(options.homeDirectory ?? homedir(), '.ai-video-cataloger', 'secrets.json');
@@ -69,21 +70,31 @@ export class JsonSecretsStore implements SecretsStore {
     return ok(entries.value[account] ?? null);
   }
 
-  async set(account: string, secret: string): Promise<Result<void, AppError>> {
-    const entries = await this.read();
-    if (!entries.ok) return entries;
-    return this.write({ ...entries.value, [account]: secret });
+  set(account: string, secret: string): Promise<Result<void, AppError>> {
+    return this.serialize(async () => {
+      const entries = await this.read();
+      if (!entries.ok) return entries;
+      return this.write({ ...entries.value, [account]: secret });
+    });
   }
 
-  async delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
-    const entries = await this.read();
-    if (!entries.ok) return entries;
-    if (entries.value[account] === undefined) return ok({ existed: false });
-    const remaining = Object.fromEntries(
-      Object.entries(entries.value).filter(([stored]) => stored !== account),
-    );
-    const written = await this.write(remaining);
-    return written.ok ? ok({ existed: true }) : written;
+  delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    return this.serialize<{ existed: boolean }>(async () => {
+      const entries = await this.read();
+      if (!entries.ok) return entries;
+      if (entries.value[account] === undefined) return ok({ existed: false });
+      const remaining = Object.fromEntries(
+        Object.entries(entries.value).filter(([stored]) => stored !== account),
+      );
+      const written = await this.write(remaining);
+      return written.ok ? ok({ existed: true }) : written;
+    });
+  }
+
+  private serialize<T>(mutation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    const next = this.pending.then(mutation, mutation);
+    this.pending = next.then(() => undefined, () => undefined);
+    return next;
   }
 
   private async read(): Promise<Result<Record<string, string>, AppError>> {

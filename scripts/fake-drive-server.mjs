@@ -8,7 +8,7 @@ export const FAKE_DRIVE_ID = 'drive-fake-1';
 export const FAKE_DRIVE_NAME = 'QA Shared Drive';
 export const FAKE_SERVICE_ACCOUNT_EMAIL = 'qa-backup@example.com';
 
-const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+export const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const JSON_HEADERS = { 'content-type': 'application/json; charset=UTF-8' };
 
 export const serviceAccountKeyJson = (tokenUri) => {

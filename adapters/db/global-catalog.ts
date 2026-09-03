@@ -263,7 +263,6 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     } catch (cause) {
       const failed = failure<undefined>(cause);
       if (!failed.ok) this.markDurabilityFailure(failed.error);
-      this.lock.releaseIfIdle();
       this.lastPersistedAtMs = this.nowMs();
       this.scheduleAutoFlush();
       return failed;
@@ -319,17 +318,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       }
       this.pendingSearchDocuments.clear();
       state.client.run('COMMIT');
-      if (this.dirtyCount > 0) {
-        try {
-          this.persist(state);
-        } catch (cause) {
-          const failed = failure<T>(cause);
-          if (!failed.ok) this.markDurabilityFailure(failed.error);
-          this.lastPersistedAtMs = this.nowMs();
-          this.scheduleAutoFlush();
-          return failed;
-        }
-      }
+      if (this.dirtyCount > 0) this.recordPersistAttempt(state);
       return result;
     } catch (cause) {
       if (this.state !== null) {
@@ -1511,15 +1500,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
       if (this.batchDepth === 0 && this.shouldAutoFlush()) {
-        try {
-          this.persist(state);
-        } catch (cause) {
-          const failed = failure<T>(cause);
-          if (!failed.ok) this.markDurabilityFailure(failed.error);
-          this.lastPersistedAtMs = this.nowMs();
-          this.scheduleAutoFlush();
-          return failed;
-        }
+        this.recordPersistAttempt(state);
       } else if (this.batchDepth === 0) this.scheduleAutoFlush();
       return ok(value);
     } catch (cause) {
@@ -1552,6 +1533,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     this.dirtyCount = 0;
     this.durabilityErrorCode = null;
     this.lastPersistedAtMs = this.nowMs();
+  }
+
+  private recordPersistAttempt(state: NonNullable<SqlJsGlobalCatalogStore['state']>): void {
+    try {
+      this.persist(state);
+    } catch (cause) {
+      const failed = failure<undefined>(cause);
+      if (!failed.ok) this.markDurabilityFailure(failed.error);
+      this.lastPersistedAtMs = this.nowMs();
+      this.scheduleAutoFlush();
+    }
   }
 
   private markDurabilityFailure(error: AppError): void {

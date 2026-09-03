@@ -178,6 +178,7 @@ const resumableUpload = async (
   }
   try {
     let offset = 0;
+    let acknowledgedHighWater = 0;
     let noProgressResponses = 0;
     while (offset < sizeBytes) {
       const length = Math.min(UPLOAD_CHUNK_SIZE, sizeBytes - offset);
@@ -216,12 +217,13 @@ const resumableUpload = async (
       if (response === null) return { ok: false, error: appError('backup_destination_error', 'Google resumable upload did not respond') };
       if (response.status === 308) {
         const acknowledged = acknowledgedOffset(response.headers.get('range'));
-        if (acknowledged <= offset) {
+        if (acknowledged <= acknowledgedHighWater) {
           noProgressResponses += 1;
           if (noProgressResponses >= MAX_UPLOAD_ATTEMPTS) {
             return { ok: false, error: appError('backup_destination_error', 'Google resumable upload made no progress') };
           }
         } else {
+          acknowledgedHighWater = acknowledged;
           noProgressResponses = 0;
         }
         offset = acknowledged;

@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { _electron as electron } from '@playwright/test';
 import { z } from 'zod';
 
-import { FAKE_DRIVE_ID, serviceAccountKeyJson, startFakeDriveServer } from './fake-drive-server.mjs';
+import { FAKE_DRIVE_ID, FOLDER_MIME_TYPE, serviceAccountKeyJson, startFakeDriveServer } from './fake-drive-server.mjs';
 
 // A real JPEG SOI marker, so the scanner accepts the file as a photo, followed
 // by nothing, so proxy generation fails and the placeholder tile has to render.
@@ -782,9 +782,10 @@ const drive = async (plan) => {
     await page.getByTestId('backup-stepper').waitFor({ state: 'hidden', timeout: BACKUP_TIMEOUT_MS });
     await page.getByTestId('backup-list').waitFor({ state: 'visible', timeout: BACKUP_TIMEOUT_MS });
 
-    return fakeDrive.files.size === 0
+    const archives = [...fakeDrive.files.values()].filter((file) => file.mimeType !== FOLDER_MIME_TYPE);
+    return archives.length === 0
       ? failed('the backup job reported success but the fake Drive holds no archive')
-      : done(`${String(fakeDrive.files.size)} object(s) in the fake Drive after the first backup`);
+      : done(`${String(archives.length)} archive(s) in the fake Drive after the first backup`);
   });
 
   await record('backup-indicator', async () => {

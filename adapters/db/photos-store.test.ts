@@ -446,6 +446,31 @@ describe('SqlJsPhotosStore', () => {
     });
   });
 
+  it('keeps holding the catalog lock while a failed photos flush leaves dirty writes in memory', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home, processName: 'cli', nowMs: () => Date.now() });
+    const lockPath = path.join(home, '.ai-video-cataloger', 'catalog.lock');
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    for (let index = 0; index < 23; index += 1) {
+      await store.upsertSighting(sighting({ currentPath: `/media/photos/lock-${String(index)}.jpg` }));
+    }
+    await mkdir(`${store.databasePath()}.tmp`);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(store.durabilityStatus().pendingWrites).toBe(true);
+    expect(fs.existsSync(lockPath)).toBe(true);
+
+    await rm(`${store.databasePath()}.tmp`, { recursive: true, force: true });
+    expect(await store.flush()).toEqual({ ok: true, value: undefined });
+
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
   it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {
     const probeTimer = setTimeout(() => undefined, 1);
     const unrefSpy = vi.spyOn(Object.getPrototypeOf(probeTimer), 'unref');
@@ -1228,6 +1253,69 @@ describe('SqlJsPhotosStore', () => {
       match: null, rankingTerms: [], from: null, to: null, folderId: null, fingerprints: null, tagTermSets: [], excludeMissing: false, sort: 'captured_desc', limit: 2, offset: 2,
     });
     expect(nextPage.ok && nextPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('collectionPage serves every keyset anchor the exact tail of the ordered page', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    const seeded = [
+      { fingerprint: 'ph_000000000000k1', fileName: 'dup.jpg', capturedAt: '2026-01-01T00:00:00.000Z' },
+      { fingerprint: 'ph_000000000000k2', fileName: 'dup.jpg', capturedAt: '2026-01-01T00:00:00.000Z' },
+      { fingerprint: 'ph_000000000000k3', fileName: 'alpha.jpg', capturedAt: '2026-01-01T00:00:00.000Z' },
+      { fingerprint: 'ph_000000000000k4', fileName: 'beta.jpg', capturedAt: null },
+      { fingerprint: 'ph_000000000000k5', fileName: 'gamma.jpg', capturedAt: null },
+      { fingerprint: 'ph_000000000000k6', fileName: 'delta.jpg', capturedAt: '2026-02-01T00:00:00.000Z' },
+    ];
+    for (const row of seeded) {
+      await store.upsertPhoto(photo({
+        fingerprint: row.fingerprint,
+        fileName: row.fileName,
+        capturedAt: row.capturedAt,
+        currentPath: `/media/photos/${row.fingerprint}-${row.fileName}`,
+      }));
+      await store.recordPhotoAnalysis(analysisInput({ fingerprint: row.fingerprint, tags: ['drone'] }));
+    }
+    const browse = {
+      match: null, rankingTerms: [], from: null, to: null, folderId: null,
+      fingerprints: null, tagTermSets: [], excludeMissing: false, limit: 50, offset: 0,
+    };
+
+    for (const sort of ['captured_desc', 'captured_asc', 'name_asc'] as const) {
+      const ordered = await store.collectionPage({ ...browse, sort });
+      expect(ordered.ok).toBe(true);
+      if (!ordered.ok) return;
+      expect(ordered.value.rows).toHaveLength(seeded.length);
+      for (const [index, row] of ordered.value.rows.entries()) {
+        const page = await store.collectionPage({
+          ...browse,
+          sort,
+          after: {
+            capturedAt: row.capturedAt,
+            fileName: row.fileName,
+            displayName: row.fileName,
+            fingerprint: row.fingerprint,
+          },
+        });
+        expect(page.ok).toBe(true);
+        if (!page.ok) return;
+        expect(page.value.rows.map((tail) => tail.fingerprint))
+          .toEqual(ordered.value.rows.slice(index + 1).map((tail) => tail.fingerprint));
+      }
+    }
+
+    const relevance = await store.collectionPage({
+      ...browse, match: 'drone*', rankingTerms: ['drone'], sort: 'relevance',
+    });
+    expect(relevance.ok).toBe(true);
+    if (!relevance.ok) return;
+    const relevancePage = await store.collectionPage({
+      ...browse, match: 'drone*', rankingTerms: ['drone'], sort: 'relevance', limit: 2, offset: 2,
+    });
+    expect(relevancePage.ok && relevancePage.value.rows.map((row) => row.fingerprint))
+      .toEqual(relevance.value.rows.slice(2, 4).map((row) => row.fingerprint));
+    expect(relevancePage.ok && relevancePage.value.total).toBe(seeded.length);
   });
 
   it('collectionPage excludes a scanned-but-never-analyzed photo from browse and match mode, keeping totals honest', async () => {

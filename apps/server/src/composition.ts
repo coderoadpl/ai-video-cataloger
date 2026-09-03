@@ -224,7 +224,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     lockMode: config.catalogLockMode ?? 'lazy',
   });
   const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
-  const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
+  const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory, config.isPackaged === true);
   const backupDestination = () => createGoogleBackupDestination({
     config: configStore,
     secrets: backupSecrets,
@@ -292,8 +292,12 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
 // AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1 to keep the developer's login keychain untouched, which
 // would otherwise fail every backup call with keychain_unavailable; those runs get a 0600
 // file-backed store instead (docs/qa/release-walkthrough.md).
-const backupSecretsStore = (keychain: SecretsStore, homeDirectory: string): SecretsStore => {
-  if (!keychainDisabledByEnvironment()) return keychain;
+export const backupSecretsStore = (
+  keychain: SecretsStore,
+  homeDirectory: string,
+  isPackaged: boolean,
+): SecretsStore => {
+  if (isPackaged || !keychainDisabledByEnvironment()) return keychain;
   const store = new JsonSecretsStore({ homeDirectory });
   console.warn(`[backup] Keychain disabled: backup secrets are stored unencrypted in ${store.path()}`);
   return store;

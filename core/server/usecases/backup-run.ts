@@ -25,9 +25,11 @@ import {
 } from '../ports.js';
 import { computeBackupFingerprint } from './backup-fingerprint.js';
 import {
+  BACKUP_STAGING_OWNER_SUFFIX,
   backupStagingRoot,
+  claimBackupStaging,
   readBackupStagingOwner,
-  writeBackupStagingOwner,
+  releaseBackupStaging,
   type BackupOwner,
   type BackupOwnerLiveness,
 } from './backup-owner.js';
@@ -122,10 +124,8 @@ const runBackupAttempt = async (
   let uploaded: RemoteBackup | null = null;
   let completed = false;
   try {
-    const staging = await deps.fs.ensureDirectory(stagingDirectory);
+    const staging = await claimBackupStaging(deps.fs, stagingDirectory, deps.owner);
     if (!staging.ok) return staging;
-    const owned = await writeBackupStagingOwner(deps.fs, stagingDirectory, deps.owner);
-    if (!owned.ok) return owned;
     const fingerprinting = await report(context, 'fingerprinting', 5);
     if (!fingerprinting.ok) return fingerprinting;
     const snapshotting = await report(context, 'snapshotting', 15);
@@ -201,7 +201,7 @@ const runBackupAttempt = async (
     if (!completed && uploaded !== null) {
       await deps.destination.remove(uploaded.remoteId, new AbortController().signal);
     }
-    await deps.fs.deletePath(stagingDirectory);
+    await releaseBackupStaging(deps.fs, stagingDirectory);
   }
 };
 
@@ -245,15 +245,19 @@ export const cleanupBackupStaging = async (
   const listed = await fs.listDirectory(root);
   if (!listed.ok) return listed;
   for (const entry of listed.value) {
-    if (entry.kind !== 'directory') {
+    const ownerMarker = entry.kind !== 'directory' && entry.name.endsWith(BACKUP_STAGING_OWNER_SUFFIX);
+    if (entry.kind !== 'directory' && !ownerMarker) {
       const removed = await fs.deleteFile(entry.path);
       if (!removed.ok) return removed;
       continue;
     }
-    const owner = await readBackupStagingOwner(fs, entry.path);
+    const stagingDirectory = ownerMarker
+      ? entry.path.slice(0, entry.path.length - BACKUP_STAGING_OWNER_SUFFIX.length)
+      : entry.path;
+    const owner = await readBackupStagingOwner(fs, stagingDirectory);
     if (!owner.ok) return owner;
     if (owner.value !== null && isOwnerAlive(owner.value)) continue;
-    const removed = await fs.deletePath(entry.path);
+    const removed = await releaseBackupStaging(fs, stagingDirectory);
     if (!removed.ok) return removed;
   }
   return ok(undefined);

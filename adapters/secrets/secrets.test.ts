@@ -290,6 +290,37 @@ describe('JsonSecretsStore', () => {
   });
 });
 
+describe('JsonSecretsStore concurrency', () => {
+  it('keeps both entries when two writes start from the same snapshot', async () => {
+    const secrets = new JsonSecretsStore({ homeDirectory: mkdtempSync(path.join(tmpdir(), 'avc-secrets-race-')) });
+
+    const [first, second] = await Promise.all([
+      secrets.set('backup.encryption_key', 'key-material'),
+      secrets.set('backup.google.refresh_token', 'refresh-token'),
+    ]);
+
+    expect(first).toEqual(ok(undefined));
+    expect(second).toEqual(ok(undefined));
+    expect(await secrets.get('backup.encryption_key')).toEqual(ok('key-material'));
+    expect(await secrets.get('backup.google.refresh_token')).toEqual(ok('refresh-token'));
+  });
+
+  it('keeps a concurrent delete and set from overwriting each other', async () => {
+    const secrets = new JsonSecretsStore({ homeDirectory: mkdtempSync(path.join(tmpdir(), 'avc-secrets-race-delete-')) });
+    await secrets.set('backup.encryption_key', 'key-material');
+
+    const [deleted, written] = await Promise.all([
+      secrets.delete('backup.encryption_key'),
+      secrets.set('backup.google.refresh_token', 'refresh-token'),
+    ]);
+
+    expect(deleted).toEqual(ok({ existed: true }));
+    expect(written).toEqual(ok(undefined));
+    expect(await secrets.get('backup.encryption_key')).toEqual(ok(null));
+    expect(await secrets.get('backup.google.refresh_token')).toEqual(ok('refresh-token'));
+  });
+});
+
 describe('keychainDisabledByEnvironment', () => {
   it('is true only for the exact opt-out value', () => {
     expect(keychainDisabledByEnvironment({ AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' })).toBe(true);

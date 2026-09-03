@@ -18,6 +18,7 @@ export const BACKUP_ERROR_CODES = [
   'restore_refused',
   'recovery_key_required',
   'recovery_key_mismatch',
+  'recovery_key_conflict',
 ] as const satisfies readonly ErrorCode[];
 
 export type BackupErrorCode = (typeof BACKUP_ERROR_CODES)[number];
