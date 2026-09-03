@@ -177,6 +177,32 @@ export class NodeFileSystemPort implements FileSystemPort {
     }
   }
 
+  async syncFile(value: string): Promise<Result<void, AppError>> {
+    let handle: Awaited<ReturnType<typeof open>> | null = null;
+    try {
+      handle = await open(value, 'r');
+      await handle.sync();
+      return ok(undefined);
+    } catch (cause) {
+      return failure('internal', cause, `Failed to sync file: ${value}`);
+    } finally {
+      await handle?.close();
+    }
+  }
+
+  async syncDirectory(value: string): Promise<Result<void, AppError>> {
+    let handle: Awaited<ReturnType<typeof open>> | null = null;
+    try {
+      handle = await open(value, 'r');
+      await handle.sync();
+      return ok(undefined);
+    } catch (cause) {
+      return failure('internal', cause, `Failed to sync directory: ${value}`);
+    } finally {
+      await handle?.close();
+    }
+  }
+
   async deleteFile(value: string): Promise<Result<void, AppError>> {
     try {
       await rm(value, { force: true });

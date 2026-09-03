@@ -7,6 +7,7 @@ import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 import {
   GOOGLE_DRIVE_FILE_SCOPE,
   GoogleOAuthBackupDestination,
+  receiveAuthorizationCode,
 } from './google-oauth-destination.js';
 
 class MemorySecrets implements SecretsStore {
@@ -143,6 +144,31 @@ describe('Google OAuth backup destination', () => {
     expect(connected).toMatchObject({ ok: false, error: { code: 'backup_auth_required' } });
   });
 
+  it('observes cancellation that happens before the loopback listener is ready', async () => {
+    const controller = new AbortController();
+    const openExternal = vi.fn(() => Promise.resolve());
+
+    const pending = receiveAuthorizationCode({
+      state: 'state',
+      signal: controller.signal,
+      timeoutMs: 1,
+      openExternal,
+      authorizationUrl: 'https://accounts.example.test/auth',
+      clientId: 'client',
+      challenge: 'challenge',
+    });
+    controller.abort();
+
+    expect(await pending).toMatchObject({
+      ok: false,
+      error: {
+        code: 'backup_auth_required',
+        message: 'Google authorization was cancelled',
+      },
+    });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
   it('recreates and stores the app folder when the saved folder id is missing', async () => {
     const config = new InMemoryConfig();
     const secrets = new MemorySecrets();
@@ -216,6 +242,31 @@ describe('Google OAuth backup destination', () => {
       value: { backups: [{ remoteId: 'backup-1' }], skipped: 1 },
     });
     expect(queries.some((query) => query.includes("appProperties has { key='tier'"))).toBe(true);
+  });
+
+  it('fails backup listing when Drive repeats a page token', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const pageTokens: Array<string | null> = [];
+    secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleOAuthBackupDestination({
+      config,
+      secrets,
+      clientId: 'client',
+      clientSecret: 'secret',
+      tokenUrl: 'https://oauth.example.test/token',
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: repeatedBackupPageTokenFake(pageTokens),
+      openExternal: () => Promise.resolve(),
+    });
+
+    expect(await destination.list(null, new AbortController().signal)).toMatchObject({
+      ok: false,
+      error: { code: 'backup_destination_error' },
+    });
+    expect(pageTokens).toEqual([null, 'same-token']);
   });
 
   it('closes an unanswered loopback listener after the configured timeout', async () => {
@@ -298,6 +349,25 @@ const malformedSiblingFake = (queries: string[]): typeof fetch => async (input) 
         },
       },
     ] });
+  }
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const repeatedBackupPageTokenFake = (pageTokens: Array<string | null>): typeof fetch => async (input) => {
+  const url = new URL(String(input));
+  if (url.pathname.endsWith('/token')) {
+    return Response.json({ access_token: 'access-token', expires_in: 3600, token_type: 'Bearer' });
+  }
+  if (url.pathname.endsWith('/files/folder-1')) {
+    return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups', trashed: false });
+  }
+  if (url.pathname.endsWith('/files')) {
+    const query = url.searchParams.get('q') ?? '';
+    if (query.includes("key='kind'")) return Response.json({ files: [] });
+    const token = url.searchParams.get('pageToken');
+    pageTokens.push(token);
+    if (pageTokens.length <= 2) return Response.json({ files: [], nextPageToken: 'same-token' });
+    return Response.json({ files: [] });
   }
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };

@@ -153,7 +153,7 @@ export const runRestore = async (
       if (!moved.ok) return restoreIncomplete();
     }
     const previous = await deps.state.read();
-    if (!previous.ok) return previous;
+    if (!previous.ok) return restoreIncomplete();
     const restoredAt = deps.now().toISOString();
     const stateWritten = await deps.state.write({
       lastSuccessAt: previous.value?.lastSuccessAt ?? null,
@@ -162,9 +162,9 @@ export const runRestore = async (
       lastArchiveName: previous.value?.lastArchiveName ?? null,
       lastRestoreAt: restoredAt,
     });
-    if (!stateWritten.ok) return stateWritten;
+    if (!stateWritten.ok) return restoreIncomplete();
     const pruned = await prunePreRestoreDirectories(deps.fs, deps.homeDirectory);
-    if (!pruned.ok) return pruned;
+    if (!pruned.ok) return restoreIncomplete();
     const markerRemoved = await deps.fs.deleteFile(restoreMarkerPath(deps.fs, deps.homeDirectory));
     if (!markerRemoved.ok) return markerRemoved;
     return ok({ restored: remote.value, relaunchRequired: true, preRestoreDirectory: preRestore.value.directory });
@@ -377,13 +377,23 @@ const stageAndSwapRestoredFile = async (
   restoredPath: string,
   livePath: string,
 ): Promise<Result<void, AppError>> => {
-  const parent = await fs.ensureDirectory(fs.dirname(livePath));
+  const parentPath = fs.dirname(livePath);
+  const parent = await fs.ensureDirectory(parentPath);
   if (!parent.ok) return parent;
   const stagedPath = `${livePath}.restore-tmp`;
   const copied = await fs.copyFile(restoredPath, stagedPath);
   if (!copied.ok) return copied;
+  const fileSynced = await fs.syncFile(stagedPath);
+  if (!fileSynced.ok) {
+    await fs.deleteFile(stagedPath);
+    return fileSynced;
+  }
   const renamed = await fs.renamePath(stagedPath, livePath);
-  if (renamed.ok) return renamed;
+  if (renamed.ok) {
+    const directorySynced = await fs.syncDirectory(parentPath);
+    if (!directorySynced.ok) return directorySynced;
+    return renamed;
+  }
   await fs.deleteFile(stagedPath);
   return renamed;
 };

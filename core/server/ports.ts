@@ -18,6 +18,7 @@ import type {
   CredentialsBackendStatus,
   CapturedAtSource,
   DriveRunBatchState,
+  ErrorCode,
   ExifSummary,
   FaceBox,
   FaceLandmarks,
@@ -296,6 +297,12 @@ export interface GlobalCatalogCounts {
   folders: number;
   files: number;
   analyses: number;
+}
+
+export interface StoreDurabilityStatus {
+  degraded: boolean;
+  pendingWrites: boolean;
+  lastErrorCode: ErrorCode | null;
 }
 
 export type CatalogLockProcessName = 'gui' | 'cli';
@@ -611,6 +618,7 @@ export interface PhotoMediaPort {
 
 export interface PhotosStore {
   databasePath(): string;
+  durabilityStatus(): StoreDurabilityStatus;
   snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   checkpoint(): Promise<Result<void, AppError>>;
@@ -701,6 +709,7 @@ export interface DriveRunRecord {
 
 export interface GlobalCatalogStore {
   databasePath(): string;
+  durabilityStatus(): StoreDurabilityStatus;
   snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
@@ -903,6 +912,8 @@ export interface FileSystemPort {
   linkFile(from: string, to: string): Promise<Result<void, AppError>>;
   copyFile(from: string, to: string): Promise<Result<void, AppError>>;
   renamePath(from: string, to: string): Promise<Result<void, AppError>>;
+  syncFile(path: string): Promise<Result<void, AppError>>;
+  syncDirectory(path: string): Promise<Result<void, AppError>>;
   deleteFile(path: string): Promise<Result<void, AppError>>;
   deletePath(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;

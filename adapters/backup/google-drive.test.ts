@@ -128,6 +128,36 @@ describe('shared Google Drive transport', () => {
     expect(ranges).toEqual(['bytes 0-8388607/10485760', 'bytes 0-8388607/10485760']);
   });
 
+  it('fails a resumable upload after repeated 308 responses make no progress', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-google-upload-stuck-'));
+    const sourcePath = path.join(root, 'large.avcbak');
+    writeFileSync(sourcePath, Buffer.alloc(10 * 1024 * 1024, 7));
+    let putAttempts = 0;
+
+    const result = await uploadGoogleDriveFile({
+      fetchImpl: async (_input, init) => {
+        if (init?.method === 'POST') {
+          return new Response('', { status: 200, headers: { Location: 'https://upload.example.test/session' } });
+        }
+        putAttempts += 1;
+        return new Response('', { status: 308 });
+      },
+      uploadBaseUrl: 'https://upload.example.test/drive/v3',
+      accessToken: 'secret-token',
+      folderId: 'folder-1',
+      sourcePath,
+      name: 'large.avcbak',
+      appProperties: {},
+      sharedDrive: false,
+      signal: new AbortController().signal,
+      sleep: () => Promise.resolve(),
+      random: () => 0,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_destination_error' } });
+    expect(putAttempts).toBe(5);
+  });
+
   it('cancels a resumable session when the upload is aborted', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'avc-google-cancel-'));
     const sourcePath = path.join(root, 'large.avcbak');

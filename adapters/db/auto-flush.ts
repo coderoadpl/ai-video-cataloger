@@ -15,16 +15,13 @@ const runExitFlushes = (): void => {
 
 const onBeforeExit = (): void => runExitFlushes();
 const onExit = (): void => runExitFlushes();
-const onSigInt = (): void => {
+const onSignal = (signal: 'SIGINT' | 'SIGTERM'): void => {
   runExitFlushes();
   removeProcessHooks();
-  process.kill(process.pid, 'SIGINT');
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
 };
-const onSigTerm = (): void => {
-  runExitFlushes();
-  removeProcessHooks();
-  process.kill(process.pid, 'SIGTERM');
-};
+const onSigInt = (): void => onSignal('SIGINT');
+const onSigTerm = (): void => onSignal('SIGTERM');
 
 const ensureProcessHooks = (): void => {
   if (processHooksRegistered) return;

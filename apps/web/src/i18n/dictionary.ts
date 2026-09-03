@@ -725,6 +725,7 @@ export interface Dictionary {
     restoreDialogRelaunch: string;
     restoreRecoveryKeyLabel: string;
     restoreRecoveryKeyHelper: string;
+    restoreRecoveryKeyMismatchHelper: string;
     restoreConfirm: string;
     restoreConfirmAgain: string;
     restoreRunning: (phase: string) => string;
@@ -1741,6 +1742,7 @@ export const en: Dictionary = {
     restoreDialogRelaunch: 'The app restarts when the restore finishes.',
     restoreRecoveryKeyLabel: 'Recovery key',
     restoreRecoveryKeyHelper: 'Needed when this Mac never held the key that encrypted this backup.',
+    restoreRecoveryKeyMismatchHelper: 'Required because this backup was encrypted with a different recovery key than the one stored on this Mac.',
     restoreConfirm: 'Restore',
     restoreConfirmAgain: 'Yes, restore now',
     restoreRunning: (phase) => `Restoring: ${phase}`,
@@ -2814,6 +2816,7 @@ export const pl: Dictionary = {
     restoreDialogRelaunch: 'Po zakończeniu aplikacja uruchomi się ponownie.',
     restoreRecoveryKeyLabel: 'Klucz odzyskiwania',
     restoreRecoveryKeyHelper: 'Potrzebny, gdy ten Mac nigdy nie miał klucza, którym zaszyfrowano tę kopię.',
+    restoreRecoveryKeyMismatchHelper: 'Wymagany, bo tę kopię zaszyfrowano innym kluczem odzyskiwania niż zapisany na tym Macu.',
     restoreConfirm: 'Przywróć',
     restoreConfirmAgain: 'Tak, przywróć teraz',
     restoreRunning: (phase) => `Przywracanie: ${phase}`,

@@ -229,6 +229,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     let skipped = 0;
     await this.deleteProbeFiles(folder.value.folderId, signal);
     let pageToken: string | undefined;
+    const seenPageTokens = new Set<string>();
     do {
       const url = new URL(`${this.driveBaseUrl}/files`);
       url.searchParams.set('q', backupFilesQuery(folder.value.folderId, tier));
@@ -258,7 +259,9 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
         if (remote.success) backups.push(remote.data);
         else skipped += 1;
       }
-      pageToken = parsed.value.nextPageToken;
+      const nextPageToken = nextPageTokenOrFailure(seenPageTokens, parsed.value.nextPageToken);
+      if (nextPageToken === null) return repeatedPageTokenFailure('backup list');
+      pageToken = nextPageToken;
     } while (pageToken !== undefined);
     return ok({ backups, skipped });
   }
@@ -492,7 +495,7 @@ interface AuthorizationCodeInput {
   challenge: string;
 }
 
-const receiveAuthorizationCode = async (
+export const receiveAuthorizationCode = async (
   input: AuthorizationCodeInput,
 ): Promise<Result<{ code: string; redirectUri: string }, AppError>> => {
   if (input.signal.aborted) return { ok: false, error: appError('backup_auth_required', 'Google authorization was cancelled') };
@@ -520,11 +523,13 @@ const receiveAuthorizationCode = async (
   });
   let timer: ReturnType<typeof setTimeout> | null = null;
   const onAbort = (): void => settle?.({ ok: false, error: appError('backup_auth_required', 'Google authorization was cancelled') });
+  input.signal.addEventListener('abort', onAbort, { once: true });
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(0, '127.0.0.1', resolve);
     });
+    if (input.signal.aborted) return { ok: false, error: appError('backup_auth_required', 'Google authorization was cancelled') };
     const address = server.address();
     if (address === null || typeof address === 'string') return { ok: false, error: appError('backup_auth_required', 'Could not start Google authorization callback') };
     const redirectUri = `http://127.0.0.1:${String(address.port)}/oauth/callback`;
@@ -538,7 +543,6 @@ const receiveAuthorizationCode = async (
     authorization.searchParams.set('state', input.state);
     authorization.searchParams.set('access_type', 'offline');
     authorization.searchParams.set('prompt', 'consent');
-    input.signal.addEventListener('abort', onAbort, { once: true });
     timer = setTimeout(() => {
       settle?.({ ok: false, error: appError('backup_auth_required', 'Google authorization timed out') });
     }, input.timeoutMs);
@@ -561,6 +565,21 @@ const filesInFolderUrl = (baseUrl: string, folderId: string): string => {
   url.searchParams.set('fields', 'files(id,name)');
   return url.toString();
 };
+
+const nextPageTokenOrFailure = (
+  seenPageTokens: Set<string>,
+  nextPageToken: string | undefined,
+): string | undefined | null => {
+  if (nextPageToken === undefined) return undefined;
+  if (seenPageTokens.has(nextPageToken)) return null;
+  seenPageTokens.add(nextPageToken);
+  return nextPageToken;
+};
+
+const repeatedPageTokenFailure = <T>(operation: string): Result<T, AppError> => ({
+  ok: false,
+  error: appError('backup_destination_error', `Google Drive repeated a page token during ${operation}`),
+});
 
 const backupFilesQuery = (folderId: string, tier: BackupTier | null): string => {
   const tierQuery = tier === null

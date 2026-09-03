@@ -68,6 +68,7 @@ export interface IndexStatusFolder {
 
 export interface IndexStatusOutput {
   databasePath: string;
+  durability: ReturnType<GlobalCatalogStore['durabilityStatus']>;
   counts: { folders: number; files: number; analyses: number };
   folders: IndexStatusFolder[];
   latestRun: DriveRunRecord | null;
@@ -367,6 +368,7 @@ export const indexStatus = async (deps: CatalogIndexDeps): Promise<Result<IndexS
   if (!spend.ok) return spend;
   return ok({
     databasePath: deps.globalCatalog.databasePath(),
+    durability: deps.globalCatalog.durabilityStatus(),
     counts: counts.value,
     folders: folders.value.map(toStatusFolder),
     latestRun: latestRun.value,

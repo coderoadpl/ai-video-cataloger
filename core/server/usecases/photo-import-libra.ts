@@ -75,6 +75,7 @@ export interface PhotoImportLibraSummary {
   elapsedMs: number;
 }
 
+// Imported variants must always lose default selection to any live analysis.
 const IMPORTED_PHOTO_VARIANT_CREATED_AT = new Date(0).toISOString();
 const IMPORTED_PHOTO_VARIANT_LABEL = 'Imported (PHOTO LIBRA)';
 const IMPORTED_PHOTO_VARIANT_LANGUAGE = 'pl';

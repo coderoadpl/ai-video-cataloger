@@ -2145,6 +2145,9 @@ const scanHuman = (data: Awaited<ReturnType<ApiClient['scan']>> extends Result<i
 const indexStatusHuman = (data: Awaited<ReturnType<ApiClient['indexStatus']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = [
     `Database: ${data.databasePath}`,
+    ...(data.durability.degraded || data.durability.pendingWrites
+      ? [`Durability: degraded=${String(data.durability.degraded)} pendingWrites=${String(data.durability.pendingWrites)} lastError=${data.durability.lastErrorCode ?? '-'}`]
+      : []),
     `Folders: ${data.counts.folders}`,
     `Files: ${data.counts.files}`,
     `Analyses: ${data.counts.analyses}`,

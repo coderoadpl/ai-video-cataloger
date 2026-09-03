@@ -540,9 +540,16 @@ export const photosStatusInputSchema = z.object({
   root: canonicalPathString().optional(),
 });
 
+const storeDurabilityStatusSchema = z.object({
+  degraded: z.boolean(),
+  pendingWrites: z.boolean(),
+  lastErrorCode: z.enum(ERROR_CODES).nullable(),
+}).default({ degraded: false, pendingWrites: false, lastErrorCode: null });
+
 export const photosStatusOutputSchema = z.object({
   media: z.literal('photo'),
   root: z.string().nullable(),
+  durability: storeDurabilityStatusSchema,
   counts: z.object({
     photos: z.number(),
     paths: z.number(),
@@ -1735,6 +1742,7 @@ export const indexStatusFolderSchema = z.object({
 
 export const indexStatusOutputSchema = z.object({
   databasePath: z.string(),
+  durability: storeDurabilityStatusSchema,
   counts: z.object({
     folders: z.number().int().nonnegative(),
     files: z.number().int().nonnegative(),

@@ -128,6 +128,7 @@ export interface PhotoProxiesSummary {
 export interface PhotosStatusOutput {
   media: 'photo';
   root: string | null;
+  durability: ReturnType<PhotosStore['durabilityStatus']>;
   counts: PhotosCounts;
 }
 
@@ -1213,7 +1214,7 @@ export const photosStatus = async (
   const root = input.root === undefined ? null : deps.fs.resolve(input.root);
   const counts = await deps.photos.counts(root);
   if (!counts.ok) return counts;
-  return ok({ media: 'photo', root, counts: counts.value });
+  return ok({ media: 'photo', root, counts: counts.value, durability: deps.photos.durabilityStatus() });
 };
 
 export const photosForget = async (

@@ -53,6 +53,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status.
+- Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal.
+- Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever.
+- Google Drive backup listing and service-account permission checks now stop when Drive repeats a page token.
+- Restore swaps now fsync staged files and live parent directories before treating restored files as durable.
+- Post-swap restore state and pruning failures now surface `restore_incomplete`, so the UI no longer says nothing changed after live files may have changed.
+- Restore now requires a recovery key when an archive fingerprint differs from the key stored on this Mac and explains that mismatch in the dialog.
+- OAuth backup connection cancellation is now observed even when it races loopback listener startup.
+- Polish recovery-key exports now use proper diacritics in the warning sentence.
+- Face benchmark matching now ignores PHOTO LIBRA MD5 source hashes instead of truncating them as SHA-256 photo fingerprints.
 - Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard.
 - The release walkthrough's backup step is now real: `scripts/fake-drive-server.mjs` serves an in-memory Google Drive v3 stand-in, `qa:walkthrough` starts it, drives Settings > Kopia zapasowa through the actual enablement stepper with a generated service-account key, and captures the enabled section plus the bottom-bar indicator. With `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` the composition now backs backup secrets with a 0600 `secrets.json` in the driven home instead of failing every call with `keychain_unavailable`.
 - `GET /api/library/collection` now pages by a keyset cursor that carries the last-seen sort key per medium, so an item indexed while Kolekcja or a person's media panel is paging no longer repeats one tile and hides another at the page boundary; the person media panel also drops a fingerprint it has already shown. Cursors minted by an earlier build are rejected as `validation`.

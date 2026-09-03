@@ -245,6 +245,7 @@ describe('runPhotoScan', () => {
 
     const status = await photosStatus(deps, {});
     expect(status.ok && status.value.counts).toMatchObject({ photos: 2, paths: 2 });
+    expect(status.ok && status.value.durability).toEqual({ degraded: false, pendingWrites: false, lastErrorCode: null });
   });
 
   it('continues after a content hash read error and reports the failed file', async () => {

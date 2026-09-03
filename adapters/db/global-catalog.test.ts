@@ -721,6 +721,42 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value.files).toBe(24);
   });
 
+  it('keeps dirty global catalog writes after a timer flush persist failure and retries them', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => Date.now(), onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 24; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-retry-${String(index)}`, fileName: `retry-${String(index)}.mp4` });
+    }
+    await mkdir(`${store.databasePath()}.tmp`);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(persistCount).toBe(0);
+    expect(store.durabilityStatus()).toEqual({
+      degraded: true,
+      pendingWrites: true,
+      lastErrorCode: 'internal',
+    });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('internal'), expect.any(String));
+
+    await rm(`${store.databasePath()}.tmp`, { recursive: true, force: true });
+    expect(await store.flush()).toEqual({ ok: true, value: undefined });
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value.files).toBe(24);
+    expect(store.durabilityStatus()).toEqual({
+      degraded: false,
+      pendingWrites: false,
+      lastErrorCode: null,
+    });
+  });
+
   it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {
     const probeTimer = setTimeout(() => undefined, 1);
     const unrefSpy = vi.spyOn(Object.getPrototypeOf(probeTimer), 'unref');

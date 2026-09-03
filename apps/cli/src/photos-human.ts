@@ -11,8 +11,12 @@ type PhotoVariantRecord = z.output<typeof photosVariantRecordSchema>;
 
 export const photosStatusHuman = (data: PhotosStatusOutput): string => {
   const scope = data.root === null ? 'all photos' : data.root;
+  const durability = data.durability.degraded || data.durability.pendingWrites
+    ? [`Durability: degraded=${String(data.durability.degraded)} pendingWrites=${String(data.durability.pendingWrites)} lastError=${data.durability.lastErrorCode ?? '-'}`]
+    : [];
   return [
     `Scope: ${scope}`,
+    ...durability,
     `Photos: ${data.counts.photos} (${data.counts.paths} paths, ${data.counts.duplicates} duplicated)`,
     `EXIF read: ${data.counts.exifRead} / failed: ${data.counts.exifFailed}`,
     `Proxies: ${data.counts.proxied} generated, ${data.counts.proxyFailed} failed`,

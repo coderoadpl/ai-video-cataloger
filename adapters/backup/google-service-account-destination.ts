@@ -224,6 +224,7 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     let skipped = 0;
     await this.deleteProbeFiles(folder.value.folderId, folder.value.driveId, signal);
     let pageToken: string | undefined;
+    const seenPageTokens = new Set<string>();
     do {
       const url = new URL(`${this.driveBaseUrl}/files`);
       url.searchParams.set('q', backupFilesQuery(folder.value.folderId, tier));
@@ -253,7 +254,9 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
         if (remote.success) backups.push(remote.data);
         else skipped += 1;
       }
-      pageToken = parsed.value.nextPageToken;
+      const nextPageToken = nextPageTokenOrFailure(seenPageTokens, parsed.value.nextPageToken);
+      if (nextPageToken === null) return repeatedPageTokenFailure('backup list');
+      pageToken = nextPageToken;
     } while (pageToken !== undefined);
     return ok({ backups, skipped });
   }
@@ -372,6 +375,7 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
 
   private async verifyMembership(driveId: string, email: string, signal: AbortSignal): Promise<Result<void, AppError>> {
     let pageToken: string | undefined;
+    const seenPageTokens = new Set<string>();
     do {
       const url = new URL(`${this.driveBaseUrl}/files/${encodeURIComponent(driveId)}/permissions`);
       url.searchParams.set('supportsAllDrives', 'true');
@@ -383,7 +387,9 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
       if (!parsed.ok) return parsed;
       const permission = parsed.value.permissions.find((item) => item.emailAddress === email);
       if (permission !== undefined && ['fileOrganizer', 'organizer'].includes(permission.role)) return ok(undefined);
-      pageToken = parsed.value.nextPageToken;
+      const nextPageToken = nextPageTokenOrFailure(seenPageTokens, parsed.value.nextPageToken);
+      if (nextPageToken === null) return repeatedPageTokenFailure('Shared Drive membership');
+      pageToken = nextPageToken;
     } while (pageToken !== undefined);
     return { ok: false, error: appError('validation', 'The service account must have at least the Content manager role in the Shared Drive') };
   }
@@ -526,6 +532,21 @@ const backupFilesQuery = (folderId: string, tier: BackupTier | null): string => 
     : `appProperties has { key='tier' and value='${tier}' }`;
   return `'${folderId}' in parents and trashed=false and ${tierQuery}`;
 };
+
+const nextPageTokenOrFailure = (
+  seenPageTokens: Set<string>,
+  nextPageToken: string | undefined,
+): string | undefined | null => {
+  if (nextPageToken === undefined) return undefined;
+  if (seenPageTokens.has(nextPageToken)) return null;
+  seenPageTokens.add(nextPageToken);
+  return nextPageToken;
+};
+
+const repeatedPageTokenFailure = <T>(operation: string): Result<T, AppError> => ({
+  ok: false,
+  error: appError('backup_destination_error', `Google Drive repeated a page token during ${operation}`),
+});
 
 const probeFilesUrl = (baseUrl: string, folderId: string, driveId: string): string => {
   const url = new URL(`${baseUrl}/files`);
