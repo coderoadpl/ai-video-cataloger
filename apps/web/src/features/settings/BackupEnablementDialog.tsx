@@ -70,9 +70,10 @@ export const BackupEnablementDialog = ({
     ? null
     : backupErrorMessage(failure, dictionary.backup.errorMessages) ?? apiErrorMessage(failure, dictionary);
 
-  const foreignArchives = statusQuery.data?.recoveryKeyStored === false
-    && importedFingerprint === null
-    && (listQuery.data?.backups.length ?? 0) > 0;
+  const storedFingerprint = importedFingerprint ?? statusQuery.data?.recoveryKeyFingerprint ?? null;
+  const foreignArchives = (listQuery.data?.backups ?? []).some((backup) =>
+    backup.keyFingerprint !== null && backup.keyFingerprint !== storedFingerprint);
+  const mintBlocked = foreignArchives && !acknowledged;
 
   const close = () => {
     if (connect.isPending) cancelConnect.mutate(undefined);
@@ -280,9 +281,10 @@ export const BackupEnablementDialog = ({
                   onSuccess: (exported) => {
                     setRecoveryKeyPath(exported.path);
                     setRecoveryKeyFingerprint(exported.fingerprint);
+                    void statusQuery.refetch();
                   },
                 })}
-                disabled={exportRecoveryKey.isPending}
+                disabled={exportRecoveryKey.isPending || mintBlocked}
                 data-testid="backup-export-recovery-key"
               >
                 {dictionary.backup.exportRecoveryKey}

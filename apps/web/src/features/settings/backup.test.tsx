@@ -24,6 +24,7 @@ interface StatusOverrides {
   lastSuccessAt?: string | null;
   lastErrorCode?: string | null;
   recoveryKeyStored?: boolean;
+  recoveryKeyFingerprint?: string | null;
 }
 
 const status = (overrides: StatusOverrides = {}) => ({
@@ -49,6 +50,9 @@ const status = (overrides: StatusOverrides = {}) => ({
   supportedSchemaVersions: { globalCatalog: 7, photos: 3 },
   connection: null,
   recoveryKeyStored: overrides.recoveryKeyStored ?? true,
+  recoveryKeyFingerprint: overrides.recoveryKeyFingerprint === undefined
+    ? ((overrides.recoveryKeyStored ?? true) ? 'sha256:0123456789ab' : null)
+    : overrides.recoveryKeyFingerprint,
 });
 
 const backupRow = (overrides: { remoteId: string; globalCatalog?: number; appVersion?: string }) => ({
@@ -433,7 +437,7 @@ describe('backup enablement stepper', () => {
         respondOk({ fingerprint: 'sha256:0123456789ab', path: '/tmp/recovery-key.txt' })),
       http.post('/api/backup/recovery-key/import', async ({ request }) => {
         calls.push(`import:${JSON.stringify(await request.json())}`);
-        return respondOk({ fingerprint: 'sha256:abcdefabcdef' });
+        return respondOk({ fingerprint: 'sha256:0123456789ab' });
       }),
     );
     await openStepper();
@@ -442,18 +446,55 @@ describe('backup enablement stepper', () => {
     fireEvent.click(screen.getByTestId('backup-connect'));
 
     await waitFor(() => expect(screen.getByTestId('backup-existing-archives')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('backup-export-recovery-key'));
-    await waitFor(() => expect(screen.getByTestId('backup-recovery-key-report')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('backup-recovery-key-saved').querySelector('input') ?? document.body);
-    expect(screen.getByTestId('backup-finish').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(true);
 
     fireEvent.change(screen.getByTestId('backup-import-recovery-key'), { target: { value: 'OTHER-MAC-KEY' } });
     fireEvent.click(screen.getByTestId('backup-import-recovery-key-submit'));
 
     await waitFor(() => expect(calls).toEqual([`import:${JSON.stringify({ recoveryKey: 'OTHER-MAC-KEY' })}`]));
     await waitFor(() => expect(screen.getByTestId('backup-imported-recovery-key').textContent)
-      .toBe(en.backup.recoveryKeyImported('sha256:abcdefabcdef')));
+      .toBe(en.backup.recoveryKeyImported('sha256:0123456789ab')));
+    await waitFor(() => expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByTestId('backup-export-recovery-key'));
+    await waitFor(() => expect(screen.getByTestId('backup-recovery-key-report')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('backup-recovery-key-saved').querySelector('input') ?? document.body);
+
     expect(screen.getByTestId('backup-finish').hasAttribute('disabled')).toBe(false);
+  });
+
+  it('reopens the import field when the stored key wrote none of the archives', async () => {
+    const calls: string[] = [];
+    server.use(
+      statusHandler({ enabled: false, indicator: 'disabled', recoveryKeyFingerprint: 'sha256:wrongwrongw' }),
+      listHandler([backupRow({ remoteId: 'from-old-mac' })]),
+      http.post('/api/backup/connect', () => respondOk({
+        provider: 'service_account',
+        connection: {
+          accountEmail: 'backup@example.com',
+          driveName: null,
+          folderName: 'AI Video Cataloger Backups',
+          remainingQuotaBytes: null,
+        },
+        serviceAccountFingerprint: 'sha256:0123456789ab',
+      })),
+      http.post('/api/backup/recovery-key/import', async ({ request }) => {
+        calls.push(`import:${JSON.stringify(await request.json())}`);
+        return respondOk({ fingerprint: 'sha256:0123456789ab' });
+      }),
+    );
+    await openStepper();
+
+    fireEvent.click(screen.getByTestId('backup-stepper-next'));
+    fireEvent.click(screen.getByTestId('backup-connect'));
+
+    await waitFor(() => expect(screen.getByTestId('backup-existing-archives')).toBeTruthy());
+    expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(screen.getByTestId('backup-import-recovery-key'), { target: { value: 'OTHER-MAC-KEY' } });
+    fireEvent.click(screen.getByTestId('backup-import-recovery-key-submit'));
+
+    await waitFor(() => expect(calls).toEqual([`import:${JSON.stringify({ recoveryKey: 'OTHER-MAC-KEY' })}`]));
+    await waitFor(() => expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(false));
   });
 
   it('lets an explicit acknowledgement replace the other Mac\'s key', async () => {
@@ -479,12 +520,14 @@ describe('backup enablement stepper', () => {
     fireEvent.click(screen.getByTestId('backup-connect'));
 
     await waitFor(() => expect(screen.getByTestId('backup-existing-archives')).toBeTruthy());
+    expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(screen.getByTestId('backup-acknowledge-unreadable').querySelector('input') ?? document.body);
+
+    await waitFor(() => expect(screen.getByTestId('backup-export-recovery-key').hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByTestId('backup-export-recovery-key'));
     await waitFor(() => expect(screen.getByTestId('backup-recovery-key-report')).toBeTruthy());
     fireEvent.click(screen.getByTestId('backup-recovery-key-saved').querySelector('input') ?? document.body);
-    expect(screen.getByTestId('backup-finish').hasAttribute('disabled')).toBe(true);
-
-    fireEvent.click(screen.getByTestId('backup-acknowledge-unreadable').querySelector('input') ?? document.body);
 
     expect(screen.getByTestId('backup-finish').hasAttribute('disabled')).toBe(false);
   });

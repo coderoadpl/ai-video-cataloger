@@ -280,16 +280,40 @@ describe('backup enablement', () => {
     expect(JSON.stringify(imported)).not.toContain(Buffer.alloc(32, 7).toString('base64'));
   });
 
-  it('rejects an invalid recovery key and refuses to replace a different stored key', async () => {
-    const { deps, secrets } = harness();
+  it('rejects an invalid recovery key and refuses to replace a stored key that already wrote archives', async () => {
+    const { deps, secrets, destination } = harness();
 
     expect(await importBackupRecoveryKey(deps, { recoveryKey: 'nonsense' }))
       .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
-    await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY });
-    secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, Buffer.alloc(32, 9).toString('base64'));
+    const otherKey = Buffer.alloc(32, 9);
+    secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, otherKey.toString('base64'));
+    destination.archives = [
+      remoteArchive('archive-other', deps.fingerprintKey(otherKey)),
+      remoteArchive('archive-pasted', deps.fingerprintKey(Buffer.alloc(32, 7))),
+    ];
 
     expect(await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY }))
       .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
+    expect(secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(otherKey.toString('base64'));
+  });
+
+  it('refuses a checksum-valid key that no archive in the destination was written with', async () => {
+    const { deps, secrets, destination } = harness();
+    destination.archives = [remoteArchive('archive-foreign', 'sha256:ffffffffffff')];
+
+    expect(await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY }))
+      .toMatchObject({ ok: false, error: { code: 'recovery_key_mismatch' } });
+    expect(secrets.values.has(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(false);
+  });
+
+  it('replaces a stored key that no archive in the destination was written with', async () => {
+    const { deps, secrets, destination } = harness();
+    secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, Buffer.alloc(32, 9).toString('base64'));
+    destination.archives = [remoteArchive('archive-pasted', deps.fingerprintKey(Buffer.alloc(32, 7)))];
+
+    expect(await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY }))
+      .toMatchObject({ ok: true });
+    expect(secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(Buffer.alloc(32, 7).toString('base64'));
   });
 
   it('refuses a manual backup while backup is disabled', async () => {

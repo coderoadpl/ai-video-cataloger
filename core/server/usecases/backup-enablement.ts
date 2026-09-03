@@ -152,18 +152,34 @@ export const importBackupRecoveryKey = async (
 ): Promise<Result<{ fingerprint: string }, AppError>> => {
   const parsed = deps.parseRecoveryKey(request.recoveryKey);
   if (!parsed.ok) return parsed;
+  const fingerprint = deps.fingerprintKey(parsed.value);
   const encoded = parsed.value.toString('base64');
   const stored = await deps.secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
   if (!stored.ok) return stored;
-  if (stored.value !== null && stored.value !== encoded) {
+  if (stored.value === encoded) return ok({ fingerprint });
+  const archived = await archiveKeyFingerprints(deps);
+  if (!archived.ok) return archived;
+  if (archived.value.size > 0 && !archived.value.has(fingerprint)) {
     return {
       ok: false,
-      error: appError('recovery_key_required', 'A different backup key is already stored on this Mac'),
+      error: appError(
+        'recovery_key_mismatch',
+        'No archive in this destination was written with the pasted recovery key',
+      ),
+    };
+  }
+  if (stored.value !== null && archived.value.has(deps.fingerprintKey(Buffer.from(stored.value, 'base64')))) {
+    return {
+      ok: false,
+      error: appError(
+        'recovery_key_required',
+        'A different backup key is already stored on this Mac and this destination holds archives written with it',
+      ),
     };
   }
   const written = await deps.secrets.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, encoded);
   if (!written.ok) return written;
-  return ok({ fingerprint: deps.fingerprintKey(parsed.value) });
+  return ok({ fingerprint });
 };
 
 export const enableBackup = async (
@@ -258,12 +274,23 @@ const holdsArchivesFromAnotherKey = async (
 ): Promise<Result<boolean, AppError>> => {
   const fingerprint = await storedKeyFingerprint(deps);
   if (!fingerprint.ok) return fingerprint;
+  const archived = await archiveKeyFingerprints(deps);
+  if (!archived.ok) return archived;
+  return ok([...archived.value].some((candidate) => candidate !== fingerprint.value));
+};
+
+const archiveKeyFingerprints = async (
+  deps: BackupEnablementDeps,
+): Promise<Result<Set<string>, AppError>> => {
   const destination = await deps.destination();
   if (!destination.ok) return destination;
   const listed = await destination.value.list(null, new AbortController().signal);
   if (!listed.ok) return listed;
-  return ok(listed.value.backups.some((backup) =>
-    backup.keyFingerprint !== null && backup.keyFingerprint !== fingerprint.value));
+  const fingerprints = new Set<string>();
+  for (const backup of listed.value.backups) {
+    if (backup.keyFingerprint !== null) fingerprints.add(backup.keyFingerprint);
+  }
+  return ok(fingerprints);
 };
 
 const storedKeyFingerprint = async (

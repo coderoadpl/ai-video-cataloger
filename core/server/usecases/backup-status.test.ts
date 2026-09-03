@@ -121,6 +121,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => {
         destinationCalls += 1;
         return Promise.resolve(ok(stubDestination(connectionReport)));
@@ -150,6 +151,7 @@ describe('backup status', () => {
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
       connection: null,
       recoveryKeyStored: false,
+      recoveryKeyFingerprint: null,
     }));
     expect(destinationCalls).toBe(0);
   });
@@ -173,6 +175,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
 
@@ -203,6 +206,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: true });
 
@@ -216,6 +220,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets({ [BACKUP_ENCRYPTION_KEY_ACCOUNT]: Buffer.alloc(32, 5).toString('base64') }),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
 
@@ -234,6 +239,7 @@ describe('backup status', () => {
         delete: () => Promise.resolve(ok({ existed: false })),
       },
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
 

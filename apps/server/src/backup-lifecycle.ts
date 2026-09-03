@@ -227,6 +227,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       secrets: options.secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: options.destination,
+      fingerprintKey: backupKeyFingerprint,
     }, input),
     connect: (request, signal) => connectBackupDestination(enablementDeps, request, signal),
     test: (signal) => testBackupDestination(enablementDeps, signal),
