@@ -24,7 +24,7 @@
     "fumadocs-mdx": "11.6.10",
     "lucide-react": "^0.358.0",
     "motion": "^12.23.0",
-    "next": "15.3.5",
+    "next": "15.5.24",
     "next-themes": "^0.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -36,14 +36,27 @@
   "devDependencies": {
     "@types/mdx": "2.0.13",
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@typescript-eslint/parser": "^8.68.0",
     "autoprefixer": "^10.0.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.0",
-    "postcss": "^8.4.36",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.5.24",
+    "postcss": "8.5.23",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5"
   },
-  "packageManager": "pnpm@10.34.5"
+  "packageManager": "pnpm@10.34.5",
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@<1.1.18": "1.1.18",
+      "browserslist@<=4.28.6": "4.28.7",
+      "glob@>=10.2.0 <10.5.0": "10.5.0",
+      "js-yaml@>=4.0.0 <4.3.1": "4.3.1",
+      "minimatch@>=9.0.0 <9.0.7": "9.0.7",
+      "nanoid@<3.3.18": "3.3.18",
+      "postcss@<=8.5.22": "8.5.23",
+      "sharp@<0.35.0": "0.35.3"
+    }
+  }
 }
