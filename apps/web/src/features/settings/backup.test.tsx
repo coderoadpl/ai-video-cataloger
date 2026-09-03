@@ -4,15 +4,16 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { BACKUP_RUNNING_REFETCH_MS } from '@core/client/index.js';
 import type { BackupIndicatorState } from '@core/domain/index.js';
 
-import { en } from '../../i18n/dictionary.js';
+import { en, pl } from '../../i18n/dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { BackupIndicator } from './BackupIndicator.js';
-import { SettingsBackupSection } from './SettingsBackupSection.js';
+import { RETENTION_FIELD_MIN_WIDTH, SettingsBackupSection } from './SettingsBackupSection.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
@@ -650,5 +651,83 @@ describe('backup enablement stepper', () => {
 
     await waitFor(() => expect(screen.queryByTestId('backup-stepper')).toBeNull());
     expect(screen.queryByTestId('backup-run-now')).toBeNull();
+  });
+});
+
+describe('Settings > Backup list freshness', () => {
+  const POLL_TIMEOUT_MS = BACKUP_RUNNING_REFETCH_MS * 4;
+
+  it('shows the finished backup without reopening Settings', async () => {
+    const state: { indicator: BackupIndicatorState; lastSuccessAt: string | null } = {
+      indicator: 'running',
+      lastSuccessAt: null,
+    };
+    server.use(
+      http.get('/api/backup/status', () =>
+        respondOk(status({ indicator: state.indicator, lastSuccessAt: state.lastSuccessAt }))),
+      http.get('/api/backup/list', () =>
+        respondOk({ backups: state.lastSuccessAt === null ? [] : [backupRow({ remoteId: 'first' })] })),
+    );
+    renderThemed(<SettingsBackupSection open />);
+
+    await waitFor(() => expect(screen.getByTestId('backup-list-empty')).toBeTruthy());
+
+    state.indicator = 'idle';
+    state.lastSuccessAt = '2026-09-03T10:00:00.000Z';
+
+    await waitFor(() => expect(screen.getByTestId('backup-row-first')).toBeTruthy(), { timeout: POLL_TIMEOUT_MS });
+  });
+
+  it('keeps the manual run busy until the enqueued job is visible, then releases it', async () => {
+    const runs: string[] = [];
+    const state = { lastSuccessAt: '2026-09-01T12:00:00.000Z' };
+    server.use(
+      http.get('/api/backup/status', () => respondOk(status({ lastSuccessAt: state.lastSuccessAt }))),
+      http.get('/api/backup/list', () => respondOk({
+        backups: state.lastSuccessAt === '2026-09-01T12:00:00.000Z' ? [] : [backupRow({ remoteId: 'fresh' })],
+      })),
+      http.post('/api/backup/run', async ({ request }) => {
+        runs.push(JSON.stringify(await request.json()));
+        return respondOk({ jobId: 'backup-1' });
+      }),
+    );
+    renderThemed(<SettingsBackupSection open />);
+
+    await waitFor(() => expect(screen.getByTestId('backup-run-now')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('backup-run-now'));
+
+    await waitFor(() => expect(runs).toEqual([JSON.stringify({ tier: 'critical' })]));
+    expect(screen.getByTestId('backup-run-now').textContent).toBe(en.backup.running);
+
+    state.lastSuccessAt = '2026-09-03T10:00:00.000Z';
+
+    await waitFor(
+      () => expect(screen.getByTestId('backup-run-now').textContent).toBe(en.backup.runNow),
+      { timeout: POLL_TIMEOUT_MS },
+    );
+    await waitFor(() => expect(screen.getByTestId('backup-row-fresh')).toBeTruthy(), { timeout: POLL_TIMEOUT_MS });
+  });
+});
+
+describe('Settings > Backup retention fields', () => {
+  const LABEL_CHAR_PX = 6.5;
+  const LABEL_GUTTER_PX = 32;
+  const labelFits = (label: string, fieldWidthPx: number): boolean =>
+    label.length * LABEL_CHAR_PX + LABEL_GUTTER_PX <= fieldWidthPx;
+
+  it('reserves enough width for the retention labels in every language', async () => {
+    server.use(statusHandler(), listHandler([]));
+    renderThemed(<SettingsBackupSection open />);
+
+    const keepLast = await screen.findByTestId('backup-keep-last-field');
+    const keepWeekly = screen.getByTestId('backup-keep-weekly-field');
+
+    for (const field of [keepLast, keepWeekly]) {
+      expect(Number.parseFloat(window.getComputedStyle(field).minWidth)).toBe(RETENTION_FIELD_MIN_WIDTH);
+    }
+    for (const dictionary of [en, pl]) {
+      expect(labelFits(dictionary.backup.keepLastLabel, RETENTION_FIELD_MIN_WIDTH)).toBe(true);
+      expect(labelFits(dictionary.backup.keepWeeklyLabel, RETENTION_FIELD_MIN_WIDTH)).toBe(true);
+    }
   });
 });

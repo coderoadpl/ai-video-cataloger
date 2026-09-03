@@ -5,10 +5,14 @@ import { ApiError } from '@core/client/index.js';
 import { BACKUP_ERROR_CODES, type BackupErrorCode } from '@core/domain/index.js';
 
 import {
+  awaitsBackupRunStart,
   backupErrorMessage,
+  backupListNeedsRefresh,
+  backupRunRequestOf,
   formatArchiveSize,
   isRestorable,
   retentionInput,
+  type BackupRunSignal,
   type RemoteBackupView,
 } from './backup-model.js';
 
@@ -83,5 +87,67 @@ describe('retention input', () => {
     ['abc', 7],
   ])('clamps %s to %i', (raw, expected) => {
     expect(retentionInput(raw, 1, 90, 7)).toBe(expected);
+  });
+});
+
+describe('awaitsBackupRunStart', () => {
+  const signal = (overrides: Partial<BackupRunSignal> = {}): BackupRunSignal => ({
+    indicator: overrides.indicator ?? 'idle',
+    lastSuccessAt: overrides.lastSuccessAt ?? null,
+    lastErrorCode: overrides.lastErrorCode ?? null,
+  });
+
+  it('waits while the status has not moved since the run was requested', () => {
+    const before = signal({ lastSuccessAt: '2026-09-01T12:00:00.000Z' });
+    expect(awaitsBackupRunStart(backupRunRequestOf(before), before)).toBe(true);
+  });
+
+  it('waits while the status is still unknown', () => {
+    expect(awaitsBackupRunStart(backupRunRequestOf(undefined), undefined)).toBe(true);
+  });
+
+  it('stops waiting once the job reports running', () => {
+    const before = signal();
+    expect(awaitsBackupRunStart(backupRunRequestOf(before), signal({ indicator: 'running' }))).toBe(false);
+  });
+
+  it('stops waiting once the job finished without ever being observed as running', () => {
+    const before = signal();
+    const after = signal({ lastSuccessAt: '2026-09-03T10:00:00.000Z' });
+    expect(awaitsBackupRunStart(backupRunRequestOf(before), after)).toBe(false);
+  });
+
+  it('stops waiting once the job failed', () => {
+    const before = signal();
+    const after = signal({ indicator: 'failed', lastErrorCode: 'backup_quota_exceeded' });
+    expect(awaitsBackupRunStart(backupRunRequestOf(before), after)).toBe(false);
+  });
+
+  it('does not wait without a pending request', () => {
+    expect(awaitsBackupRunStart(null, signal({ indicator: 'running' }))).toBe(false);
+  });
+});
+
+describe('backupListNeedsRefresh', () => {
+  const signal = (overrides: Partial<BackupRunSignal> = {}): BackupRunSignal => ({
+    indicator: overrides.indicator ?? 'idle',
+    lastSuccessAt: overrides.lastSuccessAt ?? null,
+    lastErrorCode: overrides.lastErrorCode ?? null,
+  });
+
+  it('refreshes when a running backup settles', () => {
+    expect(backupListNeedsRefresh(signal({ indicator: 'running' }), signal({ indicator: 'failed' }))).toBe(true);
+  });
+
+  it('refreshes when a new archive was uploaded', () => {
+    expect(backupListNeedsRefresh(signal(), signal({ lastSuccessAt: '2026-09-03T10:00:00.000Z' }))).toBe(true);
+  });
+
+  it('leaves the list alone while nothing changed', () => {
+    expect(backupListNeedsRefresh(signal({ indicator: 'running' }), signal({ indicator: 'running' }))).toBe(false);
+  });
+
+  it('leaves the list alone on the first observed status', () => {
+    expect(backupListNeedsRefresh(undefined, signal())).toBe(false);
   });
 });

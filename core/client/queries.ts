@@ -334,11 +334,15 @@ export const invalidatePhotosQueries = (client: { invalidateQueries: (filters: {
 export const backupScopes = {
   all: () => ['backup'] as const,
   status: () => ['backup', 'status'] as const,
+  lists: () => ['backup', 'list'] as const,
   list: (tier: 'critical' | 'optional' | null) => ['backup', 'list', tier] as const,
 };
 
 export const invalidateBackupQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
   client.invalidateQueries({ queryKey: backupScopes.all() });
+
+export const invalidateBackupList = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
+  client.invalidateQueries({ queryKey: backupScopes.lists() });
 
 export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
@@ -878,8 +882,10 @@ export const stopLocalAiDaemonMutation = (api: ApiClient) =>
     call: () => api.stopLocalAiDaemon(),
   });
 
+export const BACKUP_RUNNING_REFETCH_MS = 2_000;
+
 export const backupStatusRefetchInterval =
-  (idleMs = 60_000, runningMs = 2_000) =>
+  (idleMs = 60_000, runningMs = BACKUP_RUNNING_REFETCH_MS) =>
   (query: RefetchQuery<BackupStatusOutput>): number | false => {
     const indicator = query.state.data?.indicator;
     if (indicator === undefined || indicator === 'disabled') return idleMs;
