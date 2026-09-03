@@ -28,12 +28,14 @@ const Row = ({
   value,
   testId,
   separator = true,
+  pathLayout = false,
 }: {
   icon: ReactNode;
   label: string;
   value: string | null;
   testId?: string;
   separator?: boolean;
+  pathLayout?: boolean;
 }) => {
   if (value === null) return null;
   return (
@@ -42,6 +44,8 @@ const Row = ({
       label={label === '' ? null : label}
       value={value}
       separator={separator}
+      valueNoWrap={!pathLayout}
+      {...(pathLayout ? { labelMinWidth: 112 } : {})}
       {...(testId === undefined ? {} : { testId })}
     />
   );
@@ -87,7 +91,7 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
         value={photo.exifRating === null ? null : String(photo.exifRating)}
       />
       <Row icon={<ClockIcon fontSize="small" />} label={dictionary.photos.detailCaptured} value={capturedValue} />
-      <Row icon={<FolderIcon fontSize="small" />} label={dictionary.photos.detailOwnerPath} value={ownerPath} />
+      <Row icon={<FolderIcon fontSize="small" />} label={dictionary.photos.detailOwnerPath} value={ownerPath} pathLayout />
       {sightings.map((sighting, index) => (
         <Row
           key={sighting.currentPath}
@@ -95,6 +99,7 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
           label={index === 0 ? dictionary.photos.detailAlsoAt(sightings.length) : ''}
           value={sighting.currentPath}
           separator={false}
+          pathLayout
         />
       ))}
     </Paper>

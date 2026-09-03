@@ -33,6 +33,18 @@ describe('dictionary', () => {
     expect(pl.people.observationCount(1)).toBe('1 obserwacja');
     expect(pl.people.observationCount(3)).toBe('3 obserwacje');
     expect(pl.people.observationCount(5)).toBe('5 obserwacji');
+    expect(pl.people.videoFileCount(1)).toBe('1 film');
+    expect(pl.people.videoFileCount(2)).toBe('2 filmy');
+    expect(pl.people.videoFileCount(5)).toBe('5 filmów');
+    expect(pl.people.photoFileCount(1)).toBe('1 zdjęcie');
+    expect(pl.people.photoFileCount(3)).toBe('3 zdjęcia');
+    expect(pl.people.photoFileCount(5)).toBe('5 zdjęć');
+    expect(pl.people.frameObservationCount(1)).toBe('1 kadr');
+    expect(pl.people.frameObservationCount(2)).toBe('2 kadry');
+    expect(pl.people.frameObservationCount(5)).toBe('5 kadrów');
+    expect(pl.people.reclusterConfirmWithNames(1)).toBe('Przebuduj i usuń 1 imię');
+    expect(pl.people.reclusterConfirmWithNames(2)).toBe('Przebuduj i usuń 2 imiona');
+    expect(pl.people.reclusterConfirmWithNames(5)).toBe('Przebuduj i usuń 5 imion');
     expect(pl.search.resultCount(1)).toBe('1 wynik');
     expect(pl.search.resultCount(3)).toBe('3 wyniki');
     expect(pl.search.resultCount(5)).toBe('5 wyników');
@@ -87,6 +99,14 @@ describe('dictionary', () => {
     expect(en.search.resultCount(2)).toBe('2 results');
     expect(en.people.observationCount(1)).toBe('1 observation');
     expect(en.people.observationCount(2)).toBe('2 observations');
+    expect(en.people.videoFileCount(1)).toBe('1 video');
+    expect(en.people.videoFileCount(2)).toBe('2 videos');
+    expect(en.people.photoFileCount(1)).toBe('1 photo');
+    expect(en.people.photoFileCount(2)).toBe('2 photos');
+    expect(en.people.frameObservationCount(1)).toBe('1 frame');
+    expect(en.people.frameObservationCount(2)).toBe('2 frames');
+    expect(en.people.reclusterConfirmWithNames(1)).toBe('Rebuild and drop 1 name');
+    expect(en.people.reclusterConfirmWithNames(2)).toBe('Rebuild and drop 2 names');
     expect(en.settingsModal.frameCountValue(1)).toBe('1 frame');
     expect(en.settingsModal.frameCountValue(2)).toBe('2 frames');
     expect(en.settingsModal.geminiSpendReadout('2026-08', 1, 1)).toContain('across 1 analysis');
@@ -130,6 +150,11 @@ describe('dictionary', () => {
     expect(pl.readinessNotice.title).toBe('Konfiguracja analizy jest niepełna');
     expect(pl.cancelDialog.continueProcessing).toBe('Kontynuuj analizę');
     expect(pl.people.mergeBody('A', 'B')).toBe('Włączyć A do B? Grupa A zniknie. Tego nie można cofnąć.');
+  });
+
+  it('describes people grouping as videos and photos in both locales', () => {
+    expect(en.people.subtitle).toBe('Local face grouping from analyzed catalog videos and photos.');
+    expect(pl.people.subtitle).toBe('Lokalne grupowanie twarzy z przeanalizowanych filmów i zdjęć katalogu.');
   });
 
   it('keeps swept UI literals inside the dictionary', () => {

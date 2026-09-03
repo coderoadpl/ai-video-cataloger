@@ -9,6 +9,8 @@ interface DetailMetadataRowProps {
   testId?: string;
   valueTestId?: string;
   separator?: boolean;
+  labelMinWidth?: number;
+  valueNoWrap?: boolean;
 }
 
 export const DetailMetadataRow = ({
@@ -19,6 +21,8 @@ export const DetailMetadataRow = ({
   testId,
   valueTestId,
   separator = true,
+  labelMinWidth,
+  valueNoWrap = true,
 }: DetailMetadataRowProps) => (
   <Box
     data-testid={testId}
@@ -27,11 +31,21 @@ export const DetailMetadataRow = ({
   >
     <Box sx={{ color: 'text.secondary', display: 'flex' }}>{icon}</Box>
     {label === null ? null : (
-      <Typography variant="body2" color="text.secondary">
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={labelMinWidth === undefined ? undefined : { minWidth: labelMinWidth, flexShrink: 0 }}
+      >
         {label}{separator ? ':' : ''}
       </Typography>
     )}
-    <Typography variant="body2" noWrap sx={{ fontWeight: 500 }} title={value} data-testid={valueTestId}>
+    <Typography
+      variant="body2"
+      noWrap={valueNoWrap}
+      sx={{ fontWeight: 500, minWidth: 0, ...(valueNoWrap ? {} : { overflowWrap: 'anywhere' }) }}
+      title={value}
+      data-testid={valueTestId}
+    >
       {value}
     </Typography>
     {action}

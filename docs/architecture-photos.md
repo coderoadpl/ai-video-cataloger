@@ -586,12 +586,12 @@ F3. Every item below is implemented.
   filter; `GET /api/photos/detail` carries `people`; `faces exemplars` repairs
   a photo crop from the proxy through `{ kind: 'image-path' }`; and Osoby
   renders the same `MediaFilterToggle` (`apps/web/src/components/ui/`) that
-  Kolekcja's chips use, narrowing the person list and the per-person counts,
-  with a person card opening that person's photos and videos in the shared
-  Kolekcja media viewer. One gap survives by design: a photo enters the
-  collection feed only once it carries an analysis (the pre-existing photo-leg
-  rule), so an un-analysed photo can still be counted by the Osoby facet and
-  absent from the filtered results.
+  Kolekcja's chips use, narrowing the person list by observation presence while
+  person cards show distinct video/photo file counts. A person card opens that
+  person's photos and videos in the shared Kolekcja media viewer. One gap
+  survives by design: a photo enters the collection feed only once it carries an
+  analysis (the pre-existing photo-leg rule), so an un-analysed photo can still
+  be counted by the Osoby facet and absent from the filtered results.
 - **A full from-scratch recluster is reachable from Osoby**, dry run first, and
   drops all names by design.
 

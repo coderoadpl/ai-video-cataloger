@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Osoby now shows distinct video/photo file counts on person cards and person media panels, sorts people by file frequency by default, and uses plain-language rebuild copy with the dry-run name-loss count in the final confirmation.
+- Photo detail metadata rows now keep long Polish path labels on one line while letting path values wrap.
 - Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path.
 
 ### Security

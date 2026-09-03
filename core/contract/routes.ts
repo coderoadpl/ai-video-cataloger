@@ -2187,6 +2187,10 @@ export const facePersonSchema = z.object({
   observationCount: z.number().int().nonnegative(),
   videoCount: z.number().int().nonnegative(),
   photoCount: z.number().int().nonnegative(),
+  fileCounts: z.object({
+    video: z.number().int().nonnegative(),
+    photo: z.number().int().nonnegative(),
+  }).strict(),
   exemplarCropPath: z.string().min(1).nullable(),
   exemplarCropPaths: z.array(z.string().min(1)),
 });

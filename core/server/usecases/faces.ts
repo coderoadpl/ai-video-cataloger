@@ -148,6 +148,10 @@ interface FacePersonView extends Person {
   observationCount: number;
   videoCount: number;
   photoCount: number;
+  fileCounts: {
+    video: number;
+    photo: number;
+  };
   exemplarCropPath: string | null;
   exemplarCropPaths: string[];
 }
@@ -1336,6 +1340,12 @@ export const reanchorFaceCropPath = (currentCatalogDir: string, stored: string):
 
 const personView = (person: Person, observations: readonly FaceObservation[], currentCatalogDir: string): FacePersonView => {
   const matching = observations.filter((observation) => observation.personId === person.personId);
+  const videoFingerprints = new Set(matching
+    .filter((observation) => observation.media === 'video')
+    .map((observation) => observation.fingerprint));
+  const photoFingerprints = new Set(matching
+    .filter((observation) => observation.media === 'photo')
+    .map((observation) => observation.fingerprint));
   const selected = selectExemplars(matching);
   const exemplarCropPaths = selected
     .filter((observation): observation is FaceObservation & { cropPath: string } => observation.cropPath !== null)
@@ -1345,6 +1355,7 @@ const personView = (person: Person, observations: readonly FaceObservation[], cu
     observationCount: matching.length,
     videoCount: matching.filter((observation) => observation.media === 'video').length,
     photoCount: matching.filter((observation) => observation.media === 'photo').length,
+    fileCounts: { video: videoFingerprints.size, photo: photoFingerprints.size },
     exemplarCropPath: exemplarCropPaths[0] ?? null,
     exemplarCropPaths,
   };

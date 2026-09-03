@@ -493,8 +493,11 @@ export interface Dictionary {
     recluster: string;
     reclusterDryRun: string;
     reclusterConfirm: string;
+    reclusterConfirmWithNames: (count: number) => string;
     reclusterDryRunBody: string;
     reclusterNamesBody: string;
+    sortFrequent: string;
+    sortOrder: string;
     reclusterPeopleBefore: string;
     reclusterPeopleAfter: string;
     reclusterReassigned: string;
@@ -519,6 +522,9 @@ export interface Dictionary {
     observationCount: (count: number) => string;
     videoObservationCount: (count: number) => string;
     photoObservationCount: (count: number) => string;
+    videoFileCount: (count: number) => string;
+    photoFileCount: (count: number) => string;
+    frameObservationCount: (count: number) => string;
     rename: string;
     delete: string;
     searchInLibrary: string;
@@ -1492,7 +1498,7 @@ export const en: Dictionary = {
     emptyTitle: 'No people yet',
     emptyBody: 'Index the current folder to find and group faces across your videos.',
     title: 'People',
-    subtitle: 'Local face grouping from analyzed catalog videos.',
+    subtitle: 'Local face grouping from analyzed catalog videos and photos.',
     mergeSelected: 'Merge selected',
     indexFaces: 'Index faces',
     indexFacesNoIndexableMedia: 'Analyze at least one video or generate one photo proxy in this folder before indexing faces.',
@@ -1508,10 +1514,13 @@ export const en: Dictionary = {
     dangerArea: 'Danger area',
     dangerBody: 'Delete all local face data if you want to remove every grouping and exemplar crop.',
     recluster: 'Recluster people',
-    reclusterDryRun: 'Dry run',
-    reclusterConfirm: 'Recluster',
-    reclusterDryRunBody: 'Run a dry run first to see how many people and observations would change.',
-    reclusterNamesBody: 'The real rebuild remints person ids and drops all display names.',
+    reclusterDryRun: 'Check without changes',
+    reclusterConfirm: 'Rebuild',
+    reclusterConfirmWithNames: (count) => `Rebuild and drop ${String(count)} ${count === 1 ? 'name' : 'names'}`,
+    reclusterDryRunBody: 'All detected faces will be grouped again from scratch. Use this after indexing many new photos or videos if the people grouping no longer matches what you see.',
+    reclusterNamesBody: 'Photos and videos stay untouched, but assigned names are permanently removed when you rebuild.',
+    sortFrequent: 'Most frequent',
+    sortOrder: 'Order',
     reclusterPeopleBefore: 'People before',
     reclusterPeopleAfter: 'People after',
     reclusterReassigned: 'Reassigned observations',
@@ -1536,6 +1545,9 @@ export const en: Dictionary = {
     observationCount: (count) => `${count} ${count === 1 ? 'observation' : 'observations'}`,
     videoObservationCount: (count) => `${count} in videos`,
     photoObservationCount: (count) => `${count} in photos`,
+    videoFileCount: (count) => `${count} ${count === 1 ? 'video' : 'videos'}`,
+    photoFileCount: (count) => `${count} ${count === 1 ? 'photo' : 'photos'}`,
+    frameObservationCount: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
     rename: 'Rename',
     delete: 'Delete',
     searchInLibrary: 'Search in Library',
@@ -2572,7 +2584,7 @@ export const pl: Dictionary = {
     emptyTitle: 'Brak osób',
     emptyBody: 'Zindeksuj bieżący folder, aby znaleźć i pogrupować twarze w Twoich filmach.',
     title: 'Osoby',
-    subtitle: 'Lokalne grupowanie twarzy z przeanalizowanych filmów katalogu.',
+    subtitle: 'Lokalne grupowanie twarzy z przeanalizowanych filmów i zdjęć katalogu.',
     mergeSelected: 'Scal wybrane',
     indexFaces: 'Indeksuj twarze',
     indexFacesNoIndexableMedia: 'Przeanalizuj co najmniej jeden film lub wygeneruj jeden plik proxy zdjęcia w tym folderze przed indeksowaniem twarzy.',
@@ -2588,10 +2600,13 @@ export const pl: Dictionary = {
     dangerArea: 'Strefa ryzyka',
     dangerBody: 'Usuń wszystkie lokalne dane twarzy, jeśli chcesz usunąć każdą grupę i przykładowe wycinki.',
     recluster: 'Przebuduj osoby',
-    reclusterDryRun: 'Próba bez zapisu',
+    reclusterDryRun: 'Sprawdź bez zmian',
     reclusterConfirm: 'Przebuduj',
-    reclusterDryRunBody: 'Najpierw uruchom próbę bez zapisu, aby zobaczyć, ile osób i obserwacji się zmieni.',
-    reclusterNamesBody: 'Pełna przebudowa tworzy nowe identyfikatory osób i usuwa wszystkie nazwy wyświetlane.',
+    reclusterConfirmWithNames: (count) => `Przebuduj i usuń ${String(count)} ${plPlural(count, 'imię', 'imiona', 'imion')}`,
+    reclusterDryRunBody: 'Wszystkie wykryte twarze zostaną pogrupowane od początku. Użyj tego po zindeksowaniu wielu nowych zdjęć lub filmów, jeśli grupowanie osób przestało pasować do tego, co widzisz.',
+    reclusterNamesBody: 'Zdjęcia i filmy pozostaną bez zmian, ale przypisane imiona zostaną trwale usunięte podczas przebudowy.',
+    sortFrequent: 'Najczęstsze',
+    sortOrder: 'Kolejność',
     reclusterPeopleBefore: 'Osoby przed',
     reclusterPeopleAfter: 'Osoby po',
     reclusterReassigned: 'Przypisane ponownie',
@@ -2616,6 +2631,9 @@ export const pl: Dictionary = {
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
     videoObservationCount: (count) => `${count} w filmach`,
     photoObservationCount: (count) => `${count} w zdjęciach`,
+    videoFileCount: (count) => `${count} ${plPlural(count, 'film', 'filmy', 'filmów')}`,
+    photoFileCount: (count) => `${count} ${plPlural(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
+    frameObservationCount: (count) => `${count} ${plPlural(count, 'kadr', 'kadry', 'kadrów')}`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
     searchInLibrary: 'Szukaj w Bibliotece',

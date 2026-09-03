@@ -389,9 +389,10 @@ Read every screenshot against the sensitivities that have burned us before:
   no row's badge or thumbnail is clipped by the sidebar's right edge.
 - **Status badges** — icon inset and label padding symmetrical, no clipped text,
   the same height across pending/completed/error/duplicate.
-- **Thumbnails** — real frames where a video was analyzed, the placeholder (not a
-  broken image, not a permanent shimmer) elsewhere; portrait clips are not
-  stretched.
+- **Thumbnails** — real decoded frames appear when a folder opens, even before
+  analysis; not-yet-analysed rows are signalled by the absent status badge and
+  the "not analysed yet" details copy, not by placeholder art. Portrait clips
+  are not stretched.
 - **Scrollbars** — no double scrollbar in the sidebar or the details panel, no
   horizontal scrollbar on a long filename.
 - **Empty states** — an empty folder, an unanalyzed video and an empty search
@@ -406,7 +407,7 @@ Read every screenshot against the sensitivities that have burned us before:
   `media://local/` rather than a broken element.
 - **Zdjęcia sidebar** — does the Zdjęcia sidebar show the folder header
   ("Ten folder"/"Całe drzewo" scope toggle), photo count badges
-  (Ukończony / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
+  (Przeanalizowane / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
   selection highlight?
 - **Zdjęcia sidebar empty state** — with a fresh home, does the Zdjęcia
   sidebar show its own empty scan CTA, and never fall back to the video list?
@@ -432,7 +433,7 @@ Read every screenshot against the sensitivities that have burned us before:
   visibly selected; and does the detail pane's "Analizuj" button read as
   enabled (not greyed out) for that tree-selected photo?
 - **Tree-selected single-photo analysis (W60)** — in the `photos-tree-analyze`
-  screenshot, does the selected photo's sidebar row carry the **Ukończony**
+  screenshot, does the selected photo's sidebar row carry the **Przeanalizowane**
   ("analysed") badge, with no error alert, proving the tree-selection ->
   single-photo-analyze path actually completes?
 - **Kolekcja shows the analyzed photo (W55 payoff, W60)** — in the

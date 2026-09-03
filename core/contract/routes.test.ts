@@ -7,6 +7,7 @@ import {
   backupStatusOutputSchema,
   doctorOutputSchema,
   driveRunFacesSchema,
+  facePersonSchema,
   facesIndexOutputSchema,
   gpsBackfillSummarySchema,
   healthLiveOutputSchema,
@@ -711,6 +712,26 @@ describe('route schemas', () => {
     expect(API_ROUTES.facesRecluster.input.parse({})).toEqual({ dryRun: false });
     expect(API_ROUTES.facesRecluster.input.parse({ dryRun: true })).toEqual({ dryRun: true });
     expect(jobKindSchema.parse('faces_recluster')).toBe('faces_recluster');
+  });
+
+  it('requires per-medium file counts on face person views', () => {
+    const parsed = facePersonSchema.parse({
+      personId: 'p1',
+      displayName: null,
+      kind: 'face',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0),
+      exemplarCount: 1,
+      observationCount: 12,
+      videoCount: 10,
+      photoCount: 2,
+      fileCounts: { video: 2, photo: 3 },
+      exemplarCropPath: null,
+      exemplarCropPaths: [],
+    });
+
+    expect(parsed.fileCounts).toEqual({ video: 2, photo: 3 });
+    expect(() => facePersonSchema.parse({ ...parsed, fileCounts: undefined })).toThrow();
   });
 
   it('exposes the faces exemplars route with defaulted dryRun and limit inputs', () => {

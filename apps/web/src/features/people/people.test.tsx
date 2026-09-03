@@ -3,7 +3,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
@@ -46,6 +46,10 @@ const person = (overrides: Partial<FacePerson> & { personId: string }): FacePers
   observationCount: overrides.observationCount ?? 1,
   videoCount: overrides.videoCount ?? overrides.observationCount ?? 1,
   photoCount: overrides.photoCount ?? 0,
+  fileCounts: overrides.fileCounts ?? {
+    video: overrides.videoCount ?? overrides.observationCount ?? 1,
+    photo: overrides.photoCount ?? 0,
+  },
   exemplarCropPath: overrides.exemplarCropPath ?? null,
   exemplarCropPaths: overrides.exemplarCropPaths ?? [],
 });
@@ -190,6 +194,8 @@ const stubPeople = (input: {
 };
 
 describe('PeopleView', () => {
+  beforeEach(() => window.localStorage.clear());
+
   it('shows the opt-in state when face grouping is off', async () => {
     const onOpenSettings = vi.fn();
     stubPeople({ facesEnabled: false });
@@ -263,7 +269,7 @@ describe('PeopleView', () => {
     expect(screen.queryByTestId('people-index')).toBeNull();
   });
 
-  it('renders populated people with exemplar crops and observation counts', async () => {
+  it('renders populated people with exemplar crops and file counts', async () => {
     stubPeople({
       facesEnabled: true,
       artifactsReady: true,
@@ -273,6 +279,8 @@ describe('PeopleView', () => {
           personId: 'p1',
           displayName: 'Alex',
           observationCount: 3,
+          videoCount: 3,
+          fileCounts: { video: 2, photo: 0 },
           exemplarCropPath: '/home/.ai-video-cataloger/faces/p1/exemplar-001.jpg',
         }),
         person({ personId: 'p2', observationCount: 1 }),
@@ -286,7 +294,7 @@ describe('PeopleView', () => {
     expect(await screen.findByTestId('people-grid')).toBeDefined();
     expect(screen.getByText('Alex')).toBeDefined();
     expect(screen.getByText('Person 2')).toBeDefined();
-    expect(screen.getByText('3 observations')).toBeDefined();
+    expect(screen.getByText('2 videos')).toBeDefined();
     const crop = screen.getByAltText('Alex');
     expect(crop.getAttribute('src')).toContain('media://local/');
   });
@@ -510,17 +518,59 @@ describe('PeopleView', () => {
 
     await screen.findByTestId('people-grid');
     fireEvent.click(screen.getByTestId('people-recluster'));
+    expect(await screen.findByText('Check without changes')).toBeDefined();
     expect((await screen.findByTestId('people-recluster-confirm')).getAttribute('disabled')).not.toBeNull();
 
     fireEvent.click(screen.getByTestId('people-recluster-dry-run'));
 
     expect(await screen.findByTestId('people-recluster-report')).toBeDefined();
     await waitFor(() => expect(screen.getByTestId('people-recluster-confirm').getAttribute('disabled')).toBeNull());
+    expect(screen.getByTestId('people-recluster-confirm').textContent).toBe('Rebuild and drop 1 name');
     expect(screen.getByTestId('people-recluster-largest').textContent).toContain('person-a: 3');
     fireEvent.click(screen.getByTestId('people-recluster-confirm'));
 
     await waitFor(() => expect(bodies).toContainEqual({ dryRun: false }));
     expect(bodies).toContainEqual({ dryRun: true });
+  }, scaledTimeout(30_000));
+
+  it('uses the short rebuild confirmation label when the dry run drops no names', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 4,
+      people: [person({ personId: 'p1', observationCount: 4 })],
+    });
+    server.use(
+      http.post('/api/faces/recluster', () => HttpResponse.json({ ok: true, data: { jobId: 'dry-recluster' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: terminalJob('dry-recluster', 'faces_recluster', {
+          dryRun: true,
+          observations: 4,
+          personsBefore: 1,
+          personsAfter: 1,
+          observationsReassigned: 0,
+          observationsAssigned: 4,
+          observationsUnassigned: 0,
+          namesCarried: 0,
+          namesDropped: [],
+          personsWithoutExemplar: 0,
+          largestClusters: [],
+          elapsedMs: 5,
+        }),
+      })),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-recluster'));
+    fireEvent.click(screen.getByTestId('people-recluster-dry-run'));
+
+    expect(await screen.findByTestId('people-recluster-report')).toBeDefined();
+    await waitFor(() => expect(screen.getByTestId('people-recluster-confirm').textContent).toBe('Rebuild'));
   }, scaledTimeout(30_000));
 
   it('surfaces a purge mutation failure via a visible alert instead of only the terminal', async () => {
@@ -553,9 +603,9 @@ describe('PeopleView', () => {
 
 describe('PeopleView media chips', () => {
   const mixedPeople = [
-    person({ personId: 'p-both', displayName: 'Both', observationCount: 5, videoCount: 2, photoCount: 3 }),
-    person({ personId: 'p-video', displayName: 'VideoOnly', observationCount: 4, videoCount: 4, photoCount: 0 }),
-    person({ personId: 'p-photo', displayName: 'PhotoOnly', observationCount: 6, videoCount: 0, photoCount: 6 }),
+    person({ personId: 'p-both', displayName: 'Both', observationCount: 5, videoCount: 2, photoCount: 3, fileCounts: { video: 1, photo: 2 } }),
+    person({ personId: 'p-video', displayName: 'VideoOnly', observationCount: 4, videoCount: 4, photoCount: 0, fileCounts: { video: 2, photo: 0 } }),
+    person({ personId: 'p-photo', displayName: 'PhotoOnly', observationCount: 6, videoCount: 0, photoCount: 6, fileCounts: { video: 0, photo: 3 } }),
   ];
 
   const renderPeople = (renderPersonMedia?: PeopleViewProps['renderPersonMedia']) => {
@@ -591,15 +641,15 @@ describe('PeopleView media chips', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
     const shown = screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'));
-    expect(shown).toEqual(['p-both', 'p-photo']);
-    expect(screen.getByTestId('people-grid').textContent).toContain('3 in photos');
+    expect(shown).toEqual(['p-photo', 'p-both']);
+    expect(screen.getByTestId('people-grid').textContent).toContain('2 photos');
 
     fireEvent.click(screen.getByTestId('people-media-video'));
 
     await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
     expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
-      .toEqual(['p-both', 'p-video']);
-    expect(screen.getByTestId('people-grid').textContent).toContain('2 in videos');
+      .toEqual(['p-video', 'p-both']);
+    expect(screen.getByTestId('people-grid').textContent).toContain('2 videos');
   });
 
   it('opens the person media surface for the card, carrying the selected medium', async () => {
@@ -612,13 +662,47 @@ describe('PeopleView media chips', () => {
     fireEvent.click(screen.getByTestId('people-media-photo'));
     await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
 
-    const photoOnlyCard = screen.getAllByTestId('people-card-body')[1];
-    if (photoOnlyCard === undefined) throw new Error('expected a second person card');
+    const photoOnlyCard = screen.getAllByTestId('people-card-body')[0];
+    if (photoOnlyCard === undefined) throw new Error('expected a person card');
     fireEvent.click(photoOnlyCard);
 
     const panel = await screen.findByTestId('people-person-media');
     expect(panel.getAttribute('data-person-id')).toBe('p-photo');
     expect(panel.getAttribute('data-media')).toBe('photo');
     expect(panel.textContent).toBe('PhotoOnly');
+  });
+
+  it('sorts people by file frequency by default while keeping the original person number', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 12,
+      people: [
+        person({ personId: 'p-first', observationCount: 1, videoCount: 1, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
+        person({ personId: 'p-second', observationCount: 3, videoCount: 3, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-third', observationCount: 6, videoCount: 6, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
+      .toEqual(['p-third', 'p-second', 'p-first']);
+    expect(screen.getByTestId('people-grid').textContent).toContain('Person 3');
+    expect(screen.getByTestId('people-sort-frequency').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('can show the original order and persist that people sort preference', async () => {
+    renderPeople();
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-sort-order'));
+
+    await waitFor(() => expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
+      .toEqual(['p-both', 'p-video', 'p-photo']));
+    expect(window.localStorage.getItem('avc.people.sort')).toBe('order');
   });
 });

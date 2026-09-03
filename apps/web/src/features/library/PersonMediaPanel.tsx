@@ -19,6 +19,8 @@ export interface PersonMediaPanelProps {
   personId: string;
   label: string;
   media: LibraryMedia;
+  fileCountLabel?: string;
+  observationCountLabel?: string;
   onClose: () => void;
   onOpenResult: (folderPath: string, videoPath: string) => void;
   onOpenPhotoInAnalysis: (root: string, fingerprint: string) => void;
@@ -28,6 +30,8 @@ export const PersonMediaPanel = ({
   personId,
   label,
   media,
+  fileCountLabel,
+  observationCountLabel,
   onClose,
   onOpenResult,
   onOpenPhotoInAnalysis,
@@ -70,9 +74,16 @@ export const PersonMediaPanel = ({
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="lg" data-testid="person-media-panel">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Typography variant="h2" component="span" sx={{ flex: 1, minWidth: 0 }} noWrap title={label}>
-          {labelWithCount(label, total)}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h2" component="span" noWrap title={label}>
+            {fileCountLabel === undefined ? labelWithCount(label, total) : `${label} (${fileCountLabel})`}
+          </Typography>
+          {observationCountLabel === undefined ? null : (
+            <Typography variant="caption" component="div" color="text.secondary">
+              {observationCountLabel}
+            </Typography>
+          )}
+        </Box>
         <IconButton
           aria-label={dictionary.library.viewerClose}
           onClick={onClose}
