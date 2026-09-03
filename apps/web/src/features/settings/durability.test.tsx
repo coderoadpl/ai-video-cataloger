@@ -2,13 +2,13 @@ import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
-import { DurabilityIndicator } from './DurabilityIndicator.js';
+import { DURABILITY_REFETCH_INTERVAL_MS, DurabilityIndicator } from './DurabilityIndicator.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
@@ -20,22 +20,8 @@ const durability = (overrides: { degraded: boolean; lastErrorCode: string | null
   lastErrorCode: overrides.lastErrorCode,
 });
 
-const stubStatuses = (
-  index: { degraded: boolean; lastErrorCode: string | null },
-  photos: { degraded: boolean; lastErrorCode: string | null },
-) => {
+const stubPhotosStatus = (photos: { degraded: boolean; lastErrorCode: string | null }) => {
   server.use(
-    http.get('/api/index/status', () => HttpResponse.json({
-      ok: true,
-      data: {
-        databasePath: '/catalog.db',
-        counts: { folders: 0, files: 0, analyses: 0 },
-        folders: [],
-        latestRun: null,
-        currentMonthSpend: { kind: 'estimate', provider: 'gemini', month: '2026-09', entries: 0, estimatedCostUsd: 0 },
-        durability: durability(index),
-      },
-    })),
     http.get('/api/photos/status', () => HttpResponse.json({
       ok: true,
       data: {
@@ -50,6 +36,30 @@ const stubStatuses = (
     })),
   );
 };
+
+const stubStatuses = (
+  index: { degraded: boolean; lastErrorCode: string | null },
+  photos: { degraded: boolean; lastErrorCode: string | null },
+) => {
+  stubPhotosStatus(photos);
+  server.use(
+    http.get('/api/index/status', () => HttpResponse.json({
+      ok: true,
+      data: {
+        databasePath: '/catalog.db',
+        counts: { folders: 0, files: 0, analyses: 0 },
+        folders: [],
+        latestRun: null,
+        currentMonthSpend: { kind: 'estimate', provider: 'gemini', month: '2026-09', entries: 0, estimatedCostUsd: 0 },
+        durability: durability(index),
+      },
+    })),
+  );
+};
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('bottom-bar durability indicator', () => {
   it('stays hidden while both stores persist normally', async () => {
@@ -74,5 +84,32 @@ describe('bottom-bar durability indicator', () => {
 
     const indicator = await screen.findByTestId('durability-indicator');
     expect(indicator.getAttribute('data-error-code')).toBe('unavailable');
+  });
+
+  it('picks up a store that turned degraded without any user interaction', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let indexDurability: { degraded: boolean; lastErrorCode: string | null } = { degraded: false, lastErrorCode: null };
+    server.use(
+      http.get('/api/index/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          databasePath: '/catalog.db',
+          counts: { folders: 0, files: 0, analyses: 0 },
+          folders: [],
+          latestRun: null,
+          currentMonthSpend: { kind: 'estimate', provider: 'gemini', month: '2026-09', entries: 0, estimatedCostUsd: 0 },
+          durability: durability(indexDurability),
+        },
+      })),
+    );
+    stubPhotosStatus({ degraded: false, lastErrorCode: null });
+    renderThemed(<DurabilityIndicator />);
+    await waitFor(() => expect(screen.queryByTestId('durability-indicator')).toBeNull());
+
+    indexDurability = { degraded: true, lastErrorCode: 'internal' };
+    await vi.advanceTimersByTimeAsync(DURABILITY_REFETCH_INTERVAL_MS + 1_000);
+
+    const indicator = await screen.findByTestId('durability-indicator');
+    expect(indicator.getAttribute('data-error-code')).toBe('internal');
   });
 });

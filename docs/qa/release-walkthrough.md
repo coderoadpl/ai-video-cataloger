@@ -34,9 +34,13 @@ Every run launches with:
   destination a 0600 file-backed secrets store at
   `<home>/.ai-video-cataloger/secrets.json` instead of the Keychain adapter,
   which would otherwise fail every backup call with `keychain_unavailable`. The
-  file-backed store is selected only when the variable is set **and** the build
-  is not packaged (`isPackaged`), and the composition logs a warning whenever it
-  is selected.
+  file-backed store is selected only when the variable is set **and** the run
+  drives a home other than the account's own one (the account home is read from
+  the passwd database, so overriding `HOME` does not hide it), and the
+  composition logs a warning whenever it is selected. A packaged build on a
+  throwaway home — exactly what this walkthrough drives — therefore gets the
+  file store, while an ordinary install on the account's own home cannot be
+  argued into it by an environment variable.
 - `AVC_GOOGLE_DRIVE_BASE_URL` / `AVC_GOOGLE_UPLOAD_BASE_URL` — pointed at the
   in-memory fake Drive the run starts for itself (see below), so the backup step
   needs no Google account and no network.

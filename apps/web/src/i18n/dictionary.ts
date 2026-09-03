@@ -1,4 +1,4 @@
-import type { BackupErrorCode, BackupPhase, ErrorCode } from '@core/domain/index.js';
+import type { BackupErrorCode, BackupPhase } from '@core/domain/index.js';
 
 import type { AnalyzerErrorMessages } from '../lib/analyzer-error-message.js';
 
@@ -738,7 +738,7 @@ export interface Dictionary {
   };
   durability: {
     indicatorLabel: string;
-    indicatorDetail: (code: ErrorCode | null) => string;
+    indicatorDetail: string;
   };
   errors: AnalyzerErrorMessages;
   folderBar: {
@@ -1783,9 +1783,8 @@ export const en: Dictionary = {
   },
   durability: {
     indicatorLabel: 'Unsaved changes',
-    indicatorDetail: (code) => code === null
-      ? 'The catalog could not be written to disk. Free some space and keep the app open until it saves.'
-      : `The catalog could not be written to disk (${code}). Free some space and keep the app open until it saves.`,
+    indicatorDetail: 'Catalog changes could not be written to disk. Check the free space and the permissions of '
+      + '~/.ai-video-cataloger, and keep the app open until it saves.',
   },
   errors: {
     analyzerFailed: 'Analysis failed.',
@@ -2859,14 +2858,13 @@ export const pl: Dictionary = {
       restore_refused: 'Przywracanie jest zablokowane, dopóki trwa inne zadanie katalogu.',
       recovery_key_required: 'Wymagany jest klucz odzyskiwania.',
       recovery_key_mismatch: 'Ten klucz odzyskiwania nie pasuje do żadnej kopii w tym miejscu docelowym. Wklej klucz z Maca, który je zapisał.',
-      recovery_key_conflict: 'Ten Mac ma już klucz, którym zapisano część kopii. Tamte kopie odczytasz przy przywracaniu, wklejając tamten klucz, albo potwierdź, że pozostaną nieczytelne.',
+      recovery_key_conflict: 'Ten Mac ma już inny klucz, którym zapisano część kopii w tym miejscu docelowym. Zachowaj dotychczasowy klucz i wklej go przy przywracaniu tamtych kopii albo potwierdź, że pozostaną nieczytelne.',
     },
   },
   durability: {
     indicatorLabel: 'Niezapisane zmiany',
-    indicatorDetail: (code) => code === null
-      ? 'Nie udało się zapisać katalogu na dysku. Zwolnij miejsce i nie zamykaj aplikacji, aż zapisze zmiany.'
-      : `Nie udało się zapisać katalogu na dysku (${code}). Zwolnij miejsce i nie zamykaj aplikacji, aż zapisze zmiany.`,
+    indicatorDetail: 'Nie udało się zapisać zmian katalogu na dysku. Sprawdź wolne miejsce i uprawnienia do '
+      + 'katalogu ~/.ai-video-cataloger i nie zamykaj aplikacji, aż zapisze zmiany.',
   },
   errors: {
     analyzerFailed: 'Analiza nie powiodła się.',

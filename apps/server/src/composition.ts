@@ -1,5 +1,6 @@
 import { access, constants } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
+import { resolve as resolvePath } from 'node:path';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { z } from 'zod';
 
@@ -224,7 +225,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     lockMode: config.catalogLockMode ?? 'lazy',
   });
   const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
-  const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory, config.isPackaged === true);
+  const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
   const backupDestination = () => createGoogleBackupDestination({
     config: configStore,
     secrets: backupSecrets,
@@ -288,16 +289,28 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
   };
 };
 
-// The Keychain is the only store for backup secrets in a shipped build. QA and e2e runs set
+// os.userInfo() reads the account home from the passwd database, so a run that points the app at
+// a throwaway home while also overriding HOME is still recognised as one.
+const accountHomeDirectory = (): string => {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return homedir();
+  }
+};
+
+// The Keychain is the only store for backup secrets in a run that owns the account's real home,
+// packaged or not. QA and e2e runs drive a throwaway home and set
 // AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1 to keep the developer's login keychain untouched, which
 // would otherwise fail every backup call with keychain_unavailable; those runs get a 0600
 // file-backed store instead (docs/qa/release-walkthrough.md).
 export const backupSecretsStore = (
   keychain: SecretsStore,
   homeDirectory: string,
-  isPackaged: boolean,
+  accountHome: string = accountHomeDirectory(),
 ): SecretsStore => {
-  if (isPackaged || !keychainDisabledByEnvironment()) return keychain;
+  if (!keychainDisabledByEnvironment()) return keychain;
+  if (resolvePath(homeDirectory) === resolvePath(accountHome)) return keychain;
   const store = new JsonSecretsStore({ homeDirectory });
   console.warn(`[backup] Keychain disabled: backup secrets are stored unencrypted in ${store.path()}`);
   return store;

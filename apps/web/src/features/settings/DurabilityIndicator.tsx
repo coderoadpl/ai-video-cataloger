@@ -14,7 +14,7 @@ export interface DurabilityIndicatorViewProps {
 export const DurabilityIndicatorView = ({ lastErrorCode }: DurabilityIndicatorViewProps) => {
   const dictionary = useDictionary();
   return (
-    <Tooltip title={dictionary.durability.indicatorDetail(lastErrorCode)}>
+    <Tooltip title={dictionary.durability.indicatorDetail}>
       <Box
         sx={{ display: 'flex', alignItems: 'center', gap: 0.5, maxWidth: 200, color: 'warning.main' }}
         data-testid="durability-indicator"
@@ -29,9 +29,11 @@ export const DurabilityIndicatorView = ({ lastErrorCode }: DurabilityIndicatorVi
   );
 };
 
+export const DURABILITY_REFETCH_INTERVAL_MS = 15_000;
+
 export const DurabilityIndicator = () => {
-  const index = useQuery({ ...actions.indexStatus });
-  const photos = useQuery({ ...actions.photosStatus() });
+  const index = useQuery({ ...actions.indexStatus, refetchInterval: DURABILITY_REFETCH_INTERVAL_MS });
+  const photos = useQuery({ ...actions.photosStatus(), refetchInterval: DURABILITY_REFETCH_INTERVAL_MS });
   const degraded = [index.data?.durability, photos.data?.durability].find((status) => status?.degraded === true);
   if (degraded === undefined) return null;
   return <DurabilityIndicatorView lastErrorCode={degraded.lastErrorCode} />;
