@@ -25,6 +25,10 @@ interface SettingsBackupSectionProps {
   open: boolean;
 }
 
+export const RETENTION_FIELD_MIN_WIDTH = 220;
+
+const RETENTION_FIELD_SX = { flex: '1 1 auto', minWidth: RETENTION_FIELD_MIN_WIDTH } as const;
+
 export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
   const dictionary = useDictionary();
   const backup = useBackupSection(open);
@@ -110,12 +114,14 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
           />
           <Typography variant="caption">{dictionary.backup.optionalTierHelper}</Typography>
 
-          <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             <TextField
               size="small"
               type="number"
               label={dictionary.backup.keepLastLabel}
               defaultValue={status.keepLast}
+              data-testid="backup-keep-last-field"
+              sx={RETENTION_FIELD_SX}
               onBlur={(event) =>
                 backup.setRetention('backup_keep_last', retentionInput(event.target.value, 1, 90, status.keepLast))}
               slotProps={{ htmlInput: { 'data-testid': 'backup-keep-last', min: 1, max: 90 } }}
@@ -125,6 +131,8 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
               type="number"
               label={dictionary.backup.keepWeeklyLabel}
               defaultValue={status.keepWeekly}
+              data-testid="backup-keep-weekly-field"
+              sx={RETENTION_FIELD_SX}
               onBlur={(event) =>
                 backup.setRetention('backup_keep_weekly', retentionInput(event.target.value, 0, 52, status.keepWeekly))}
               slotProps={{ htmlInput: { 'data-testid': 'backup-keep-weekly', min: 0, max: 52 } }}

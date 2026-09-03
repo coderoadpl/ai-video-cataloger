@@ -1,15 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
-import { invalidateBackupQueries, type BackupStatusOutput } from '@core/client/index.js';
+import {
+  BACKUP_RUNNING_REFETCH_MS,
+  invalidateBackupList,
+  invalidateBackupQueries,
+  type BackupStatusOutput,
+} from '@core/client/index.js';
 import { backupPhaseSchema, isBackupErrorCode, type AppError, type BackupErrorCode, type BackupTier } from '@core/domain/index.js';
 
 import { actions, bridge } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { backupErrorMessage, type RemoteBackupView } from './backup-model.js';
+import {
+  awaitsBackupRunStart,
+  backupErrorMessage,
+  backupListNeedsRefresh,
+  backupRunRequestOf,
+  type BackupRunRequest,
+  type RemoteBackupView,
+} from './backup-model.js';
 
 export interface BackupSectionState {
   status: BackupStatusOutput | undefined;
@@ -31,18 +43,30 @@ export interface BackupSectionState {
   restoreErrorCode: BackupErrorCode | null;
 }
 
-export const useBackupStatus = (options: { enabled?: boolean } = {}) =>
-  useQuery({ ...actions.backupStatus, enabled: options.enabled ?? true });
+export const useBackupStatus = (options: { enabled?: boolean; pollFast?: boolean } = {}) =>
+  useQuery({
+    ...actions.backupStatus,
+    ...(options.pollFast === true ? { refetchInterval: BACKUP_RUNNING_REFETCH_MS } : {}),
+    enabled: options.enabled ?? true,
+  });
 
 export const useBackupSection = (open: boolean): BackupSectionState => {
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const [tierFilter, setTierFilter] = useState<BackupTier | null>(null);
   const [restoreJobId, setRestoreJobId] = useState<string | null>(null);
-  const statusQuery = useBackupStatus({ enabled: open });
-  const enabled = statusQuery.data?.enabled === true;
-  const listQuery = useQuery({ ...actions.backupList({ tier: tierFilter }), enabled: open && enabled });
+  const [runRequest, setRunRequest] = useState<BackupRunRequest | null>(null);
+  const awaitingRunStart = runRequest !== null;
+  const statusQuery = useBackupStatus({ enabled: open, pollFast: awaitingRunStart });
+  const status = statusQuery.data;
+  const enabled = status?.enabled === true;
   const run = useMutation(actions.backupRun);
+  const isRunning = run.isPending || awaitingRunStart || status?.indicator === 'running';
+  const listQuery = useQuery({
+    ...actions.backupList({ tier: tierFilter }),
+    enabled: open && enabled,
+    refetchInterval: isRunning ? BACKUP_RUNNING_REFETCH_MS : false,
+  });
   const disableBackup = useMutation(actions.backupDisable);
   const setConfig = useMutation(actions.setConfig);
   const restoreBackup = useMutation(actions.backupRestore);
@@ -57,6 +81,17 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
   }, [queryClient]);
 
   useEffect(() => {
+    if (runRequest !== null && !awaitsBackupRunStart(runRequest, status)) setRunRequest(null);
+  }, [runRequest, status]);
+
+  const observedStatus = useRef<BackupStatusOutput | undefined>(undefined);
+  useEffect(() => {
+    const previous = observedStatus.current;
+    observedStatus.current = status;
+    if (backupListNeedsRefresh(previous, status)) void invalidateBackupList(queryClient);
+  }, [status, queryClient]);
+
+  useEffect(() => {
     if (restoreStatus === 'completed') void bridge.app.relaunch();
   }, [restoreStatus]);
 
@@ -65,7 +100,7 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
   const restoreErrorCode = backupErrorCode(restoreFailure) ?? backupErrorCode(jobError);
 
   return {
-    status: statusQuery.data,
+    status,
     isLoading: statusQuery.isLoading,
     error: firstErrorMessage(
       [statusQuery.error, listQuery.error, run.error, disableBackup.error, setConfig.error],
@@ -76,9 +111,13 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
     tierFilter,
     setTierFilter,
     runNow: () => {
-      run.mutate({ tier: 'critical' }, { onSuccess: refreshStatus });
+      setRunRequest(backupRunRequestOf(status));
+      run.mutate({ tier: 'critical' }, {
+        onSuccess: refreshStatus,
+        onError: () => setRunRequest(null),
+      });
     },
-    isRunning: run.isPending || statusQuery.data?.indicator === 'running',
+    isRunning,
     setIncludeOptional: (include) => {
       setConfig.mutate({ key: 'backup_include_optional', value: String(include) }, { onSuccess: refreshStatus });
     },

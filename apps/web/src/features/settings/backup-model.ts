@@ -13,6 +13,33 @@ export const backupErrorMessage = (
   return isBackupErrorCode(code) ? messages[code] : null;
 };
 
+export type BackupRunSignal = Pick<BackupStatusOutput, 'indicator' | 'lastSuccessAt' | 'lastErrorCode'>;
+export type BackupRunRequest = Pick<BackupStatusOutput, 'lastSuccessAt' | 'lastErrorCode'>;
+
+export const backupRunRequestOf = (status: BackupRunSignal | undefined): BackupRunRequest => ({
+  lastSuccessAt: status?.lastSuccessAt ?? null,
+  lastErrorCode: status?.lastErrorCode ?? null,
+});
+
+export const awaitsBackupRunStart = (
+  request: BackupRunRequest | null,
+  status: BackupRunSignal | undefined,
+): boolean => {
+  if (request === null) return false;
+  if (status === undefined) return true;
+  if (status.indicator === 'running') return false;
+  return status.lastSuccessAt === request.lastSuccessAt && status.lastErrorCode === request.lastErrorCode;
+};
+
+export const backupListNeedsRefresh = (
+  previous: BackupRunSignal | undefined,
+  next: BackupRunSignal | undefined,
+): boolean => {
+  if (previous === undefined || next === undefined) return false;
+  if (previous.lastSuccessAt !== next.lastSuccessAt) return true;
+  return previous.indicator === 'running' && next.indicator !== 'running';
+};
+
 export const isRestorable = (backup: RemoteBackupView, supported: BackupSchemaVersions): boolean =>
   backup.schemaVersions.globalCatalog <= supported.globalCatalog
   && backup.schemaVersions.photos <= supported.photos;

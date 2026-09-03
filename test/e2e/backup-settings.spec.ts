@@ -112,9 +112,13 @@ test.describe('Settings > Backup end to end', () => {
       });
 
       await openBackupSettings(session.page);
+      const archives = session.page.locator('[data-testid^="backup-row-"]');
+      await expect(archives).toHaveCount(1, { timeout: 20_000 });
+
       await session.page.getByTestId('backup-run-now').click();
       await expect(session.page.getByTestId('backup-run-now')).toBeDisabled({ timeout: 15_000 });
       await expect(session.page.getByTestId('backup-run-now')).toBeEnabled({ timeout: 30_000 });
+      await expect(archives).toHaveCount(2, { timeout: 20_000 });
 
       const restoreButton = session.page.getByTestId('backup-list').getByRole('button', { name: /restore|przywróć/i }).first();
       await expect(restoreButton).toBeVisible({ timeout: 20_000 });
