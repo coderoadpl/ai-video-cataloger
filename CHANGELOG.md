@@ -16,6 +16,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Kolekcja now supports multi-select with Cmd-click, Shift-click, select-all for the current filter, hide/restore actions, and move-to-Trash confirmation.
+- Kolekcja has an Ukryte filter with single-tile and bulk restore actions for hidden media.
+- Osoby person cards can hide or move all files for a person to Trash, with shared-file skip options in the confirmation flow.
+- The release walkthrough now includes a Kolekcja hide/restore step.
 - Library hide/unhide and move-to-Trash operations are available through contract routes and CLI commands, including dry-run trash plans and NDJSON progress events.
 - Search accepts `--hidden exclude|only|include`, and library search, collection, map, facet, and people queries exclude hidden media by default.
 - The Osoby facet's people counts exclude hidden videos without dropping photo observations, which have no `hidden` state of their own.

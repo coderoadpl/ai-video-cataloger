@@ -19,6 +19,7 @@ export default defineConfig({
     { name: 'people', testMatch: /people\.spec\.ts/ },
     { name: 'people-media', testMatch: /people-media\.spec\.ts/ },
     { name: 'library', testMatch: /library\.spec\.ts/ },
+    { name: 'library-hide-trash', testMatch: /library-hide-trash\.spec\.ts/ },
     { name: 'map', testMatch: /map\.spec\.ts/ },
   ],
 });

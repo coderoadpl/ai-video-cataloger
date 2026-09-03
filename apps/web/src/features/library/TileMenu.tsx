@@ -1,5 +1,5 @@
 import { useCallback, useState, type MouseEvent } from 'react';
-import { Alert, Menu, MenuItem, Snackbar } from '@mui/material';
+import { Alert, Divider, Menu, MenuItem, Snackbar } from '@mui/material';
 
 import { bridge } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -33,9 +33,18 @@ const pathOf = (item: LibraryItem): string => item.media === 'video' ? `${item.f
 interface TileMenuProps {
   controller: TileMenuController;
   onOpenInAnalysis: (item: LibraryItem) => void;
+  hiddenView: boolean;
+  onHideItem: (item: LibraryItem) => void;
+  onRestoreItem: (item: LibraryItem) => void;
 }
 
-export const TileMenu = ({ controller, onOpenInAnalysis }: TileMenuProps) => {
+export const TileMenu = ({
+  controller,
+  onOpenInAnalysis,
+  hiddenView,
+  onHideItem,
+  onRestoreItem,
+}: TileMenuProps) => {
   const dictionary = useDictionary();
   const { anchor, close } = controller;
   const item = anchor?.item ?? null;
@@ -53,6 +62,21 @@ export const TileMenu = ({ controller, onOpenInAnalysis }: TileMenuProps) => {
         anchorPosition={anchor === null ? undefined : { top: anchor.y, left: anchor.x }}
         data-testid="library-tile-menu"
       >
+        <MenuItem
+          data-testid={hiddenView ? 'library-tile-menu-restore' : 'library-tile-menu-hide'}
+          onClick={() => {
+            close();
+            if (item === null) return;
+            if (hiddenView) {
+              onRestoreItem(item);
+            } else {
+              onHideItem(item);
+            }
+          }}
+        >
+          {hiddenView ? dictionary.library.restoreItem : dictionary.library.hideItem}
+        </MenuItem>
+        <Divider />
         <MenuItem
           data-testid="library-tile-menu-open-analysis"
           onClick={() => {

@@ -12,6 +12,9 @@ import type { Dictionary } from '../../i18n/dictionary.js';
 const TILE_SIZE = 168;
 const GAP = 8;
 const HEADER_HEIGHT = 36;
+const EMPTY_SELECTION = new Set<string>();
+const INITIAL_WIDTH = TILE_SIZE * 3 + GAP * 2 + 32;
+const INITIAL_HEIGHT = (TILE_SIZE + GAP) * 4 + HEADER_HEIGHT;
 
 export interface LibraryGridSection {
   key: string;
@@ -27,14 +30,28 @@ const offlineLabel = (dictionary: Dictionary, offlineReason: LibraryOfflineReaso
 interface LibraryGridProps {
   sections: LibraryGridSection[];
   onOpen: (item: LibraryItem) => void;
+  onSelect?: ((item: LibraryItem, event: MouseEvent) => void) | undefined;
   onOpenInAnalysis: (item: LibraryItem) => void;
+  selectedFingerprints?: ReadonlySet<string> | undefined;
+  hiddenView?: boolean | undefined;
+  onHideItem?: ((item: LibraryItem) => void) | undefined;
+  onRestoreItem?: ((item: LibraryItem) => void) | undefined;
 }
 
-export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis }: LibraryGridProps) => {
+export const LibraryGrid = ({
+  sections,
+  onOpen,
+  onSelect = () => undefined,
+  onOpenInAnalysis,
+  selectedFingerprints = EMPTY_SELECTION,
+  hiddenView = false,
+  onHideItem = () => undefined,
+  onRestoreItem = () => undefined,
+}: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(INITIAL_WIDTH);
+  const [viewportHeight, setViewportHeight] = useState(INITIAL_HEIGHT);
   const [scrollTop, setScrollTop] = useState(0);
   const tileMenu = useTileMenu();
 
@@ -99,7 +116,9 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis }: LibraryGridP
                     key={item.fingerprint}
                     item={item}
                     onOpen={() => onOpen(item)}
+                    onSelect={(event) => onSelect(item, event)}
                     onContextMenu={(event: MouseEvent) => tileMenu.open(event, item)}
+                    selected={selectedFingerprints.has(item.fingerprint)}
                   />
                 ))}
               </Box>
@@ -107,7 +126,13 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis }: LibraryGridP
           })}
         </Box>
       </Box>
-      <TileMenu controller={tileMenu} onOpenInAnalysis={onOpenInAnalysis} />
+      <TileMenu
+        controller={tileMenu}
+        onOpenInAnalysis={onOpenInAnalysis}
+        hiddenView={hiddenView}
+        onHideItem={onHideItem}
+        onRestoreItem={onRestoreItem}
+      />
     </Box>
   );
 };
@@ -115,10 +140,12 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis }: LibraryGridP
 interface LibraryTileProps {
   item: LibraryItem;
   onOpen: () => void;
+  onSelect: (event: MouseEvent) => void;
   onContextMenu: (event: MouseEvent) => void;
+  selected: boolean;
 }
 
-const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
+const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: LibraryTileProps) => {
   const dictionary = useDictionary();
   const isVideo = item.media === 'video';
   const imagePath = isVideo ? (item.gridThumbnailPath ?? item.thumbnailPath) : (item.gridThumbPath ?? item.thumbPath);
@@ -145,7 +172,15 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
       data-testid="library-tile"
       data-fingerprint={item.fingerprint}
       data-media={item.media}
-      onClick={onOpen}
+      role="option"
+      aria-selected={selected}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey) {
+          onSelect(event);
+          return;
+        }
+        onOpen();
+      }}
       onContextMenu={onContextMenu}
       sx={{
         position: 'relative',
@@ -157,6 +192,11 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         cursor: 'pointer',
         bgcolor: 'background.default',
         '&:hover': { outline: '2px solid', outlineColor: 'primary.main' },
+        ...(selected ? {
+          outline: '3px solid',
+          outlineColor: 'library.selectionOutline',
+          outlineOffset: -3,
+        } : {}),
       }}
     >
       {imagePath !== null ? (
@@ -191,6 +231,12 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         >
           <Typography variant="caption">{dictionary.library.missingBadge}</Typography>
         </Box>
+      ) : null}
+      {selected ? (
+        <Box
+          data-testid="library-tile-selected"
+          sx={{ position: 'absolute', inset: 0, bgcolor: 'library.selectionOverlay', pointerEvents: 'none' }}
+        />
       ) : null}
     </Box>
   );

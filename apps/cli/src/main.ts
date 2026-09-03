@@ -1384,7 +1384,7 @@ addLibraryScopeOptions(library.command('trash').description('Move selected libra
     if (options.yes !== true) {
       const planned = await api.libraryTrash({ scope: scope.value, confirm: false, dryRun: true });
       if (!planned.ok) {
-        emitError(json, planned.error);
+        emitError(json, planned.error, planned.error.details);
         return;
       }
       if (planned.value.kind !== 'plan') {
@@ -1401,7 +1401,7 @@ addLibraryScopeOptions(library.command('trash').description('Move selected libra
     }
     const result = await api.libraryTrash({ scope: scope.value, confirm: true, dryRun: false });
     if (!result.ok) {
-      emitError(json, result.error);
+      emitError(json, result.error, result.error.details);
       return;
     }
     if (result.value.kind === 'plan') {

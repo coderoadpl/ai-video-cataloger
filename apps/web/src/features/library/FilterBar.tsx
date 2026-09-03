@@ -47,6 +47,9 @@ interface FilterBarProps {
   mediaTotals: LibraryMediaTotals;
   hideUnavailable: boolean;
   onHideUnavailableChange: (value: boolean) => void;
+  hiddenActive: boolean;
+  hiddenCount: number;
+  onHiddenChange: (value: boolean) => void;
 }
 
 export const FilterBar = ({
@@ -65,6 +68,9 @@ export const FilterBar = ({
   mediaTotals,
   hideUnavailable,
   onHideUnavailableChange,
+  hiddenActive,
+  hiddenCount,
+  onHiddenChange,
 }: FilterBarProps) => {
   const dictionary = useDictionary();
   const [placeInput, setPlaceInput] = useState(state.place ?? '');
@@ -261,6 +267,15 @@ export const FilterBar = ({
             {dictionary.library.hideUnavailable}
           </ToggleButton>
         </Tooltip>
+        <ToggleButton
+          size="small"
+          value="hidden"
+          selected={hiddenActive}
+          onChange={() => onHiddenChange(!hiddenActive)}
+          data-testid="library-hidden-filter"
+        >
+          {labelWithCount(dictionary.library.hiddenFilter, hiddenCount)}
+        </ToggleButton>
         <MediaFilterToggle
           value={media}
           counts={mediaTotals}

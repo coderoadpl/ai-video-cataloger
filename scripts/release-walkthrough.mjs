@@ -462,6 +462,7 @@ export const WALKTHROUGH_STEPS = [
   'analyze',
   'search',
   'library-preview',
+  'library-hide-restore',
   'photos-sidebar',
   'analysis-photos',
   'photos-tree',
@@ -491,6 +492,16 @@ const noPendingTransitionsOrSpinners = () =>
 const selectedRowAnalysedOrJobError = (selectedRow) =>
   document.querySelector(`${selectedRow} [data-testid="photos-sidebar-badge-analysed"]`) !== null ||
   document.querySelector('[data-testid="photos-job-error"]') !== null;
+
+const libraryTileCountAtMost = (count) =>
+  document.querySelectorAll('[data-testid="library-tile"]').length <= count;
+
+const libraryTileCountAtLeast = (count) =>
+  document.querySelectorAll('[data-testid="library-tile"]').length >= count;
+
+const hiddenLibraryViewEmpty = () =>
+  document.querySelectorAll('[data-testid="library-tile"]').length === 0 ||
+  document.querySelector('[data-testid="library-hidden-empty"]') !== null;
 /* eslint-enable no-undef */
 
 // The sidebar toolbar's folder-wide "Analizuj folder" shares this testid, so the bare locator
@@ -747,6 +758,55 @@ const drive = async (plan) => {
       return skipped('escape hatch did not land in Analysis with the file selected');
     }
     return done('video tile opened the shared viewer; escape hatch landed in Analysis');
+  });
+
+  await record('library-hide-restore', async () => {
+    const modeLibrary = page.getByTestId('mode-library');
+    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
+    const subnavCollection = page.getByTestId('subnav-collection');
+    if (await appeared(subnavCollection, SETTLE_TIMEOUT_MS)) await subnavCollection.click();
+    const searchInput = page.getByTestId(SEARCH_INPUT).locator('input').first();
+    if (!(await appeared(searchInput, SETTLE_TIMEOUT_MS))) return failed('no library search input to clear before hide/restore');
+    await clearLibrarySearch(page, searchInput);
+
+    const tiles = page.getByTestId('library-tile');
+    if (!(await appeared(tiles.first(), SETTLE_TIMEOUT_MS))) return skipped('no Kolekcja tile available for hide/restore');
+    const initialCount = await tiles.count();
+    await tiles.first().click({ modifiers: ['Meta'] });
+    if (initialCount >= 2) await tiles.nth(1).click({ modifiers: ['Meta'] });
+    const selectedCount = initialCount >= 2 ? 2 : 1;
+    if (!(await appeared(page.getByTestId('library-selection-bar'), SETTLE_TIMEOUT_MS))) {
+      return failed('Kolekcja selection bar did not appear after Cmd-select');
+    }
+    await page.getByTestId('library-hide-selected').click();
+    await page.waitForFunction(
+      libraryTileCountAtMost,
+      initialCount - selectedCount,
+      { timeout: VISIBLE_TIMEOUT_MS },
+    );
+
+    const hiddenFilter = page.getByTestId('library-hidden-filter');
+    if (!(await appeared(hiddenFilter, SETTLE_TIMEOUT_MS))) return failed('no Ukryte filter after hiding selection');
+    await hiddenFilter.click();
+    await page.waitForFunction(
+      libraryTileCountAtLeast,
+      selectedCount,
+      { timeout: VISIBLE_TIMEOUT_MS },
+    );
+    await page.getByTestId('library-select-all').click();
+    await page.getByTestId('library-unhide-selected').click();
+    await page.waitForFunction(
+      hiddenLibraryViewEmpty,
+      undefined,
+      { timeout: VISIBLE_TIMEOUT_MS },
+    );
+    await hiddenFilter.click();
+    await page.waitForFunction(
+      libraryTileCountAtLeast,
+      selectedCount,
+      { timeout: VISIBLE_TIMEOUT_MS },
+    );
+    return done(`Kolekcja hid and restored ${String(selectedCount)} item(s)`);
   });
 
   await record('photos-sidebar', async () => {

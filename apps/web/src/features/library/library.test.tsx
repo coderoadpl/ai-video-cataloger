@@ -71,10 +71,13 @@ const matchesQuery = (item: LibraryItem, query: string): boolean =>
   displayNameOf(item).includes(query) || item.tags.some((tag) => tag.includes(query));
 
 const collectionRequests: URLSearchParams[] = [];
+const libraryHideRequests: unknown[] = [];
+const libraryUnhideRequests: unknown[] = [];
+const libraryTrashRequests: unknown[] = [];
 
 const CURSOR_LIMIT_DEFAULT = 200;
 
-const stubCollection = (items: LibraryItem[]) => {
+const stubCollection = (items: LibraryItem[], hiddenFingerprints: ReadonlySet<string> = new Set()) => {
   server.use(
     http.get('/api/library/collection', ({ request }) => {
       const url = new URL(request.url);
@@ -85,6 +88,7 @@ const stubCollection = (items: LibraryItem[]) => {
       const hasGps = url.searchParams.get('hasGps');
       const folderId = url.searchParams.get('folderId');
       const media = url.searchParams.get('media') ?? 'all';
+      const hidden = url.searchParams.get('hidden') ?? 'exclude';
       const sort = url.searchParams.get('sort');
       const limit = Number(url.searchParams.get('limit') ?? String(CURSOR_LIMIT_DEFAULT));
       const cursor = url.searchParams.get('cursor');
@@ -93,8 +97,13 @@ const stubCollection = (items: LibraryItem[]) => {
 
       const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null;
 
-      let matchedVideo = items.filter((item) => item.media === 'video');
-      let matchedPhoto = videoOnlyFilterActive ? [] : items.filter((item) => item.media === 'photo');
+      const hiddenMatches = (item: LibraryItem): boolean => {
+        const itemHidden = hiddenFingerprints.has(item.fingerprint);
+        return hidden === 'include' || (hidden === 'only' ? itemHidden : !itemHidden);
+      };
+
+      let matchedVideo = items.filter((item) => item.media === 'video' && hiddenMatches(item));
+      let matchedPhoto = videoOnlyFilterActive ? [] : items.filter((item) => item.media === 'photo' && hiddenMatches(item));
 
       if (query !== null && query.length > 0) {
         matchedVideo = matchedVideo.filter((item) => matchesQuery(item, query));
@@ -231,6 +240,59 @@ const stubPhotoDetail = (fingerprint: string) => {
       },
     },
   })));
+};
+
+const stubLibraryVisibilityActions = () => {
+  libraryHideRequests.length = 0;
+  libraryUnhideRequests.length = 0;
+  libraryTrashRequests.length = 0;
+  server.use(
+    http.post('/api/library/hide', async ({ request }) => {
+      libraryHideRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { requested: 1, changed: 1, unchanged: 0, videos: 1, photos: 0 } });
+    }),
+    http.post('/api/library/unhide', async ({ request }) => {
+      libraryUnhideRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { requested: 1, changed: 1, unchanged: 0, videos: 1, photos: 0 } });
+    }),
+    http.post('/api/library/selection/preview', () => HttpResponse.json({
+      ok: true,
+      data: {
+        total: 1,
+        videoCount: 1,
+        photoCount: 0,
+        hiddenCount: 0,
+        visibleCount: 1,
+        sharedWithOtherPeople: 0,
+        roots: [{
+          folderId: '11111111-1111-4111-8111-111111111111',
+          displayName: 'Sample root',
+          currentPath: '/fixtures/root',
+          fileCount: 1,
+          writable: true,
+          online: true,
+        }],
+      },
+    })),
+    http.post('/api/library/trash', async ({ request }) => {
+      libraryTrashRequests.push(await request.json());
+      return HttpResponse.json({ ok: true, data: { kind: 'job', jobId: 'job-trash' } });
+    }),
+    http.get('/api/jobs/status', () => HttpResponse.json({
+      ok: true,
+      data: {
+        jobId: 'job-trash',
+        kind: 'library_trash',
+        status: 'completed',
+        progress: null,
+        progressEvents: [],
+        result: { kind: 'library_trash', filesTrashed: 1, videosTrashed: 1, photosTrashed: 0, filesFailed: 0, filesNotAttempted: 0, failedFingerprint: null, cancelled: false, analysesDeleted: 1, observationsDeleted: 0, peopleDeleted: 0, artifactPathsDeleted: 0, snapshotsRewritten: 1, roots: ['/fixtures/root'] },
+        error: null,
+        createdAt: '2026-01-02T10:00:00.000Z',
+        updatedAt: '2026-01-02T10:00:00.000Z',
+      },
+    })),
+  );
 };
 
 const stubLibraryPreview = (
@@ -574,6 +636,37 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByTestId('library-tile-menu-open-analysis'));
 
     expect(onOpenResult).toHaveBeenCalledWith('/videos', '/videos/fp-menu.mp4');
+  });
+
+  it('restores a single hidden tile from the tile menu', async () => {
+    stubLibraryVisibilityActions();
+    stubFacets({ counts: { total: 1, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 1, offlineFolders: 0 } });
+    stubCollection([videoItem({ fingerprint: 'fp-menu-hidden' })], new Set(['fp-menu-hidden']));
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    fireEvent.click(await screen.findByTestId('library-hidden-filter'));
+    fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+    fireEvent.click(await screen.findByTestId('library-tile-menu-restore'));
+
+    await waitFor(() => expect(libraryUnhideRequests).toHaveLength(1));
+    expect(libraryUnhideRequests[0]).toEqual({
+      scope: { kind: 'fingerprints', fingerprints: ['fp-menu-hidden'] },
+    });
+  });
+
+  it('hides a single visible tile from the tile menu', async () => {
+    stubLibraryVisibilityActions();
+    stubCollection([videoItem({ fingerprint: 'fp-menu-visible' })]);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+    fireEvent.click(await screen.findByTestId('library-tile-menu-hide'));
+
+    await waitFor(() => expect(libraryHideRequests).toHaveLength(1));
+    expect(libraryHideRequests[0]).toEqual({
+      scope: { kind: 'fingerprints', fingerprints: ['fp-menu-visible'] },
+    });
   });
 
   it('shows an error toast when revealing a library tile fails, instead of doing nothing', async () => {
@@ -1541,6 +1634,124 @@ describe('LibraryView', () => {
       fireEvent.click(await screen.findByTestId('library-media-viewer-open-analysis'));
 
       expect(onOpenPhotoInAnalysis).toHaveBeenCalledWith('/photos', fingerprint);
+    });
+
+    it('selects tiles with Cmd-click and clears the selection with Escape', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-1' }), videoItem({ fingerprint: 'fp-2' })]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      const tiles = await screen.findAllByTestId('library-tile');
+
+      fireEvent.click(tiles[0] ?? document.body, { metaKey: true });
+      expect(screen.getByTestId('library-selection-count').textContent).toBe('1 file selected');
+      expect((tiles[0] ?? document.body).getAttribute('aria-selected')).toBe('true');
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByTestId('library-selection-bar')).toBeNull());
+    });
+
+    it('extends selection with Shift-click over rendered order', async () => {
+      stubCollection([
+        videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-03T12:00:00.000Z' }),
+        videoItem({ fingerprint: 'fp-2', capturedAt: '2026-01-03T11:00:00.000Z' }),
+        videoItem({ fingerprint: 'fp-3', capturedAt: '2026-01-03T10:00:00.000Z' }),
+      ]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      const tiles = await screen.findAllByTestId('library-tile');
+
+      fireEvent.click(tiles[0] ?? document.body, { metaKey: true });
+      fireEvent.click(tiles[2] ?? document.body, { shiftKey: true });
+
+      expect(screen.getByTestId('library-selection-count').textContent).toBe('3 files selected');
+    });
+
+    it('sends a filter scope after selecting the whole current filter result', async () => {
+      stubLibraryVisibilityActions();
+      stubCollection([videoItem({ fingerprint: 'fp-1', tags: ['family'] })]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      const tile = await screen.findByTestId('library-tile');
+
+      fireEvent.click(tile, { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-select-all'));
+      fireEvent.click(screen.getByTestId('library-hide-selected'));
+
+      await waitFor(() => expect(libraryHideRequests).toHaveLength(1));
+      expect(libraryHideRequests[0]).toEqual({
+        scope: {
+          kind: 'filter',
+          filter: {
+            tags: [],
+            people: [],
+            hasGps: null,
+            media: 'all',
+            hideUnavailable: false,
+            hidden: 'exclude',
+          },
+        },
+      });
+    });
+
+    it('opens the hidden filter and restores selected hidden files', async () => {
+      stubLibraryVisibilityActions();
+      stubFacets({ counts: { total: 1, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 1, offlineFolders: 0 } });
+      stubCollection([videoItem({ fingerprint: 'fp-hidden' })], new Set(['fp-hidden']));
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+      fireEvent.click(await screen.findByTestId('library-hidden-filter'));
+      await waitFor(() => expect(collectionRequests.at(-1)?.get('hidden')).toBe('only'));
+      const tile = await screen.findByTestId('library-tile');
+      fireEvent.click(tile, { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-unhide-selected'));
+
+      await waitFor(() => expect(libraryUnhideRequests).toHaveLength(1));
+      expect(libraryUnhideRequests[0]).toEqual({ scope: { kind: 'fingerprints', fingerprints: ['fp-hidden'] } });
+    });
+
+    it('previews and confirms trash through the action bar before invalidating library consumers', async () => {
+      stubLibraryVisibilityActions();
+      stubCollection([videoItem({ fingerprint: 'fp-trash' })]);
+      const rendered = renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      const invalidate = vi.spyOn(rendered.queryClient, 'invalidateQueries');
+
+      fireEvent.click(await screen.findByTestId('library-tile'), { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-trash-selected'));
+      expect(await screen.findByTestId('library-trash-count')).toBeDefined();
+      fireEvent.click(screen.getByTestId('library-trash-confirm-check'));
+      fireEvent.click(screen.getByTestId('library-trash-confirm'));
+
+      await waitFor(() => expect(libraryTrashRequests).toHaveLength(1));
+      expect(libraryTrashRequests[0]).toEqual({ scope: { kind: 'fingerprints', fingerprints: ['fp-trash'] }, confirm: true, dryRun: false });
+      await waitFor(() => expect(invalidate).toHaveBeenCalled());
+    });
+
+    it('keeps the trash dialog open with read-only root copy when the confirm route races to target_read_only', async () => {
+      stubLibraryVisibilityActions();
+      server.use(
+        http.post('/api/library/trash', async ({ request }) => {
+          libraryTrashRequests.push(await request.json());
+          return HttpResponse.json({
+            ok: false,
+            error: {
+              code: 'target_read_only',
+              message: 'The target root is read-only.',
+              details: {
+                roots: [{ displayName: 'Locked root', currentPath: '/locked' }],
+              },
+            },
+          }, { status: 409 });
+        }),
+      );
+      stubCollection([videoItem({ fingerprint: 'fp-read-only-race' })]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+      fireEvent.click(await screen.findByTestId('library-tile'), { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-trash-selected'));
+      await screen.findByTestId('library-trash-count');
+      fireEvent.click(screen.getByTestId('library-trash-confirm-check'));
+      fireEvent.click(screen.getByTestId('library-trash-confirm'));
+
+      await waitFor(() => expect(libraryTrashRequests).toHaveLength(1));
+      expect((await screen.findByTestId('library-trash-read-only')).textContent).toContain('Locked root');
+      expect(screen.getByTestId('library-trash-dialog')).toBeDefined();
     });
   });
 });

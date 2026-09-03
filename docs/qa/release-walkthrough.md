@@ -283,7 +283,7 @@ equivalent, add it back deliberately and record the WHY here.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
-`analyze`, `search`, `library-preview`, `photos-sidebar`,
+`analyze`, `search`, `library-preview`, `library-hide-restore`, `photos-sidebar`,
 `analysis-photos`, `photos-tree`, `photos-tree-analyze`,
 `collection-photo-analyzed`, `collection-photo-viewer`, `people`,
 `settings`, `backup`, `backup-indicator`, `wizard`.
@@ -295,7 +295,9 @@ workspace steps run in Analysis mode, while `search` and the collection photo
 steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the
 fullscreen media viewer and its player render for a video tile, then follows
 the "Otwórz w Analizie" escape hatch and asserts it lands in the Analysis
-details panel with the file selected. `photos-sidebar` switches
+details panel with the file selected. `library-hide-restore` selects two
+Kolekcja tiles, hides them, opens the `Ukryte` view, restores them, and
+captures the restored default collection. `photos-sidebar` switches
 Analysis to Zdjęcia and captures the sidebar state (folder header, scope
 toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
 the first sidebar row that does not carry the `proxyFailed` badge (the analyze
@@ -426,6 +428,10 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Populated Biblioteka** — in the `search` screenshot, does the Biblioteka
   hold more than 0 `plików`, and does the search return a real hit for the
   analyzed video rather than an empty-state panel?
+- **Kolekcja hide/restore** — in the `library-hide-restore` screenshot, are the
+  selected files back in the default Kolekcja view after visiting `Ukryte`, with
+  no stale bulk action bar left over and no English fallback in the hide/restore
+  controls?
 - **Photos folder tree (W57/W60/W64)** — in the `photos-tree` screenshot, does the
   "Całe drzewo" scope render the collapsible tree (the root row and the
   expanded `subfolder` row the runner plants a photo into, each carrying an
