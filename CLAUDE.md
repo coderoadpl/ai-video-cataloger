@@ -127,9 +127,9 @@ specs testing the CLI surface itself are exempt. Reference:
 - `pnpm run test:e2e:open-folder` = builds Electron and drives the real header
   "Open Folder" button through Playwright `_electron` (dialog stubbed in the
   main process, not the `desktopBridge.folder.setCurrent` shortcut the other
-  GUI drivers use) to prove the picked folder lands in the video analysis view
-  from both a fresh install and a photos-analysis session; outside `check` and
-  `smoke`.
+  GUI drivers use) to prove the picked folder lands in the analysis view on the
+  medium already in use — videos from a fresh install, photos from a
+  photos-analysis session; outside `check` and `smoke`.
 
 ## House rules
 
