@@ -1,12 +1,14 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { _electron as electron } from '@playwright/test';
 import { z } from 'zod';
+
+import { FAKE_DRIVE_ID, serviceAccountKeyJson, startFakeDriveServer } from './fake-drive-server.mjs';
 
 // A real JPEG SOI marker, so the scanner accepts the file as a photo, followed
 // by nothing, so proxy generation fails and the placeholder tile has to render.
@@ -79,6 +81,14 @@ AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1: it never reads or writes the real catalog
 the real settings or the login keychain. The home's config.json is seeded with
 ui_language: "pl" before launch, so every screenshot shows production Polish
 copy, not English fallback strings.
+
+The backup step needs no Google account: the run starts the in-memory fake Drive
+from scripts/fake-drive-server.mjs on a random loopback port, points
+AVC_GOOGLE_DRIVE_BASE_URL / AVC_GOOGLE_UPLOAD_BASE_URL at it, and drives the real
+enablement stepper with a generated service-account key. Under the disabled
+keychain the app keeps the recovery key in <home>/.ai-video-cataloger/secrets.json
+(0600) instead of the login keychain, and the run clears every backup_* config key
+before launch so a reused --home cannot point at a previous run's file ids.
 `;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
@@ -92,6 +102,7 @@ const SCREENSHOT_SETTLE_FALLBACK_MS = 250;
 const DEFAULT_WINDOW_SIZE = '1920x1200';
 const WINDOW_SIZE_PATTERN = /^(\d+)x(\d+)$/;
 const OLLAMA_CHECK_TIMEOUT_MS = 5_000;
+const BACKUP_TIMEOUT_MS = 180_000;
 const ANALYZER_FLAG_PATTERN = /^local:(.+)$/;
 
 const optionsSchema = z.object({
@@ -267,12 +278,14 @@ const buildPlan = async (options) => {
   };
 };
 
-const isolatedEnvironment = (plan) => ({
+const isolatedEnvironment = (plan, fakeDrive) => ({
   ...process.env,
   HOME: plan.homeDir,
   USERPROFILE: plan.homeDir,
   AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
   AI_VIDEO_CATALOGER_USER_DATA_DIR: plan.userDataDir,
+  AVC_GOOGLE_DRIVE_BASE_URL: fakeDrive.driveBaseUrl,
+  AVC_GOOGLE_UPLOAD_BASE_URL: fakeDrive.uploadBaseUrl,
 });
 
 const seedWindowState = (plan) => {
@@ -291,6 +304,18 @@ const updateHomeConfig = (homeDir, update) => {
 };
 
 const seedUiLanguage = (plan) => updateHomeConfig(plan.homeDir, (existing) => ({ ...existing, ui_language: 'pl' }));
+
+// The fake Drive is in-memory and gets a fresh port every run, so folder and file ids a reused QA
+// home still carries would resolve to nothing. Environment setup, not a stand-in for the flow the
+// backup step drives: every click in the enablement stepper is still real.
+export const withoutBackupConfig = (existing) =>
+  Object.fromEntries(Object.entries(existing).filter(([key]) => !key.startsWith('backup_')));
+
+const resetBackupState = (plan) => {
+  updateHomeConfig(plan.homeDir, withoutBackupConfig);
+  const secretsFile = path.join(plan.homeDir, '.ai-video-cataloger', 'secrets.json');
+  if (existsSync(secretsFile)) rmSync(secretsFile);
+};
 
 // whisper_mode: 'skip' is the honest transcription-less path (core/domain/config.ts) rather than a
 // fabricated offline whisper setup: it lets the pipeline reach 'analyze' without a local whisper
@@ -450,15 +475,25 @@ const stubOpenDialog = async (app, folderPath) => {
   }, folderPath);
 };
 
+const stubSaveDialog = async (app, filePath) => {
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: target });
+  }, filePath);
+};
+
 const drive = async (plan) => {
   seedWindowState(plan);
   seedUiLanguage(plan);
   seedLocalAnalyzer(plan);
+  resetBackupState(plan);
+  const fakeDrive = await startFakeDriveServer({ port: 0 });
+  const serviceAccountKey = serviceAccountKeyJson(fakeDrive.tokenUri);
+  const recoveryKeyPath = path.join(plan.userDataDir, 'recovery-key.txt');
   const launchedAt = Date.now();
   const app = await electron.launch({
     executablePath: plan.executablePath,
     args: [`--user-data-dir=${plan.userDataDir}`],
-    env: isolatedEnvironment(plan),
+    env: isolatedEnvironment(plan, fakeDrive),
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
@@ -724,7 +759,47 @@ const drive = async (plan) => {
     return done('settings modal opened');
   });
 
+  await record('backup', async () => {
+    const section = page.getByTestId('settings-backup');
+    if (!(await appeared(section, SETTLE_TIMEOUT_MS))) return skipped('no Backup section in this build');
+    await section.scrollIntoViewIfNeeded();
+    await stubSaveDialog(app, recoveryKeyPath);
+
+    await page.getByTestId('backup-enabled-switch').locator('input').check();
+    await page.getByTestId('backup-stepper').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    await page.getByTestId('backup-provider-service-account').click();
+    await page.getByTestId('backup-stepper-next').click();
+    await page.getByTestId('backup-shared-drive-id').fill(FAKE_DRIVE_ID);
+    await page.getByTestId('backup-key-json').fill(serviceAccountKey);
+    await page.getByTestId('backup-connect').click();
+    await page.getByTestId('backup-connection-report').waitFor({ state: 'visible', timeout: BACKUP_TIMEOUT_MS });
+
+    await page.getByTestId('backup-export-recovery-key').click();
+    await page.getByTestId('backup-recovery-key-report').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    await page.getByTestId('backup-recovery-key-saved').locator('input').check();
+    await page.getByTestId('backup-finish').click();
+    await page.getByTestId('backup-stepper').waitFor({ state: 'hidden', timeout: BACKUP_TIMEOUT_MS });
+    await page.getByTestId('backup-list').waitFor({ state: 'visible', timeout: BACKUP_TIMEOUT_MS });
+
+    return fakeDrive.files.size === 0
+      ? failed('the backup job reported success but the fake Drive holds no archive')
+      : done(`${String(fakeDrive.files.size)} object(s) in the fake Drive after the first backup`);
+  });
+
+  await record('backup-indicator', async () => {
+    const closeSettings = page.getByTestId('settings-cancel');
+    if (await appeared(closeSettings, SETTLE_TIMEOUT_MS)) await closeSettings.click();
+    const indicator = page.getByTestId('backup-indicator');
+    if (!(await appeared(indicator, BACKUP_TIMEOUT_MS))) return failed('no backup indicator in the bottom bar after enablement');
+    return done('the bottom bar carries the backup indicator');
+  });
+
   await record('wizard', async () => {
+    const settingsButton = page.getByTestId('open-settings-button');
+    if (await appeared(settingsButton, SETTLE_TIMEOUT_MS)) {
+      await settingsButton.click();
+      await page.getByTestId('settings-modal').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    }
     const runWizard = page.getByTestId('settings-run-wizard');
     if (!(await appeared(runWizard, SETTLE_TIMEOUT_MS))) return skipped('no Run Setup Wizard control in this build');
     await runWizard.click();
@@ -733,6 +808,7 @@ const drive = async (plan) => {
   });
 
   await app.close().catch(() => undefined);
+  await fakeDrive.close().catch(() => undefined);
   return { timeToWindowMs, results };
 };
 

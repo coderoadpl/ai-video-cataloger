@@ -14,6 +14,7 @@ import {
   clearLibrarySearch,
   collectionPhotoChipOutcome,
   localAnalyzerConfig,
+  withoutBackupConfig,
   parseAnalyzerFlag,
   parseMediaChipCount,
   photoTreeAnalyzeOutcome,
@@ -386,5 +387,19 @@ describe('prepareScratchFixtures', () => {
     const scratchDir = prepareScratchFixtures(sourceWithPhotos());
 
     expect(readFileSync(path.join(scratchDir, BROKEN_PHOTO_NAME)).length).toBeLessThan(64);
+  });
+});
+
+describe('withoutBackupConfig', () => {
+  it('drops every backup key a reused QA home carries and keeps the rest', () => {
+    const cleared = withoutBackupConfig({
+      ui_language: 'pl',
+      backup_enabled: 'true',
+      backup_folder_id: 'folder-from-a-previous-fake-drive',
+      backup_shared_drive_id: 'drive-fake-1',
+      analyzer_backend: 'local',
+    });
+
+    expect(cleared).toEqual({ ui_language: 'pl', analyzer_backend: 'local' });
   });
 });
