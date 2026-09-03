@@ -53,6 +53,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- The smoke gate now boots the in-process app against an isolated temp home instead of the developer home.
 - SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status.
 - Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal.
 - Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever.

@@ -281,6 +281,7 @@ const buildPlan = async (options) => {
 const isolatedEnvironment = (plan, fakeDrive) => ({
   ...process.env,
   HOME: plan.homeDir,
+  AVC_HOME_DIRECTORY: plan.homeDir,
   USERPROFILE: plan.homeDir,
   AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
   AI_VIDEO_CATALOGER_USER_DATA_DIR: plan.userDataDir,
