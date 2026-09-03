@@ -270,6 +270,20 @@ completion state stale, so the next pass believes the work is done.
 **Rollback at each step** is ADR-0018's rollback section; the only
 non-revertible step is 1, which is why it writes the backup first.
 
+**Calibration lessons (see ADR-0018's amendment of the same date), applied to
+step 4.** The operator's reference-partition directory is a hint, never
+ground truth — it is itself a clustering run's output, and purity /
+completeness / "identities spanned" against it are dominated by that run's
+own over-splitting. Treat the human-labelled pair sample as the deciding
+acceptance metric (zero labelled-different pairs merged, split rate
+reported), and complement it with a human visual check of the largest
+resulting clusters — including a contact-sheet sample of the lowest-score and
+smallest-box tails — before treating a large cluster as a merge error.
+Tightening the merge criterion (strong-edge fraction, complete linkage)
+fragments real identities long before it fixes a genuinely mixed cluster, so
+any such change is justified by that visual audit, not by movement in the
+reference-partition metrics.
+
 ---
 
 ## F5 — Gates, review, release v0.6.25
