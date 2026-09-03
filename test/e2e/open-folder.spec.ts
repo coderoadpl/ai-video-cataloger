@@ -43,7 +43,7 @@ async function stubPickedFolder(app: ElectronApplication, folderPath: string): P
   }, folderPath);
 }
 
-test.describe('Open Folder lands in the video analysis view', () => {
+test.describe('Open Folder keeps the analysis medium already in use', () => {
   test('from a fresh install, picking a folder shows the video sidebar for that folder', async () => {
     const pickedFolder = makeEmptyWorkdir('open-folder-fresh');
     const session = await launch(pickedFolder);
@@ -67,14 +67,20 @@ test.describe('Open Folder lands in the video analysis view', () => {
     }
   });
 
-  test('from a photos-analysis session, picking a folder switches to the video sidebar for that folder', async () => {
+  test('from a photos-analysis session, picking a folder stays on the photos sidebar and re-scopes it', async () => {
     const pickedFolder = makeEmptyWorkdir('open-folder-from-photos');
     const session = await launch(pickedFolder);
     try {
-      await session.page.evaluate(() => {
-        window.localStorage.setItem('avc.mode', 'analysis');
-        window.localStorage.setItem('avc.analysisMedia', 'photos');
-      });
+      const analysisTab = session.page.getByTestId('mode-analysis');
+      await expect(analysisTab).toBeVisible({ timeout: 15_000 });
+      await analysisTab.click();
+      await expect(analysisTab).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
+
+      const photosToggle = session.page.getByTestId('analysis-media-photos');
+      await expect(photosToggle).toBeVisible({ timeout: 15_000 });
+      await photosToggle.click();
+      await expect(photosToggle).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+
       await session.page.reload({ waitUntil: 'domcontentloaded' });
       await session.page.waitForFunction(() => window.desktopBridge !== undefined);
       await expect(session.page.getByTestId('analysis-media-photos')).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
@@ -85,9 +91,9 @@ test.describe('Open Folder lands in the video analysis view', () => {
       await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
       await openFolderButton.click();
 
-      await expect(session.page.getByText(pickedFolder)).toBeVisible({ timeout: 20_000 });
-      await expect(session.page.getByTestId('analysis-media-videos')).toHaveAttribute('aria-pressed', 'true');
-      await expect(session.page.getByTestId('photos-sidebar-empty')).toHaveCount(0);
+      await expect(session.page.getByTestId('sidebar-folder-identity')).toContainText(pickedFolder, { timeout: 20_000 });
+      await expect(session.page.getByTestId('analysis-media-photos')).toHaveAttribute('aria-pressed', 'true');
+      await expect(session.page.getByTestId('analysis-media-videos')).toHaveAttribute('aria-pressed', 'false');
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(pickedFolder, { recursive: true, force: true });
