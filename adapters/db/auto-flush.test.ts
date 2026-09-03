@@ -44,6 +44,25 @@ describe('auto-flush process signal hooks', () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
+  it('re-raises a termination signal once the listener that owned it is gone', () => {
+    const first = createAutoFlushState();
+    const second = createAutoFlushState();
+    const flush = vi.fn();
+    const transient = vi.fn();
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    process.on('SIGTERM', transient);
+    cleanups.push(() => process.removeListener('SIGTERM', transient));
+    cleanups.push(() => clearAutoFlush(first));
+    cleanups.push(() => clearAutoFlush(second));
+
+    scheduleAutoFlush(first, 30_000, flush, flush);
+    process.removeListener('SIGTERM', transient);
+    scheduleAutoFlush(second, 30_000, flush, flush);
+    process.emit('SIGTERM');
+
+    expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM');
+  });
+
   it('flushes and re-raises once when auto-flush is the only termination listener', () => {
     const state = createAutoFlushState();
     const flush = vi.fn();

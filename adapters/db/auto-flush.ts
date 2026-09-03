@@ -31,15 +31,24 @@ const signalHandlers: Record<TerminationSignal, () => void> = {
   SIGTERM: () => onSignal('SIGTERM'),
 };
 
-const ensureProcessHooks = (): void => {
-  if (processHooksRegistered) return;
-  processHooksRegistered = true;
-  process.once('beforeExit', onBeforeExit);
-  process.once('exit', onExit);
+const hasForeignListener = (signal: TerminationSignal): boolean =>
+  process.listeners(signal).some((listener) => listener !== signalHandlers[signal]);
+
+const refreshSignalOwnership = (): void => {
   for (const signal of TERMINATION_SIGNALS) {
-    if (process.listenerCount(signal) === 0) ownedSignals.add(signal);
-    process.on(signal, signalHandlers[signal]);
+    if (hasForeignListener(signal)) ownedSignals.delete(signal);
+    else ownedSignals.add(signal);
   }
+};
+
+const ensureProcessHooks = (): void => {
+  if (!processHooksRegistered) {
+    processHooksRegistered = true;
+    process.once('beforeExit', onBeforeExit);
+    process.once('exit', onExit);
+    for (const signal of TERMINATION_SIGNALS) process.on(signal, signalHandlers[signal]);
+  }
+  refreshSignalOwnership();
 };
 
 const removeProcessHooks = (): void => {
@@ -53,7 +62,6 @@ const removeProcessHooks = (): void => {
 
 const registerExitFlush = (flush: FlushCallback): (() => void) => {
   activeExitFlushes.add(flush);
-  ensureProcessHooks();
   return () => {
     activeExitFlushes.delete(flush);
     if (activeExitFlushes.size === 0) removeProcessHooks();
@@ -84,6 +92,7 @@ export const scheduleAutoFlush = (
   }, delayMs);
   unrefTimer(state.timer);
   state.unregisterExitFlush ??= registerExitFlush(flushOnExit);
+  ensureProcessHooks();
 };
 
 export const clearAutoFlush = (state: AutoFlushState): void => {

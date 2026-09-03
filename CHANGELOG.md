@@ -59,14 +59,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Auto-flush no longer re-raises `SIGINT`/`SIGTERM` when a one-shot listener was registered before it, so a process shutting down through its own handler is not terminated abruptly.
 - Google Drive resumable uploads now count non-progressing `308` responses against a monotonic acknowledged high-water mark, so an alternating acknowledged range can no longer reset the stall guard forever.
 - Backup staging directories are published behind a sibling `<job>.owner.json` marker written before the directory, so a concurrent cleanup can no longer delete the staging area of a starting backup or restore.
-- Restore-rollback and staging ownership now verify the owner process start time (and no longer treat a foreign hostname as alive forever), so a crashed owner whose pid was reused stops blocking recovery; a skipped rollback is logged with the owning pid.
+- Restore-rollback and staging ownership now verify the owner process start time, read in a fixed locale and timezone so a marker written by the app matches what any later process reads, and the recorded hostname no longer takes part in the decision; a crashed owner whose pid was reused stops blocking recovery, a live owner is never judged dead, and a skipped rollback is logged with the owning pid.
 - Refusing an imported recovery key because this Mac already stores a different key that wrote archives now reports the new `recovery_key_conflict` code (HTTP 409, CLI exit code 57) with its own message instead of the generic "recovery key required" one.
 - The file-backed secrets store used by QA runs now serializes concurrent writes, so a set and a delete can no longer drop each other's change.
-- The file-backed secrets store is never selected in a packaged build, even with `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` set.
+- The file-backed secrets store is selected only for a run that drives a home other than the account's own one (QA and e2e runs) with `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` set; an install running on the account's home keeps the Keychain whatever the environment says, packaged or not.
 - Relevance (offset) collection paging ends on an exactly full last page instead of serving one extra empty page.
-- The bottom bar now warns with the failing error code when the catalog or photo store cannot persist its writes.
+- The bottom bar now warns when the catalog or photo store cannot persist its writes, polls the two stores so the warning appears and clears on its own, and explains what to check instead of printing the raw error code.
 - SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status.
-- Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal.
+- Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal, and takes the signal back once that listener is gone instead of swallowing it forever.
 - Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever.
 - Google Drive backup listing and service-account permission checks now stop when Drive repeats a page token.
 - Restore swaps now fsync staged files and live parent directories before treating restored files as durable.
