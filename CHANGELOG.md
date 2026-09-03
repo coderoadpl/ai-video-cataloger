@@ -14,6 +14,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Security
+
+- Desktop dependency floor moved to Electron 39.8.10.
+- Landing dependency floor moved to Next 15.5.24.
+
 ## [0.6.28] - 2026-09-03
 
 ### Added

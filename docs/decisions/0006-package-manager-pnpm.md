@@ -84,7 +84,7 @@ upstream argument.
    in that PR and re-measure the floor there.
 
    Everything else in the stack was exercised on the pinned 22.23.1 by the
-   ladder below: pnpm 10, tsx, esbuild, electron-builder 26, Electron 37,
+   ladder below: pnpm 10, tsx, esbuild, electron-builder 26, Electron 39,
    onnxruntime-node and the DMG build. The packaged CLI's esbuild target stays
    `node22`, which is now doubly right — it runs on **Electron's** Node.
 
@@ -213,11 +213,10 @@ The installed-tree arm was probed the same way: deleting the ffmpeg binary turne
 `smoke` red with `ffmpeg-static binary is missing or not executable at …`, and
 restoring it turned it green.
 
-`pnpm import` reproduced the npm lockfile's resolutions exactly — spot-checked
-against `package-lock.json` at `HEAD` (electron 37.10.3, typescript 5.9.3,
-eslint 9.39.5, vite 7.3.6, knip 6.29.0, tsx 4.23.0, esbuild 0.28.1,
-onnxruntime-node 1.27.0, electron-builder 26.15.3), the migration changed no
-dependency version.
+`pnpm import` reproduced the npm lockfile's resolutions exactly: the migration
+changed no dependency version. W85 later moved the security-sensitive desktop
+rungs to Electron 39.8.10 and onnxruntime-node 1.29.0 without changing the pnpm,
+Node, electron-builder, tsx, esbuild, or packaging contract recorded here.
 
 ## Alternatives considered
 
