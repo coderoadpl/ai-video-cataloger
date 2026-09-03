@@ -126,6 +126,7 @@ import type {
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   TranscriberPort,
+  TrashPort,
   WhisperRuntimePort,
 } from '@core/server/index.js';
 
@@ -144,6 +145,7 @@ interface InMemoryDepsConfig {
   files?: readonly string[];
   textFiles?: Readonly<Record<string, string>>;
   saveFile?: FileSavePort['save'] | undefined;
+  moveToTrash?: TrashPort['moveToTrash'] | undefined;
 }
 
 export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
@@ -181,6 +183,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     config: configStore,
     credentials,
     fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd(), config.files ?? [], config.textFiles ?? {}),
+    trash: { moveToTrash: config.moveToTrash ?? (() => Promise.resolve(ok(undefined))) },
     folderWatcher: new InertFolderWatcherPort(),
     media: new InMemoryMediaPort(),
     transcriber: new InMemoryTranscriberPort(),
@@ -701,8 +704,33 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
-    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName) });
+    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName), hiddenAt: file.hiddenAt ?? null });
     return Promise.resolve(ok(undefined));
+  }
+
+  setHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>> {
+    let changed = 0;
+    let unchanged = 0;
+    for (const fingerprint of new Set(fingerprints)) {
+      const file = this.files.get(fingerprint);
+      if (file === undefined) continue;
+      const current = file.hiddenAt ?? null;
+      if ((hiddenAt === null && current === null) || (hiddenAt !== null && current !== null)) {
+        unchanged += 1;
+        continue;
+      }
+      this.files.set(fingerprint, { ...file, hiddenAt });
+      changed += 1;
+    }
+    return Promise.resolve(ok({ changed, unchanged }));
+  }
+
+  listHiddenFingerprints(): Promise<Result<string[], AppError>> {
+    const fingerprints = [...this.files.values()]
+      .filter((file) => (file.hiddenAt ?? null) !== null)
+      .map((file) => file.fingerprint)
+      .sort(compareUtf8Bytes);
+    return Promise.resolve(ok(fingerprints));
   }
 
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>> {
@@ -881,6 +909,8 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
         const analysis = this.analyses.get(file.fingerprint) ?? null;
         const folder = this.folders.get(file.folderId);
         if (folder === undefined) return null;
+        if ((input.filters.hidden ?? 'exclude') === 'exclude' && (file.hiddenAt ?? null) !== null) return null;
+        if (input.filters.hidden === 'only' && (file.hiddenAt ?? null) === null) return null;
         if (input.match === null) {
           return {
             fingerprint: file.fingerprint,
@@ -934,6 +964,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
     const rows = [...this.files.values()]
+      .filter((file) => (file.hiddenAt ?? null) === null)
       .map((file) => {
         if (file.gpsLat === null || file.gpsLon === null) return null;
         const folder = this.folders.get(file.folderId);
@@ -955,12 +986,15 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       })
       .filter((row): row is CatalogLocationRow => row !== null)
       .sort((left, right) => left.fileName.localeCompare(right.fileName));
-    return Promise.resolve(ok({ totalFiles: this.files.size, rows }));
+    return Promise.resolve(ok({ totalFiles: [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null).length, rows }));
   }
 
   listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+    const visibleFiles = [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null);
+    const visibleFileByFingerprint = new Map(visibleFiles.map((file) => [file.fingerprint, file]));
     const tagCounts = new Map<string, number>();
     for (const analysis of this.analyses.values()) {
+      if (!visibleFileByFingerprint.has(analysis.fingerprint)) continue;
       for (const tag of analysis.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     }
     const tags = [...tagCounts.entries()]
@@ -970,6 +1004,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const peopleCounts = new Map<string, number>();
     for (const observation of this.faceObservations.values()) {
       if (observation.personId === null) continue;
+      if (!visibleFileByFingerprint.has(observation.fingerprint)) continue;
       peopleCounts.set(observation.personId, (peopleCounts.get(observation.personId) ?? 0) + 1);
     }
     const people = [...peopleCounts.entries()]
@@ -977,7 +1012,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
 
     const placeCounts = new Map<string, { name: string; country: string | null; countryCode: string | null; count: number }>();
-    for (const file of this.files.values()) {
+    for (const file of visibleFiles) {
       if (file.place === null) continue;
       const key = `${file.place.name} ${file.place.country ?? ''} ${file.place.countryCode ?? ''}`;
       const existing = placeCounts.get(key);
@@ -990,7 +1025,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const places = [...placeCounts.values()].sort((left, right) => left.name.localeCompare(right.name));
 
     const yearCounts = new Map<string, number>();
-    for (const file of this.files.values()) {
+    for (const file of visibleFiles) {
       if (file.capturedAt === null) continue;
       const year = file.capturedAt.slice(0, 4);
       yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
@@ -999,12 +1034,13 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .map(([year, count]) => ({ year, count }))
       .sort((left, right) => right.year.localeCompare(left.year));
 
-    const files = [...this.files.values()];
+    const files = visibleFiles;
     const counts = {
       total: files.length,
       withGps: files.filter((file) => file.gpsLat !== null && file.gpsLon !== null).length,
       withoutCaptureDate: files.filter((file) => file.capturedAt === null).length,
       missing: files.filter((file) => file.missingAt !== null).length,
+      hidden: [...this.files.values()].filter((file) => (file.hiddenAt ?? null) !== null).length,
     };
 
     const facetFolders = [...this.folders.values()]

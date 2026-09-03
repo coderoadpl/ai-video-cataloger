@@ -14,6 +14,7 @@ import {
   facesIndexOutputSchema,
   facesReclusterOutputSchema,
   gpsBackfillSummarySchema,
+  libraryTrashSummarySchema,
   thumbnailsSummarySchema,
 } from '@core/contract/index.js';
 import {
@@ -35,6 +36,7 @@ import {
   type AnalyzerProviderId,
   type AppError,
   type BackupTier,
+  type LibrarySelectionScope,
   type Result,
   type WhisperLanguage,
   type WhisperModelName,
@@ -150,7 +152,28 @@ interface SearchOptions extends JsonOption {
   to?: string | undefined;
   hasGps?: boolean | undefined;
   folder?: string | undefined;
+  hidden: 'exclude' | 'only' | 'include';
   sort?: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc' | undefined;
+}
+
+interface LibraryCommandOptions extends JsonOption {
+  fingerprint: string[];
+  tag: string[];
+  person: string[];
+  place?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  hasGps?: boolean | undefined;
+  folder?: string | undefined;
+  media: 'all' | 'video' | 'photo';
+  hidden: 'exclude' | 'only' | 'include';
+  ofPerson?: string | undefined;
+  skipShared?: boolean | undefined;
+}
+
+interface LibraryTrashOptions extends LibraryCommandOptions {
+  dryRun?: boolean | undefined;
+  yes?: boolean | undefined;
 }
 
 interface VariantConfigOptions extends JsonOption {
@@ -1144,6 +1167,16 @@ const searchSortOption = (value: string): NonNullable<SearchOptions['sort']> => 
   throw new InvalidArgumentError(`Invalid sort: ${value}. Valid values: ${SEARCH_SORTS.join(', ')}`);
 };
 
+const hiddenOption = (value: string): 'exclude' | 'only' | 'include' => {
+  if (value === 'exclude' || value === 'only' || value === 'include') return value;
+  throw new InvalidArgumentError(`Invalid hidden scope: ${value}. Valid values: exclude, only, include`);
+};
+
+const libraryMediaOption = (value: string): 'all' | 'video' | 'photo' => {
+  if (value === 'all' || value === 'video' || value === 'photo') return value;
+  throw new InvalidArgumentError(`Invalid media: ${value}. Valid values: all, video, photo`);
+};
+
 const resolveSearchPersonIds = async (people: readonly string[]): Promise<Result<string[], AppError>> => {
   if (people.length === 0) return { ok: true, value: [] };
   const listed = await api.facesPeople();
@@ -1191,6 +1224,7 @@ program
   .option('--has-gps', 'only items with GPS coordinates')
   .option('--no-has-gps', 'only items without GPS coordinates')
   .option('--folder <path>', 'restrict results to a known catalog folder')
+  .option('--hidden <scope>', 'hidden scope: exclude, only, or include', hiddenOption, 'exclude')
   .option('--sort <sort>', `${SEARCH_SORTS.join('|')}`, searchSortOption)
   .option('--limit <number>', 'maximum result count', numberOption, 50)
   .option('--offset <number>', 'result offset', numberOption, 0)
@@ -1214,6 +1248,7 @@ program
           to: options.to,
           hasGps: options.hasGps,
           folderId: folderId.value,
+          hidden: options.hidden,
           sort: options.sort,
           limit: options.limit,
           offset: options.offset,
@@ -1222,6 +1257,158 @@ program
       searchHuman,
       { raw: true },
     );
+  });
+
+const libraryScopeFrom = async (
+  query: string | undefined,
+  options: LibraryCommandOptions,
+  command: Command,
+): Promise<Result<LibrarySelectionScope, AppError>> => {
+  const fingerprintScope = options.fingerprint.length > 0;
+  const personScope = options.ofPerson !== undefined;
+  const filterScope = query !== undefined
+    || options.tag.length > 0
+    || options.person.length > 0
+    || options.place !== undefined
+    || options.from !== undefined
+    || options.to !== undefined
+    || options.hasGps !== undefined
+    || options.folder !== undefined
+    || optionWasPassed(command, 'media')
+    || optionWasPassed(command, 'hidden');
+  const scopes = [fingerprintScope, personScope, filterScope].filter(Boolean).length;
+  if (scopes !== 1) return { ok: false, error: appError('validation', 'Choose exactly one library selection scope') };
+  if (fingerprintScope) return { ok: true, value: { kind: 'fingerprints', fingerprints: options.fingerprint } };
+  if (personScope) {
+    return {
+      ok: true,
+      value: {
+        kind: 'person',
+        personId: options.ofPerson ?? '',
+        skipSharedWithOtherPeople: options.skipShared === true,
+      },
+    };
+  }
+  const people = await resolveSearchPersonIds(options.person);
+  if (!people.ok) return people;
+  const folderId = await resolveSearchFolderId(options.folder);
+  if (!folderId.ok) return folderId;
+  return {
+    ok: true,
+    value: {
+      kind: 'filter',
+      filter: {
+        query,
+        tags: options.tag,
+        people: people.value,
+        place: options.place,
+        from: options.from,
+        to: options.to,
+        hasGps: options.hasGps ?? null,
+        folderId: folderId.value,
+        media: options.media,
+        hideUnavailable: false,
+        hidden: options.hidden,
+      },
+    },
+  };
+};
+
+const addLibraryScopeOptions = <T extends Command>(command: T): T =>
+  command
+    .argument('[query]')
+    .option('--fingerprint <fp>', 'select a fingerprint (repeatable)', collectRepeatable, [])
+    .option('--tag <name>', 'filter by tag (repeatable, AND semantics, aliases auto-expand)', collectRepeatable, [])
+    .option('--person <nameOrId>', 'filter by person name or id (repeatable, OR semantics)', collectRepeatable, [])
+    .option('--place <text>', 'case-insensitive substring match over place name/region/country')
+    .option('--from <iso>', 'captured-at lower bound (ISO date or datetime)')
+    .option('--to <iso>', 'captured-at upper bound (ISO date or datetime)')
+    .option('--has-gps', 'only items with GPS coordinates')
+    .option('--no-has-gps', 'only items without GPS coordinates')
+    .option('--folder <path>', 'restrict results to a known catalog folder')
+    .option('--media <scope>', 'media scope: all, video, or photo', libraryMediaOption, 'all')
+    .option('--hidden <scope>', 'hidden scope: exclude, only, or include', hiddenOption, 'exclude')
+    .option('--of-person <personId>', 'select every file for a person id')
+    .option('--skip-shared', 'skip files that also contain another recognized person', false)
+    .option('--json', 'machine-readable NDJSON output', false);
+
+const library = program.command('library').description('Manage catalog library entries');
+
+addLibraryScopeOptions(library.command('hide').description('Hide selected library entries'))
+  .action(async (query: string | undefined, options: LibraryCommandOptions, command: Command) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'library_hide');
+    const scope = await libraryScopeFrom(query, options, command);
+    if (!scope.ok) {
+      emitError(json, scope.error);
+      return;
+    }
+    const result = await api.libraryHide({ scope: scope.value });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    emitRaw(json, result.value, '');
+    emitCompleted(json, result.value, libraryHideHuman('Hidden', result.value));
+  });
+
+addLibraryScopeOptions(library.command('unhide').description('Restore hidden library entries'))
+  .action(async (query: string | undefined, options: LibraryCommandOptions, command: Command) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'library_unhide');
+    const scope = await libraryScopeFrom(query, options, command);
+    if (!scope.ok) {
+      emitError(json, scope.error);
+      return;
+    }
+    const result = await api.libraryUnhide({ scope: scope.value });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    emitRaw(json, result.value, '');
+    emitCompleted(json, result.value, libraryHideHuman('Restored', result.value));
+  });
+
+addLibraryScopeOptions(library.command('trash').description('Move selected library entries to the macOS Trash'))
+  .option('--dry-run', 'show the plan without moving files or deleting records', false)
+  .option('--yes', 'confirm moving selected files to Trash', false)
+  .action(async (query: string | undefined, options: LibraryTrashOptions, command: Command) => {
+    const json = isJsonMode(options);
+    const scope = await libraryScopeFrom(query, options, command);
+    emitStarted(json, 'library_trash');
+    if (!scope.ok) {
+      emitError(json, scope.error);
+      return;
+    }
+    if (options.yes !== true) {
+      const planned = await api.libraryTrash({ scope: scope.value, confirm: false, dryRun: true });
+      if (!planned.ok) {
+        emitError(json, planned.error);
+        return;
+      }
+      if (planned.value.kind !== 'plan') {
+        emitError(json, appError('internal', 'Trash dry-run did not return a plan'));
+        return;
+      }
+      emitRaw(json, planned.value, libraryTrashPlanHuman(planned.value));
+      if (options.dryRun === true) {
+        emitCompleted(json, planned.value, libraryTrashPlanHuman(planned.value));
+        return;
+      }
+      emitError(json, appError('confirmation_required', 'Run again with --yes to move files to Trash'));
+      return;
+    }
+    const result = await api.libraryTrash({ scope: scope.value, confirm: true, dryRun: false });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    if (result.value.kind === 'plan') {
+      emitCompleted(json, result.value, libraryTrashPlanHuman(result.value));
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, libraryTrashSummaryHuman, true);
   });
 
 const variants = program.command('variants').description('Inspect and manage analysis variants');
@@ -2193,6 +2380,24 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
     ].join('\t');
   });
   return [...rows, `${data.count} of ${data.total} result(s)`].join('\n');
+};
+
+type LibraryHideResult = Awaited<ReturnType<ApiClient['libraryHide']>> extends Result<infer T, AppError> ? T : never;
+type LibraryTrashResult = Awaited<ReturnType<ApiClient['libraryTrash']>> extends Result<infer T, AppError> ? T : never;
+type LibraryTrashPlan = Extract<LibraryTrashResult, { kind: 'plan' }>;
+
+const libraryHideHuman = (verb: string, data: LibraryHideResult): string =>
+  `${verb} ${data.changed} of ${data.requested} file(s); unchanged ${data.unchanged}`;
+
+const libraryTrashPlanHuman = (data: LibraryTrashPlan): string => {
+  const roots = data.roots.map((root) => `${root.displayName}\t${root.currentPath}\t${root.writable ? 'writable' : 'read-only'}\t${root.fileCount}`).join('\n');
+  return [`Plan: ${data.total} file(s) (${data.videoCount} video, ${data.photoCount} photo)`, roots].filter((line) => line.length > 0).join('\n');
+};
+
+const libraryTrashSummaryHuman = (data: unknown): string => {
+  const parsed = libraryTrashSummarySchema.safeParse(data);
+  if (!parsed.success) return 'Library trash complete';
+  return `Moved ${parsed.data.filesTrashed} file(s) to Trash; deleted ${parsed.data.analysesDeleted} analysis record(s) and ${parsed.data.artifactPathsDeleted} artifact path(s)`;
 };
 
 const variantNdjsonRow = (variant: VariantListItem) => ({

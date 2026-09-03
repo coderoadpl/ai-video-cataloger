@@ -33,6 +33,14 @@ describe('search command filters', () => {
     expect(findEvent(events, 'completed')?.data).toMatchObject({ query: null, results: [], count: 0, total: 0 });
   });
 
+  it('accepts --hidden as a filter-only search scope', async () => {
+    const result = await runCli(['search', '--hidden', 'only', '--json'], { cwd: testDir });
+
+    expect(result.exitCode).toBe(0);
+    const events = parseJsonEvents(result.stdout);
+    expect(events[1]).toMatchObject({ query: null, results: [], count: 0, total: 0 });
+  });
+
   it('reports a validation error for an unknown --folder', async () => {
     const result = await runCli(['search', '--tag', 'beach', '--folder', '/definitely/not/a/catalog/folder', '--json'], { cwd: testDir });
 

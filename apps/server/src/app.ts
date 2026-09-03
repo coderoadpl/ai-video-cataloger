@@ -19,6 +19,10 @@ import {
   enqueueProcess,
   enqueueProcessDrive,
   libraryFacets,
+  libraryHide,
+  librarySelectionPreview,
+  libraryTrash,
+  libraryUnhide,
   faceArtifactsStatus,
   facesForget,
   facesIndex,
@@ -620,6 +624,7 @@ export const buildApp = (deps: AppDeps): Hono => {
         to: input.value.to ?? null,
         hasGps: input.value.hasGps ?? null,
         folderId: input.value.folderId ?? null,
+        hidden: input.value.hidden,
       },
       sort: input.value.sort,
       thumbnails: input.value.thumbnails,
@@ -632,6 +637,52 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.libraryPreview.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.libraryPreview.output);
     return respond(await libraryPreviewDetail(deps, input.value), API_ROUTES.libraryPreview.output);
+  });
+
+  app.post(API_ROUTES.librarySelectionPreview.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.librarySelectionPreview.output);
+    const input = parseInput(API_ROUTES.librarySelectionPreview.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.librarySelectionPreview.output);
+    return respond(await librarySelectionPreview(deps, input.value), API_ROUTES.librarySelectionPreview.output);
+  });
+
+  app.post(API_ROUTES.libraryHide.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.libraryHide.output);
+    const input = parseInput(API_ROUTES.libraryHide.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.libraryHide.output);
+    return respond(await withCatalogWriteLock(deps, () => libraryHide(deps, input.value)), API_ROUTES.libraryHide.output);
+  });
+
+  app.post(API_ROUTES.libraryUnhide.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.libraryUnhide.output);
+    const input = parseInput(API_ROUTES.libraryUnhide.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.libraryUnhide.output);
+    return respond(await withCatalogWriteLock(deps, () => libraryUnhide(deps, input.value)), API_ROUTES.libraryUnhide.output);
+  });
+
+  app.post(API_ROUTES.libraryTrash.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.libraryTrash.output);
+    const input = parseInput(API_ROUTES.libraryTrash.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.libraryTrash.output);
+    const lease = await deps.globalCatalog.acquireLease();
+    if (!lease.ok) return respond(lease, API_ROUTES.libraryTrash.output);
+    const result = await libraryTrash(deps, input.value);
+    if (!result.ok) {
+      await deps.globalCatalog.releaseLease();
+      return respond(result, API_ROUTES.libraryTrash.output);
+    }
+    if (result.value.kind === 'job') {
+      deps.jobs.onSettled(result.value.jobId, async () => {
+        await deps.globalCatalog.releaseLease();
+      });
+    } else {
+      await deps.globalCatalog.releaseLease();
+    }
+    return respond(result, API_ROUTES.libraryTrash.output);
   });
 
   app.get(API_ROUTES.libraryCollection.path, async (context) => {
@@ -648,6 +699,7 @@ export const buildApp = (deps: AppDeps): Hono => {
         hasGps: input.value.hasGps ?? null,
         folderId: input.value.folderId ?? null,
         hideUnavailable: input.value.hideUnavailable,
+        hidden: input.value.hidden,
       },
       sort: input.value.sort,
       media: input.value.media,

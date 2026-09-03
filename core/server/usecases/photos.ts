@@ -1072,7 +1072,7 @@ export interface PhotosSearchOutput {
 
 export const photosSearch = async (
   deps: PhotosDeps,
-  input: { query: string; limit: number; offset: number },
+  input: { query: string; hidden?: 'exclude' | 'only' | 'include' | undefined; limit: number; offset: number },
 ): Promise<Result<PhotosSearchOutput, AppError>> => {
   const sanitized = sanitizeSearchQuery(input.query);
   if (!sanitized.ok) return sanitized;
@@ -1082,6 +1082,7 @@ export const photosSearch = async (
   const rows = await deps.photos.searchPhotos({
     match: buildSearchMatch(sanitized.value.parts, equivalents),
     rankingTerms: sanitized.value.rankingTerms,
+    hidden: input.hidden ?? 'exclude',
     limit: input.limit,
     offset: input.offset,
   });

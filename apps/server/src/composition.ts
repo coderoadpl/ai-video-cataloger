@@ -24,6 +24,7 @@ import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
 import { GeoNamesPlacesAdapter } from '@adapters/places/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { FinderTrashPort } from '@adapters/fs/finder-trash.js';
 import { SipsPhotoMediaAdapter } from '@adapters/photo-media/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
@@ -87,6 +88,7 @@ import type {
   SecretsStore,
   SpendLedgerPort,
   TranscriberPort,
+  TrashPort,
   WhisperRuntimePort,
 } from '@core/server/index.js';
 
@@ -124,6 +126,7 @@ export interface AppDeps {
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
   faceEngine: FaceEnginePort;
+  trash: TrashPort;
   places: PlacesPort;
   jobs: JobsPort;
   backupDestination(): Promise<Result<BackupDestinationPort, AppError>>;
@@ -153,6 +156,7 @@ export interface AppConfig {
   catalogLockMode?: 'lazy' | 'eager' | undefined;
   openExternal?: ((url: string) => Promise<void>) | undefined;
   saveFile?: FileSavePort['save'] | undefined;
+  moveToTrash?: TrashPort['moveToTrash'] | undefined;
   googleOAuthClientId?: string | undefined;
   googleOAuthClientSecret?: string | undefined;
 }
@@ -161,6 +165,7 @@ export interface InMemoryDepsConfig {
   version: string;
   workingDirectory: string;
   saveFile?: FileSavePort['save'] | undefined;
+  moveToTrash?: TrashPort['moveToTrash'] | undefined;
 }
 
 export type InMemoryDepsFactory = (config: InMemoryDepsConfig) => AppDeps;
@@ -230,6 +235,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     lockMode: config.catalogLockMode ?? 'lazy',
   });
   const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
+  const trash = config.moveToTrash === undefined ? new FinderTrashPort() : { moveToTrash: config.moveToTrash };
   const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
   const oauthClientId = resolveGoogleOAuthClientId(config);
   const backupDestination = () => createGoogleBackupDestination({
@@ -276,6 +282,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     localAi,
     downloads,
     faceEngine: new OnnxFaceEngineAdapter({ downloads }),
+    trash,
     places: new GeoNamesPlacesAdapter({ fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }), datasetPath: null }),
     jobs,
     backupDestination,

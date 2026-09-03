@@ -176,6 +176,29 @@ describe('watchCatalogFolder', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it('holds the refresh while a library trash run is active and fires once it settles', async () => {
+    const watcher = fakeWatcher();
+    const clock = manualClock();
+    const records = [jobRecord('library_trash', 'running')];
+    const onRefresh = vi.fn();
+
+    await watchCatalogFolder(
+      { watcher: watcher.port, jobs: jobsListing(records) },
+      '/drive',
+      onRefresh,
+      { schedule: clock.schedule },
+    );
+
+    watcher.change();
+    await flush();
+    expect(onRefresh).not.toHaveBeenCalled();
+
+    records[0] = jobRecord('library_trash', 'completed');
+    await clock.tick();
+    await flush();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it('coalesces changes that arrive while the refresh is held', async () => {
     const watcher = fakeWatcher();
     const clock = manualClock();

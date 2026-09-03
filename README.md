@@ -87,7 +87,10 @@ health
 doctor [--json]
 check [folder] [--json]
 scan <folder> [--json]
-search [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--sort relevance|captured_desc|captured_asc|name_asc] [--limit <n>] [--offset <n>] [--json]
+search [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--hidden exclude|only|include] [--sort relevance|captured_desc|captured_asc|name_asc] [--limit <n>] [--offset <n>] [--json]
+library hide [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--hidden exclude|only|include] [--media all|video|photo] [--fingerprint <id>...] [--of-person <personId>] [--skip-shared] [--json]
+library unhide [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--hidden exclude|only|include] [--media all|video|photo] [--fingerprint <id>...] [--of-person <personId>] [--skip-shared] [--json]
+library trash [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--hidden exclude|only|include] [--media all|video|photo] [--fingerprint <id>...] [--of-person <personId>] [--skip-shared] [--dry-run] [--yes] [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
 process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
@@ -186,11 +189,21 @@ substring over the place name/region/country; `--from`/`to` bound `captured_at`
 (ISO date or datetime). `--has-gps`/`--no-has-gps` filter on GPS presence;
 `--folder <path>` restricts results to a folder the catalog already knows
 (an unrecognised path is a validation error, same taxonomy as every other
-`search` failure — no new error or exit codes). `--sort` defaults to
+`search` failure — no new error or exit codes). `--hidden` defaults to
+`exclude`; use `--hidden only` to list hidden videos and `--hidden include` to
+mix hidden and visible videos. `--sort` defaults to
 `relevance` when a text query is present and to `captured_desc` otherwise; the
 `--json` envelope's `completed` payload always carries `total` (the full
 filtered match count, independent of `--limit`/`--offset`) alongside
 `results[].capturedAt`/`results[].place`.
+
+`library hide` and `library unhide` apply the same filter flags as `search` and
+can also select by `--fingerprint`, `--media`, or `--of-person`. Exactly one
+selection scope is required. `library trash` previews the selected files with
+`--dry-run`; moving files to the macOS Trash requires `--yes` and refuses the
+whole selection when any affected root is unavailable or not writable. JSON
+mode streams the normal NDJSON `started`, row/progress, `completed`, and
+`error` envelopes; missing confirmation exits as `CONFIRMATION_REQUIRED` (18).
 
 In `--json` mode, a successful `process` completion adds `configId` and
 `selectedConfigId` to its `completed.data`. A `catalog_index_skipped` progress

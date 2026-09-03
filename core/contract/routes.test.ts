@@ -32,9 +32,15 @@ import {
   collectionInputSchema,
   collectionItemSchema,
   collectionOutputSchema,
+  libraryHideOutputSchema,
   libraryPreviewInputSchema,
   libraryPreviewOutputSchema,
   libraryPreviewPersonSchema,
+  librarySelectionPreviewInputSchema,
+  librarySelectionPreviewOutputSchema,
+  libraryTrashSummarySchema,
+  libraryTrashOutputSchema,
+  libraryUnhideOutputSchema,
   searchInputSchema,
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
@@ -104,6 +110,99 @@ describe('route schemas', () => {
         reason: null,
       }],
     })).toMatchObject({ total: 1, created: 1, dryRun: true });
+  });
+
+  it('defines library hide, unhide, trash, and selection preview routes with hidden-scope defaults', () => {
+    expect(API_ROUTES.librarySelectionPreview).toMatchObject({
+      method: 'POST',
+      path: '/api/library/selection/preview',
+    });
+    expect(API_ROUTES.libraryHide).toMatchObject({ method: 'POST', path: '/api/library/hide' });
+    expect(API_ROUTES.libraryUnhide).toMatchObject({ method: 'POST', path: '/api/library/unhide' });
+    expect(API_ROUTES.libraryTrash).toMatchObject({ method: 'POST', path: '/api/library/trash' });
+    expect(searchInputSchema.parse({ query: 'clip' }).hidden).toBe('exclude');
+    expect(collectionInputSchema.parse({}).hidden).toBe('exclude');
+    expect(librarySelectionPreviewInputSchema.parse({
+      scope: { kind: 'filter', filter: { query: 'clip' } },
+    }).scope).toMatchObject({ kind: 'filter', filter: { hidden: 'exclude', media: 'all' } });
+    expect(librarySelectionPreviewOutputSchema.parse({
+      total: 1,
+      videoCount: 1,
+      photoCount: 0,
+      hiddenCount: 0,
+      visibleCount: 1,
+      sharedWithOtherPeople: 0,
+      roots: [{ folderId: 'path-aaaaaaaa', displayName: 'root', currentPath: '/library', fileCount: 1, writable: true, online: true }],
+    }).total).toBe(1);
+    expect(libraryHideOutputSchema.parse({ requested: 1, changed: 1, unchanged: 0, videos: 1, photos: 0 }).changed).toBe(1);
+    expect(libraryUnhideOutputSchema.parse({ requested: 1, changed: 1, unchanged: 0, videos: 1, photos: 0 }).changed).toBe(1);
+    expect(libraryTrashOutputSchema.parse({
+      kind: 'plan',
+      total: 1,
+      videoCount: 1,
+      photoCount: 0,
+      roots: [{ folderId: 'path-aaaaaaaa', displayName: 'root', currentPath: '/library', fileCount: 1, writable: true, online: true }],
+      artifactPaths: [],
+    }).kind).toBe('plan');
+  });
+
+  it('keeps job-kind schema exhaustive for every public job kind including library trash', () => {
+    const expectedJobKinds = [
+      'process',
+      'process_drive',
+      'variant_projection',
+      'whisper_download',
+      'whisper_runtime_install',
+      'local_ai_pull',
+      'face_artifact_download',
+      'faces_index',
+      'faces_recluster',
+      'faces_exemplars',
+      'materialize',
+      'thumbnails',
+      'gps_backfill',
+      'photo_scan',
+      'photo_proxies',
+      'photo_grid_thumbs',
+      'photo_process',
+      'photo_gps_backfill',
+      'photo_import_libra',
+      'library_trash',
+      'backup',
+      'restore',
+    ] satisfies ReadonlyArray<ReturnType<typeof jobKindSchema.parse>>;
+
+    expect(jobKindSchema.options).toEqual(expectedJobKinds);
+  });
+
+  it('round-trips libraryTrashSummarySchema through jobResultSchema and keeps the union member exclusive', () => {
+    const sample = {
+      kind: 'library_trash' as const,
+      filesTrashed: 2,
+      videosTrashed: 1,
+      photosTrashed: 1,
+      filesFailed: 0,
+      filesNotAttempted: 3,
+      failedFingerprint: null,
+      cancelled: true,
+      analysesDeleted: 2,
+      observationsDeleted: 1,
+      peopleDeleted: 0,
+      artifactPathsDeleted: 4,
+      snapshotsRewritten: 1,
+      roots: ['/library'],
+    };
+
+    expect(libraryTrashSummarySchema.parse(sample)).toEqual(sample);
+    expect(jobResultSchema.parse(sample)).toEqual(sample);
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
+    expect(acceptingCount).toBe(1);
+    const libraryMember = jobResultSchema.options[0];
+    if (libraryMember === undefined) throw new Error('Missing library trash summary member');
+    const otherMembersAccepting = jobResultSchema.options.slice(1).filter((option) => option.safeParse(sample).success);
+    expect(otherMembersAccepting).toEqual([]);
+    expect(libraryMember.safeParse(sample).success).toBe(true);
+    expect(libraryTrashSummarySchema.safeParse({ root: '/photos', filesTotal: 1, photosNew: 1 }).success).toBe(false);
   });
 
   it('retains optional folder scope on folder-backed routes', () => {
@@ -418,13 +517,13 @@ describe('route schemas', () => {
       to: '2026-01-31T00:00:00.000Z',
       hasGps: 'true',
       folderId: '11111111-1111-4111-8111-111111111111',
+      hidden: 'exclude',
       sort: 'captured_desc',
       thumbnails: 'existing',
       limit: '25',
       offset: '10',
     });
     expect(parsed).toEqual({
-      query: undefined,
       tags: ['beach', 'sunset'],
       people: ['p1', 'p2'],
       place: 'wroc',
@@ -432,6 +531,7 @@ describe('route schemas', () => {
       to: '2026-01-31T00:00:00.000Z',
       hasGps: true,
       folderId: '11111111-1111-4111-8111-111111111111',
+      hidden: 'exclude',
       sort: 'captured_desc',
       thumbnails: 'existing',
       limit: 25,
@@ -1031,7 +1131,7 @@ describe('route schemas', () => {
         places: [{ name: 'Wrocław', country: 'Poland', countryCode: 'PL', count: 1 }],
         years: [{ year: '2026', count: 3 }],
         folders: [{ folderId: 'path-deadbeef', displayName: 'Kamper', currentPath: '/media/kamper', online: false, count: 3 }],
-        counts: { total: 10, withGps: 3, withoutCaptureDate: 2, missing: 1, offlineFolders: 1 },
+        counts: { total: 10, withGps: 3, withoutCaptureDate: 2, missing: 1, hidden: 0, offlineFolders: 1 },
       });
       expect(parsed.tags[0]?.name).toBe('beach');
     });
@@ -1043,7 +1143,7 @@ describe('route schemas', () => {
         places: [],
         years: [],
         folders: [],
-        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0 },
+        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 0, offlineFolders: 0 },
       }).success).toBe(true);
     });
 
@@ -1303,7 +1403,7 @@ describe('route schemas', () => {
 
   it('round-trips photosSearch, photosVariants* routes, and photosDetailOutputSchema.analysis both null and non-null (P6)', () => {
     expect(API_ROUTES.photosSearch.input.safeParse({ query: '', limit: 50, offset: 0 }).success).toBe(false);
-    expect(API_ROUTES.photosSearch.input.parse({ query: 'bicycle' })).toEqual({ query: 'bicycle', limit: 50, offset: 0 });
+    expect(API_ROUTES.photosSearch.input.parse({ query: 'bicycle' })).toEqual({ query: 'bicycle', hidden: 'exclude', limit: 50, offset: 0 });
 
     const searched = photosSearchOutputSchema.parse({
       media: 'photo',

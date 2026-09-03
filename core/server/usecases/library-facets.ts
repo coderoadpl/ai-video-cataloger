@@ -1,9 +1,10 @@
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 
-import type { FileSystemPort, GlobalCatalogStore, LibraryFacetFolder, LibraryFacetPerson, LibraryFacets } from '../ports.js';
+import type { FileSystemPort, GlobalCatalogStore, LibraryFacetFolder, LibraryFacetPerson, LibraryFacets, PhotosStore } from '../ports.js';
 
 export interface LibraryFacetsDeps {
   globalCatalog: GlobalCatalogStore;
+  photos: PhotosStore;
   fs: FileSystemPort;
 }
 
@@ -34,6 +35,8 @@ export const libraryFacets = async (
 ): Promise<Result<LibraryFacetsOutput, AppError>> => {
   const facets = await deps.globalCatalog.listLibraryFacets();
   if (!facets.ok) return facets;
+  const hiddenPhotos = await deps.photos.countHidden();
+  if (!hiddenPhotos.ok) return hiddenPhotos;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
 
@@ -53,6 +56,10 @@ export const libraryFacets = async (
     ...facets.value,
     people: facetPeople,
     folders,
-    counts: { ...facets.value.counts, offlineFolders: folders.filter((folder) => !folder.online).length },
+    counts: {
+      ...facets.value.counts,
+      hidden: facets.value.counts.hidden + hiddenPhotos.value,
+      offlineFolders: folders.filter((folder) => !folder.online).length,
+    },
   });
 };

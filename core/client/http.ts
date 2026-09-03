@@ -44,7 +44,11 @@ import {
   jobOutputSchema,
   jobsListOutputSchema,
   libraryFacetsOutputSchema,
+  libraryHideOutputSchema,
   libraryPreviewOutputSchema,
+  librarySelectionPreviewOutputSchema,
+  libraryTrashOutputSchema,
+  libraryUnhideOutputSchema,
   localAiDaemonStopOutputSchema,
   localAiRequirementsOutputSchema,
   providersListOutputSchema,
@@ -810,6 +814,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
         ['to', parsed.value.to ?? null],
         ['hasGps', parsed.value.hasGps === undefined ? null : String(parsed.value.hasGps)],
         ['folderId', parsed.value.folderId ?? null],
+        ['hidden', parsed.value.hidden],
         ['sort', parsed.value.sort ?? null],
         ['thumbnails', parsed.value.thumbnails],
         ['limit', String(parsed.value.limit)],
@@ -838,6 +843,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
         ['sort', parsed.value.sort ?? null],
         ['media', parsed.value.media],
         ['hideUnavailable', String(parsed.value.hideUnavailable)],
+        ['hidden', parsed.value.hidden],
         ['limit', String(parsed.value.limit)],
         ['cursor', parsed.value.cursor ?? null],
       ]),
@@ -855,6 +861,54 @@ export const createApiClient = (options: ApiClientOptions) => ({
       queryPath(API_ROUTES.libraryPreview.path, [['fingerprint', parsed.value.fingerprint]]),
       libraryPreviewOutputSchema,
       undefined,
+      signal,
+    );
+  },
+  librarySelectionPreview: (input: z.input<typeof API_ROUTES.librarySelectionPreview.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.librarySelectionPreview.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.librarySelectionPreview.method,
+      API_ROUTES.librarySelectionPreview.path,
+      librarySelectionPreviewOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  libraryHide: (input: z.input<typeof API_ROUTES.libraryHide.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.libraryHide.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.libraryHide.method,
+      API_ROUTES.libraryHide.path,
+      libraryHideOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  libraryUnhide: (input: z.input<typeof API_ROUTES.libraryUnhide.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.libraryUnhide.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.libraryUnhide.method,
+      API_ROUTES.libraryUnhide.path,
+      libraryUnhideOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  libraryTrash: (input: z.input<typeof API_ROUTES.libraryTrash.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.libraryTrash.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.libraryTrash.method,
+      API_ROUTES.libraryTrash.path,
+      libraryTrashOutputSchema,
+      parsed.value,
       signal,
     );
   },
@@ -1221,6 +1275,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.photosSearch.method,
       queryPath(API_ROUTES.photosSearch.path, [
         ['query', parsed.value.query],
+        ['hidden', parsed.value.hidden],
         ['limit', String(parsed.value.limit)],
         ['offset', String(parsed.value.offset)],
       ]),

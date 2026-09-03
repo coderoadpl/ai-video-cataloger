@@ -6,8 +6,8 @@ import { analysisLanguageResolutionSchema, configDescriptorSchema, configId } fr
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 16;
-export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 12;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 17;
+export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 13;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -75,6 +75,7 @@ export const catalogFileSchema = z.object({
   analyzer: z.string().nullable(),
   model: z.string().nullable(),
   missingAt: z.number().int().nonnegative().nullable().default(null),
+  hiddenAt: z.number().int().nonnegative().nullable().optional(),
   capturedAt: z.iso.datetime().nullable().default(null),
   capturedAtSource: z.enum(['container', 'manual']).nullable().default(null),
   gpsSource: gpsSourceSchema.nullable().default(null),

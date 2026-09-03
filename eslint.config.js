@@ -19,6 +19,11 @@ const NFC_NORMALIZE_BAN = {
   message: 'Use canonicalPath from core/domain instead of calling .normalize(\'NFC\') directly.',
 };
 
+const LIBRARY_TRASH_DELETE_BAN = {
+  selector: 'CallExpression[callee.property.name=/^(deleteFile|deletePath)$/]',
+  message: 'library-trash.ts may only delete artifacts through library-trash-artifacts.ts.',
+};
+
 const RAW_COLOR_BAN = {
   selector: 'Literal[value=/(#[0-9a-fA-F]{3,8}|rgba?\\(|hsla?\\()/i]',
   message: 'Raw color values are banned outside theme.ts; read colors from the MUI theme tokens.',
@@ -573,6 +578,12 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    files: ['core/server/usecases/library-trash.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', AS_BAN, NFC_NORMALIZE_BAN, LIBRARY_TRASH_DELETE_BAN],
     },
   },
   {

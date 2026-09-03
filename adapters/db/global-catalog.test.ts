@@ -128,6 +128,60 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(search.ok && search.value.rows[0]?.tags).toEqual(['a-clip']);
   });
 
+  it('excludes hidden files from default search, map locations, and facets', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const hiddenFile: CatalogFile = {
+      ...file,
+      fingerprint: 'fp-hidden',
+      fileName: 'hidden.mp4',
+      gpsLat: 52,
+      gpsLon: 21,
+      capturedAt: '2026-01-04T00:00:00.000Z',
+    };
+    const visibleFile: CatalogFile = {
+      ...file,
+      fingerprint: 'fp-visible',
+      fileName: 'visible.mp4',
+      gpsLat: 50,
+      gpsLon: 19,
+      capturedAt: '2026-01-05T00:00:00.000Z',
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFile(hiddenFile);
+    await store.upsertFile(visibleFile);
+    await store.upsertAnalysis({ fingerprint: 'fp-hidden', finalName: null, description: 'hidden clip', transcript: '', language: 'en', tags: ['hidden-tag'] });
+    await store.upsertAnalysis({ fingerprint: 'fp-visible', finalName: null, description: 'visible clip', transcript: '', language: 'en', tags: ['visible-tag'] });
+    expect(await store.setHidden(['fp-hidden'], 1)).toMatchObject({ ok: true, value: { changed: 1, unchanged: 0 } });
+
+    const defaultSearch = await store.search({ match: null, rankingTerms: [], filters: NO_SEARCH_FILTERS, sort: 'captured_desc', limit: 10, offset: 0 });
+    const hiddenSearch = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, hidden: 'only' },
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+    const includedSearch = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, hidden: 'include' },
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+    const locations = await store.listLocations();
+    const facets = await store.listLibraryFacets();
+
+    expect(defaultSearch.ok && defaultSearch.value.rows.map((row) => row.fingerprint)).toEqual(['fp-visible']);
+    expect(hiddenSearch.ok && hiddenSearch.value.rows.map((row) => row.fingerprint)).toEqual(['fp-hidden']);
+    expect(includedSearch.ok && includedSearch.value.rows.map((row) => row.fingerprint)).toEqual(['fp-visible', 'fp-hidden']);
+    expect(locations.ok && locations.value.rows.map((row) => row.fingerprint)).toEqual(['fp-visible']);
+    expect(facets.ok && facets.value.counts).toMatchObject({ total: 1, hidden: 1 });
+    expect(facets.ok && facets.value.tags.map((tag) => tag.name)).toEqual(['visible-tag']);
+  });
+
   it('stores variants independently and resolves explicit, folder-default, and newest selection', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -1692,7 +1746,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(afterSnapshot).toEqual({
       ...beforeSnapshot,
       analyses: (beforeSnapshot.analyses ?? []).map((row) => [...row, null, null]),
-      files: (beforeSnapshot.files ?? []).map((row) => [...row, null, null]),
+      files: (beforeSnapshot.files ?? []).map((row) => [...row, null, null, null]),
     });
     expect(afterObservations).toEqual(beforeObservations.map((row) => [...row, 'video']));
   });
@@ -1832,7 +1886,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       ? Buffer.from(String(backupRows[0].embeddingBase64), 'base64')
       : null;
     expect(backedUpEmbedding).toEqual(photoEmbedding instanceof Uint8Array ? Buffer.from(photoEmbedding) : null);
-    expect(version).toBe(16);
+    expect(version).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     expect(observations).toEqual([['fp-abc:face:1:1', 'video', videoCrop]]);
     expect(after).toEqual(before);
     expect(await readFile(videoCrop, 'utf8')).toBe('video-crop');
@@ -2739,7 +2793,7 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
       places: [],
       years: [],
       folders: [],
-      counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0 },
+      counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 0 },
     });
   });
 
@@ -2827,7 +2881,7 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
     expect(result.value.people).toEqual([{ personId: 'person-facet', displayName: 'person-facet', count: 1 }]);
     expect(result.value.places).toEqual([{ name: 'Wrocław', country: 'Poland', countryCode: 'PL', count: 1 }]);
     expect(result.value.years).toEqual([{ year: '2026', count: 1 }]);
-    expect(result.value.counts).toEqual({ total: 3, withGps: 1, withoutCaptureDate: 2, missing: 1 });
+    expect(result.value.counts).toEqual({ total: 3, withGps: 1, withoutCaptureDate: 2, missing: 1, hidden: 0 });
     expect(result.value.folders).toEqual([
       { folderId: folder.folderId, displayName: folder.displayName, currentPath: folder.currentPath, count: 3 },
     ]);

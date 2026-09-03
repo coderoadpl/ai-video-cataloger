@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CatalogFile, CatalogFolder } from '@core/domain/index.js';
 
-import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
+import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryPhotosStore } from '../../../test/server/usecases/test-fakes.js';
 import { libraryFacets } from './library-facets.js';
 
 const folderOnline: CatalogFolder = {
@@ -53,10 +53,20 @@ const personRecord = (personId: string, displayName: string | null) => ({
   exemplarCount: 0,
 });
 
+const deps = (globalCatalog: InMemoryGlobalCatalogStore, fs: InMemoryFileSystem) => ({
+  globalCatalog,
+  fs,
+  photos: new InMemoryPhotosStore(),
+});
+
 describe('libraryFacets people ordering', () => {
   it('attaches the People-surface index to unnamed people and sorts named first, then unnamed by that index', async () => {
     const globalCatalog = new InMemoryGlobalCatalogStore();
     const fs = new InMemoryFileSystem();
+    await globalCatalog.upsertFolder(folderOnline);
+    await globalCatalog.upsertFile(file('fp-1', folderOnline.folderId));
+    await globalCatalog.upsertFile(file('fp-2', folderOnline.folderId));
+    await globalCatalog.upsertFile(file('fp-3', folderOnline.folderId));
     await globalCatalog.upsertPerson(personRecord('p-unnamed-a', null));
     await globalCatalog.upsertPerson(personRecord('p-named', 'Alex'));
     await globalCatalog.upsertPerson(personRecord('p-unnamed-b', null));
@@ -76,7 +86,7 @@ describe('libraryFacets people ordering', () => {
       personId: 'p-unnamed-b', cropPath: null, media: 'video',
     });
 
-    const result = await libraryFacets({ globalCatalog, fs });
+    const result = await libraryFacets(deps(globalCatalog, fs));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -91,7 +101,7 @@ describe('libraryFacets', () => {
     const globalCatalog = new InMemoryGlobalCatalogStore();
     const fs = new InMemoryFileSystem();
 
-    const result = await libraryFacets({ globalCatalog, fs });
+    const result = await libraryFacets(deps(globalCatalog, fs));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -101,7 +111,7 @@ describe('libraryFacets', () => {
       places: [],
       years: [],
       folders: [],
-      counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0 },
+      counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 0, offlineFolders: 0 },
     });
   });
 
@@ -114,7 +124,7 @@ describe('libraryFacets', () => {
     await globalCatalog.upsertFile(file('fp-1', folderOnline.folderId));
     await globalCatalog.upsertFile(file('fp-2', folderOffline.folderId));
 
-    const result = await libraryFacets({ globalCatalog, fs });
+    const result = await libraryFacets(deps(globalCatalog, fs));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -131,7 +141,7 @@ describe('libraryFacets', () => {
     await globalCatalog.upsertFile(file('fp-1', folderOnline.folderId));
     await globalCatalog.upsertFile(file('fp-2', folderOnline.folderId));
 
-    const result = await libraryFacets({ globalCatalog, fs });
+    const result = await libraryFacets(deps(globalCatalog, fs));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;

@@ -23,6 +23,7 @@ export const files = sqliteTable('files', {
   analyzer: text('analyzer'),
   model: text('model'),
   missingAt: integer('missing_at'),
+  hiddenAt: integer('hidden_at'),
   selectedConfigId: text('selected_config_id'),
   capturedAt: text('captured_at'),
   capturedAtSource: text('captured_at_source'),
@@ -387,4 +388,9 @@ export const migrateGlobalCatalogSchemaSqlV13 = [
 export const migrateGlobalCatalogSchemaSqlV14 = [
   'ALTER TABLE analyses ADD COLUMN resolved_output_language TEXT',
   'ALTER TABLE analyses ADD COLUMN resolved_tag_language TEXT',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV17 = [
+  'ALTER TABLE files ADD COLUMN hidden_at INTEGER',
+  'CREATE INDEX IF NOT EXISTS files_hidden_at_idx ON files(hidden_at)',
 ] as const;
