@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Alert, Box, CircularProgress, Dialog, DialogTitle, IconButton, Typography } from '@mui/material';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogTitle, IconButton, Typography } from '@mui/material';
+
+import type { CollectionInput } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { CancelIcon } from '../../components/ui/icons.js';
@@ -33,16 +35,19 @@ export const PersonMediaPanel = ({
   const dictionary = useDictionary();
   const photoRoots = usePhotoRoots({ active: true });
   const [viewerFingerprint, setViewerFingerprint] = useState<string | null>(null);
-  const page = useQuery(actions.libraryCollection({
+  const collectionInput = {
     tags: [],
     people: [personId],
     sort: 'captured_desc',
     media,
     hideUnavailable: false,
     limit: PAGE_LIMIT,
-  }));
+  } satisfies CollectionInput;
+  const page = useInfiniteQuery(actions.libraryCollectionInfinite(collectionInput));
 
-  const items = page.data?.items ?? [];
+  const pages = page.data?.pages ?? [];
+  const items = pages.flatMap((loadedPage) => loadedPage.items);
+  const total = pages[0]?.total ?? 0;
   const order = items.map((item) => item.fingerprint);
   const viewerItem = viewerFingerprint === null
     ? null
@@ -64,7 +69,7 @@ export const PersonMediaPanel = ({
     <Dialog open onClose={onClose} fullWidth maxWidth="lg" data-testid="person-media-panel">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Typography variant="h2" component="span" sx={{ flex: 1, minWidth: 0 }} noWrap title={label}>
-          {labelWithCount(label, page.data?.total ?? 0)}
+          {labelWithCount(label, total)}
         </Typography>
         <IconButton
           aria-label={dictionary.library.viewerClose}
@@ -84,11 +89,26 @@ export const PersonMediaPanel = ({
             {dictionary.people.personMediaEmpty}
           </Alert>
         ) : (
-          <LibraryGrid
-            sections={[{ key: personId, label: dictionary.people.personMediaSection, offline: false, offlineReason: null, items }]}
-            onOpen={(item) => setViewerFingerprint(item.fingerprint)}
-            onOpenInAnalysis={openInAnalysis}
-          />
+          <>
+            <LibraryGrid
+              sections={[{ key: personId, label: dictionary.people.personMediaSection, offline: false, offlineReason: null, items }]}
+              onOpen={(item) => setViewerFingerprint(item.fingerprint)}
+              onOpenInAnalysis={openInAnalysis}
+            />
+            {page.hasNextPage ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => { void page.fetchNextPage(); }}
+                  disabled={page.isFetchingNextPage}
+                  data-testid="person-media-load-more"
+                >
+                  {page.isFetchingNextPage ? <CircularProgress size={16} /> : dictionary.library.loadMore}
+                </Button>
+              </Box>
+            ) : null}
+          </>
         )}
       </Box>
       {viewerItem === null ? null : (

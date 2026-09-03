@@ -23,6 +23,14 @@ export type QueryDescriptor<TQueryFnData, TQueryKey extends QueryKey> = QueryObs
   TQueryKey
 > & { queryFn: QueryFunction<TQueryFnData, TQueryKey> };
 
+export interface InfiniteQueryDescriptor<TQueryFnData, TQueryKey extends QueryKey, TPageParam> {
+  queryKey: TQueryKey;
+  staleTime?: number;
+  initialPageParam: TPageParam;
+  queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam>;
+  getNextPageParam: (lastPage: TQueryFnData) => TPageParam | null | undefined;
+}
+
 type ReadCall<TQueryFnData, TQueryKey extends QueryKey> = (
   context: QueryFunctionContext<TQueryKey>,
 ) => Promise<ReadResult<TQueryFnData>>;
@@ -253,6 +261,22 @@ export const collectionScopes = {
     input.hideUnavailable,
     input.limit,
     input.cursor ?? null,
+  ] as const,
+  infinite: (input: z.output<typeof API_ROUTES.libraryCollection.input>) => [
+    'libraryCollection',
+    'infinite',
+    input.query ?? null,
+    input.tags,
+    input.people,
+    input.place ?? null,
+    input.from ?? null,
+    input.to ?? null,
+    input.hasGps ?? null,
+    input.folderId ?? null,
+    input.sort ?? null,
+    input.media,
+    input.hideUnavailable,
+    input.limit,
   ] as const,
 };
 
@@ -617,6 +641,28 @@ export const libraryCollectionQuery = (api: ApiClient, input: CollectionInput) =
     staleTime: 0,
     call: ({ signal }) => api.libraryCollection(parsed, signal),
   });
+};
+
+export const libraryCollectionInfiniteQuery = (api: ApiClient, input: CollectionInput): InfiniteQueryDescriptor<
+  CollectionOutput,
+  ReturnType<typeof collectionScopes.infinite>,
+  string | null
+> => {
+  const parsed = API_ROUTES.libraryCollection.input.parse(input);
+  const scoped = API_ROUTES.libraryCollection.input.parse({ ...parsed, cursor: undefined });
+  return {
+    queryKey: collectionScopes.infinite(scoped),
+    staleTime: 0,
+    initialPageParam: null,
+    queryFn: async ({ signal, pageParam }) => {
+      const pageInput = API_ROUTES.libraryCollection.input.parse({
+        ...parsed,
+        ...(pageParam === null ? {} : { cursor: pageParam }),
+      });
+      return unwrap(await api.libraryCollection(pageInput, signal));
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  };
 };
 
 export const tagsListQuery = (api: ApiClient) =>

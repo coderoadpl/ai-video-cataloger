@@ -42,6 +42,7 @@ class FakeFaceEngine implements FaceEnginePort {
   readonly detectionByVideoPath = new Map<string, FaceDetection>();
   readonly detectFailureVideoPaths = new Set<string>();
   readonly zeroDetectionImagePaths = new Set<string>();
+  detections: FaceDetection[] | null = null;
   detection: FaceDetection = {
     bbox: { x: 0, y: 0, width: 200, height: 200 },
     landmarks: {
@@ -71,7 +72,7 @@ class FakeFaceEngine implements FaceEnginePort {
     const override = typeof input === 'object' && input.kind === 'video-timestamp'
       ? this.detectionByVideoPath.get(input.videoPath)
       : undefined;
-    return Promise.resolve(ok([override ?? this.detection]));
+    return Promise.resolve(ok(this.detections ?? [override ?? this.detection]));
   }
 
   align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
@@ -637,60 +638,15 @@ describe('facesIndex', () => {
     ]);
   });
 
-  it('reconciles photo observations without a completion row on resume', async () => {
+  it('re-detects a photo when observations exist without a completion row', async () => {
     const deps = buildDeps();
     await enableFaces(deps);
-    deps.fs.addDirectory('/work/photos');
     const fingerprint = 'ph_0000000000000001';
-    deps.fs.addFile(`/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`, { content: 'proxy' });
-    await deps.photos.upsertPhoto({
-      fingerprint,
-      folderId: 'photo-folder',
-      fileName: 'one.jpg',
-      currentPath: '/work/photos/one.jpg',
-      ext: 'jpg',
-      size: 1,
-      width: 640,
-      height: 480,
-      orientation: null,
-      cameraMake: null,
-      cameraModel: null,
-      lens: null,
-      iso: null,
-      fNumber: null,
-      exposureTime: null,
-      exifRating: null,
-      capturedAt: null,
-      capturedAtSource: 'file_mtime',
-      gpsLat: null,
-      gpsLon: null,
-      gpsSource: null,
-      gpsAccuracyM: null,
-      gpsIntervalKind: null,
-      gpsResolvedAt: null,
-      placeName: null,
-      placeRegion: null,
-      placeCountry: null,
-      placeCountryCode: null,
-      placeDistanceM: null,
-      placeDataset: null,
-      discoveredAt: '2026-01-01T00:00:00.000Z',
-      exifReadAt: '2026-01-01T00:00:00.000Z',
-      proxyState: 'done',
-      proxyWidth: 640,
-      proxyHeight: 480,
-      thumbState: 'done',
-      missingAt: null,
-      selectedConfigId: null,
-    });
-    await deps.photos.upsertSighting({
-      fingerprint,
-      currentPath: '/work/photos/one.jpg',
-      folderId: 'photo-folder',
-      size: 1,
-      mtimeMs: 1,
-      lastSeenAt: '2026-01-01T00:00:00.000Z',
-    });
+    const proxyPath = await seedProxyPhoto(deps, fingerprint);
+    deps.faceEngine.detections = [
+      deps.faceEngine.detection,
+      { ...deps.faceEngine.detection, bbox: { x: 240, y: 0, width: 200, height: 200 } },
+    ];
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
       obsId: `${fingerprint}:face:1:1`,
       fingerprint,
@@ -702,9 +658,37 @@ describe('facesIndex', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
-    expect(result.value.photo).toMatchObject({ indexed: 1, observationsAdded: 0 });
-    expect(deps.faceEngine.detectInputs).toEqual([]);
+    expect(result.value.photo).toMatchObject({ indexed: 1, observationsAdded: 1 });
+    expect(deps.faceEngine.detectInputs).toEqual([{ kind: 'image-path', frameJpegPath: proxyPath }]);
     expect(deps.photos.faceIndexState.get(fingerprint)).toBe(FACE_ENGINE_VERSION);
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error(observations.error.message);
+    expect(observations.value.map((observation) => observation.obsId).sort()).toEqual([
+      `${fingerprint}:face:1:1`,
+      `${fingerprint}:face:1:2`,
+    ]);
+  });
+
+  it('skips a photo only when the completion row matches the face engine version', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const fingerprint = 'ph_0000000000000001';
+    await seedProxyPhoto(deps, fingerprint);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      media: 'photo',
+      frameTsS: null,
+    }));
+    await deps.photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
+
+    const result = await runFacesIndexPass(deps, { root: '/work/photos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.photo).toMatchObject({ scanned: 0, indexed: 0, observationsAdded: 0 });
+    expect(deps.faceEngine.detectInputs).toEqual([]);
   });
 
   it('writes a crop for every detected face, including the ones no person claims yet', async () => {

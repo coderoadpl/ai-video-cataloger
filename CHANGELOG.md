@@ -53,6 +53,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur.
+- Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version.
+- PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities.
+- Face benchmark real-data mapping now derives native photo fingerprints from the first 16 hex characters of SHA-256 hashes.
+- Face benchmark IoU matching now pairs reference and native observations one-to-one instead of reusing a native detection.
+- Face benchmark reports labelled-sample pairwise F1 separately from full reference-partition pairwise F1.
+- Person media panels now page through all matching library items with cursor load-more instead of showing only the first page.
 - Restore now stages each restored file beside its live target before swapping, so folder-scoped config restores work across volumes.
 - Restore failures after rollback protection starts now surface `restore_incomplete` instead of saying nothing changed.
 - Startup restore recovery now runs before both GUI and CLI stores open, and a failed rollback stops scheduled backup evaluation.

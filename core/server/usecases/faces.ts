@@ -874,7 +874,8 @@ const indexPhotoCandidate = async (
   const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
   if (!existing.ok) return { result: existing, pool };
   const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
-  if (!stale && existing.value.length > 0) {
+  const completedAtCurrentVersion = candidate.previousEngineVersion !== null && candidate.previousEngineVersion >= FACE_ENGINE_VERSION;
+  if (completedAtCurrentVersion && existing.value.length > 0) {
     const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
     if (!completed.ok) return { result: completed, pool };
     return { result: ok({ observationsAdded: 0, rejectedLowQuality: 0, peopleCreated: 0 }), pool };

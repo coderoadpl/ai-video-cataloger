@@ -111,7 +111,7 @@ const buildArtifacts = (fs: InMemoryFileSystem): void => {
 };
 
 describe('runPhotoImportLibra', () => {
-  it('joins by manifest path, imports description/tags, faces and geo, and marks the face index complete', async () => {
+  it('joins by manifest path, imports description/tags and geo, and skips foreign face embeddings', async () => {
     const fs = new InMemoryFileSystem('/work');
     buildArtifacts(fs);
     const photos = new InMemoryPhotosStore();
@@ -127,7 +127,7 @@ describe('runPhotoImportLibra', () => {
     if (!result.ok) return;
     expect(result.value.manifest).toMatchObject({ entries: 1, matched: 1, unmatched: 0 });
     expect(result.value.descriptions).toMatchObject({ entries: 1, imported: 1, unmatched: 0 });
-    expect(result.value.faces).toMatchObject({ entries: 1, imported: 1, unmatched: 0, photosCompleted: 1 });
+    expect(result.value.faces).toMatchObject({ entries: 1, imported: 0, skippedForeignEmbeddings: 1, unmatched: 0, photosCompleted: 0 });
     expect(result.value.geo).toMatchObject({ written: 1, unmatched: 0 });
 
     const configId = photoConfigId(buildImportedPhotoConfigDescriptor());
@@ -150,12 +150,8 @@ describe('runPhotoImportLibra', () => {
     const observations = await globalCatalog.listFaceObservations({ fingerprint });
     expect(observations.ok).toBe(true);
     if (!observations.ok) return;
-    expect(observations.value).toEqual([expect.objectContaining({
-      obsId: `${fingerprint}:face:1:1`,
-      fingerprint,
-      personId: null,
-      media: 'photo',
-    })]);
+    expect(observations.value).toEqual([]);
+    expect(photos.faceIndexState.get(fingerprint)).toBeUndefined();
 
     const stored = await photos.getPhoto(fingerprint);
     expect(stored.ok && stored.value?.gpsLat).toBe(10);
@@ -205,7 +201,7 @@ describe('runPhotoImportLibra', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.descriptions.imported).toBe(1);
-    expect(result.value.faces.imported).toBe(1);
+    expect(result.value.faces).toMatchObject({ imported: 0, skippedForeignEmbeddings: 1, photosCompleted: 0 });
 
     const variants = await photos.listPhotoVariants(fingerprint);
     expect(variants.ok && variants.value).toEqual([]);
@@ -264,7 +260,8 @@ describe('runPhotoImportLibra', () => {
     const variants = await photos.listPhotoVariants(fingerprint);
     expect(variants.ok && variants.value).toHaveLength(1);
     const observations = await globalCatalog.listFaceObservations({ fingerprint });
-    expect(observations.ok && observations.value).toHaveLength(1);
+    expect(observations.ok && observations.value).toHaveLength(0);
+    expect(photos.faceIndexState.get(fingerprint)).toBeUndefined();
   });
 
   it('reports unmatched manifest entries without guessing and never writes for them', async () => {
@@ -305,7 +302,7 @@ describe('runPhotoImportLibra', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.faces).toMatchObject({ imported: 0, skippedIncomplete: 1, photosCompleted: 1 });
+    expect(result.value.faces).toMatchObject({ imported: 0, skippedIncomplete: 1, skippedForeignEmbeddings: 0, photosCompleted: 0 });
   });
 
   it('counts a geo row libra could not resolve as an unsupported source, not a corrupt line', async () => {

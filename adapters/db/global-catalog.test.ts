@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs, { type Database } from 'sql.js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
@@ -89,6 +89,8 @@ const file: CatalogFile = {
 
 describe('SqlJsGlobalCatalogStore', () => {
   afterEach(async () => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
     tempRoots.length = 0;
   });
@@ -697,6 +699,39 @@ describe('SqlJsGlobalCatalogStore', () => {
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const counts = await reopened.counts();
     expect(counts.ok && counts.value.files).toBe(25);
+  });
+
+  it('auto-flushes from wall-clock time without another mutation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => Date.now(), onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 24; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-idle-${String(index)}`, fileName: `idle-${String(index)}.mp4` });
+    }
+
+    expect(persistCount).toBe(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(persistCount).toBe(1);
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value.files).toBe(24);
+  });
+
+  it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {
+    const probeTimer = setTimeout(() => undefined, 1);
+    const unrefSpy = vi.spyOn(Object.getPrototypeOf(probeTimer), 'unref');
+    clearTimeout(probeTimer);
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+
+    await store.upsertFolder(folder);
+
+    expect(unrefSpy).toHaveBeenCalled();
+    expect((await store.dispose()).ok).toBe(true);
   });
 
   it('explicit flush persists writes below the auto-flush threshold', async () => {

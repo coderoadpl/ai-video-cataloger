@@ -4,7 +4,6 @@ import {
   buildImportedPhotoConfigDescriptor,
   canonicalJson,
   canonicalPath,
-  FACE_ENGINE_VERSION,
   libraDescriptionEntrySchema,
   libraFaceEntrySchema,
   libraGeoEntrySchema,
@@ -16,9 +15,7 @@ import {
   ok,
   parseLibraNdjson,
   photoConfigId,
-  translateLibraFaceObsId,
   type AppError,
-  type FaceObservation,
   type Result,
 } from '@core/domain/index.js';
 
@@ -64,6 +61,7 @@ export interface PhotoImportLibraSummary {
   faces: PhotoImportLibraArtifactCounts & {
     imported: number;
     skippedIncomplete: number;
+    skippedForeignEmbeddings: number;
     unmatched: number;
     photosCompleted: number;
   };
@@ -77,9 +75,6 @@ export interface PhotoImportLibraSummary {
   elapsedMs: number;
 }
 
-// The imported variant must never win default selection over a live analysis run before or
-// after the import — createdAt drives that fallback (resolveSelectedPhotoAnalysis), so this
-// sentinel is deliberately older than any real analysis timestamp the app could ever produce.
 const IMPORTED_PHOTO_VARIANT_CREATED_AT = new Date(0).toISOString();
 const IMPORTED_PHOTO_VARIANT_LABEL = 'Imported (PHOTO LIBRA)';
 const IMPORTED_PHOTO_VARIANT_LANGUAGE = 'pl';
@@ -129,7 +124,7 @@ export const runPhotoImportLibra = async (
     roots: roots.length,
     manifest: { entries: 0, invalidLines: 0, matched: 0, unmatched: 0 },
     descriptions: { entries: 0, invalidLines: 0, imported: 0, unmatched: 0 },
-    faces: { entries: 0, invalidLines: 0, imported: 0, skippedIncomplete: 0, unmatched: 0, photosCompleted: 0 },
+    faces: { entries: 0, invalidLines: 0, imported: 0, skippedIncomplete: 0, skippedForeignEmbeddings: 0, unmatched: 0, photosCompleted: 0 },
     geo: { entries: 0, invalidLines: 0, written: 0, unchanged: 0, skippedPrecedence: 0, skippedUnsupportedSource: 0, unmatched: 0 },
     elapsedMs: 0,
   };
@@ -254,8 +249,6 @@ const importFaces = async (
   summary.faces.entries = parsed.values.length;
   summary.faces.invalidLines = parsed.invalidLines;
 
-  const completedFingerprints = new Set<string>();
-
   for (const entry of parsed.values) {
     const cancellation = cancelled(progress);
     if (!cancellation.ok) return cancellation;
@@ -264,41 +257,17 @@ const importFaces = async (
       summary.faces.unmatched += 1;
       continue;
     }
-    completedFingerprints.add(fingerprint);
     if (entry.obsId === null) continue;
     if (entry.bbox === undefined || entry.embedding === undefined) {
       summary.faces.skippedIncomplete += 1;
       continue;
     }
-    const obsId = translateLibraFaceObsId(fingerprint, entry.obsId);
-    if (obsId === null) {
+    if (!entry.obsId.startsWith(entry.md5)) {
       summary.faces.skippedIncomplete += 1;
       continue;
     }
-    summary.faces.imported += 1;
-    if (input.dryRun) continue;
-    const observation: FaceObservation = {
-      obsId,
-      fingerprint,
-      kind: 'face',
-      frameTsS: 0,
-      bbox: entry.bbox,
-      embedding: entry.embedding,
-      quality: entry.score ?? 0,
-      personId: null,
-      cropPath: null,
-      media: 'photo',
-    };
-    const upserted = await deps.globalCatalog.upsertFaceObservation(observation);
-    if (!upserted.ok) return upserted;
-  }
-
-  summary.faces.photosCompleted = completedFingerprints.size;
-  if (!input.dryRun) {
-    for (const fingerprint of completedFingerprints) {
-      const completed = await deps.photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
-      if (!completed.ok) return completed;
-    }
+    // LIBRA embeddings would poison native person matching and suppress native indexing.
+    summary.faces.skippedForeignEmbeddings += 1;
   }
   return ok(undefined);
 };

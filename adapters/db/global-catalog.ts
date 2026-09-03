@@ -107,6 +107,7 @@ import {
   tags,
   people,
 } from './global-catalog-schema.js';
+import { clearAutoFlush, createAutoFlushState, scheduleAutoFlush } from './auto-flush.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 import { countTerm } from './search-score.js';
 import { acquireSnapshotLease, removeSnapshotFile, verifySnapshotIntegrity } from './sql-js.js';
@@ -156,6 +157,19 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private dirtyCount = 0;
   private lastPersistedAtMs: number;
   private batchDepth = 0;
+  private readonly autoFlushState = createAutoFlushState();
+  private readonly flushOnExit = (): void => {
+    if (this.state === null || this.dirtyCount === 0) return;
+    try {
+      this.lock.takeWriteLock();
+      this.persist(this.state);
+      this.lock.releaseIfIdle();
+    } catch {
+      clearAutoFlush(this.autoFlushState);
+      this.state = null;
+      this.dirtyCount = 0;
+    }
+  };
   private readonly pendingSearchDocuments = new Set<string>();
   private state: {
     SQL: SqlJsStatic;
@@ -227,6 +241,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async flush(): Promise<Result<void, AppError>> {
     if (this.state === null || this.dirtyCount === 0) {
+      clearAutoFlush(this.autoFlushState);
       this.lock.releaseIfIdle();
       return ok(undefined);
     }
@@ -236,6 +251,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       this.lock.releaseIfIdle();
       return ok(undefined);
     } catch (cause) {
+      clearAutoFlush(this.autoFlushState);
       this.state = null;
       this.dirtyCount = 0;
       return failure(cause);
@@ -262,6 +278,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       if (this.state !== null) this.state.client.close();
       this.state = null;
       this.dirtyCount = 0;
+      clearAutoFlush(this.autoFlushState);
       this.lock.releaseIfIdle();
       return flushed;
     } catch (cause) {
@@ -1463,9 +1480,11 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
       if (this.batchDepth === 0 && this.shouldAutoFlush()) this.persist(state);
+      else if (this.batchDepth === 0) this.scheduleAutoFlush();
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
+        clearAutoFlush(this.autoFlushState);
         this.state = null;
         this.dirtyCount = 0;
       }
@@ -1486,6 +1505,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   private persist(state: NonNullable<SqlJsGlobalCatalogStore['state']>): void {
+    clearAutoFlush(this.autoFlushState);
     persistDatabase(this.filePath, state.client);
     this.onPersist();
     state.fileState = fileStateOf(this.filePath);
@@ -1497,6 +1517,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     if (this.dirtyCount >= AUTO_FLUSH_MAX_MUTATION_COUNT) return true;
     return this.dirtyCount >= AUTO_FLUSH_MIN_MUTATION_COUNT
       && this.nowMs() - this.lastPersistedAtMs >= AUTO_FLUSH_INTERVAL_MS;
+  }
+
+  private scheduleAutoFlush(): void {
+    if (this.dirtyCount === 0) return;
+    scheduleAutoFlush(
+      this.autoFlushState,
+      Math.max(0, AUTO_FLUSH_INTERVAL_MS - (this.nowMs() - this.lastPersistedAtMs)),
+      () => { void this.flush(); },
+      this.flushOnExit,
+    );
   }
 
   private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {

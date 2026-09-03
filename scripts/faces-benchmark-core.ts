@@ -6,7 +6,7 @@ import {
   boxIoU,
   clusterPreparedFaceObservations,
   prepareFaceClustering,
-  type FaceBox,
+  photoFingerprintFromSha256,
   type FaceClusterInput,
   type PreparedFaceClustering,
 } from '@core/domain/index.js';
@@ -68,6 +68,7 @@ export interface ThresholdBenchmarkRow {
   threshold: number;
   minEdgeDensity: number;
   pairwise: { precision: number; recall: number; f1: number; truePositive: number; falsePositive: number; falseNegative: number };
+  referencePairwise: { precision: number; recall: number; f1: number; truePositive: number; falsePositive: number; falseNegative: number };
   purity: number;
   completeness: number;
   clusterCount: number;
@@ -82,6 +83,8 @@ export interface BenchmarkReport {
   selectedMinEdgeDensity: number;
   bestPairwiseF1Threshold: number;
   bestPairwiseF1MinEdgeDensity: number;
+  bestReferencePairwiseF1Threshold: number;
+  bestReferencePairwiseF1MinEdgeDensity: number;
   largestZeroDifferentThreshold: number | null;
   largestZeroDifferentMinEdgeDensity: number | null;
   pairSample: { left: string; right: string; similarity: number; bandMin: number; bandMax: number }[];
@@ -132,34 +135,40 @@ export const matchReferenceToNative = (
   const matchedIds = new Map<string, string>();
   const observations: BenchmarkObservation[] = [];
   const partition = new Map<string, string>();
-  let unmatchedReference = 0;
-
-  for (const reference of referenceRecords) {
+  const matchedReferenceIds = new Set<string>();
+  const matchedNativeIds = new Set<string>();
+  const rankedMatches = referenceRecords.flatMap((reference) => {
     const fingerprint = referenceFingerprint(reference);
     const bbox = reference.bbox;
-    if (fingerprint === null || bbox === undefined) {
-      unmatchedReference += 1;
-      continue;
-    }
-    const candidates = nativeByFingerprint.get(fingerprint) ?? [];
-    const match = bestNativeMatch(bbox, candidates);
-    if (match === null) {
-      unmatchedReference += 1;
-      continue;
-    }
-    matchedIds.set(reference.observationId, match.obsId);
+    if (fingerprint === null || bbox === undefined) return [];
+    return (nativeByFingerprint.get(fingerprint) ?? [])
+      .map((candidate) => ({ reference, candidate, iou: boxIoU(bbox, candidate.bbox) }))
+      .filter((match) => match.iou >= EXEMPLAR_BBOX_MIN_IOU);
+  }).sort((left, right) =>
+    right.iou - left.iou
+    || left.candidate.obsId.localeCompare(right.candidate.obsId)
+    || left.reference.observationId.localeCompare(right.reference.observationId));
+
+  for (const match of rankedMatches) {
+    if (matchedReferenceIds.has(match.reference.observationId) || matchedNativeIds.has(match.candidate.obsId)) continue;
+    matchedReferenceIds.add(match.reference.observationId);
+    matchedNativeIds.add(match.candidate.obsId);
+    matchedIds.set(match.reference.observationId, match.candidate.obsId);
     observations.push({
-      obsId: match.obsId,
-      embedding: match.embedding,
-      quality: match.quality,
-      boxPx: Math.min(match.bbox.width, match.bbox.height),
-      bbox: match.bbox,
-      photoFingerprint: match.fingerprint,
+      obsId: match.candidate.obsId,
+      embedding: match.candidate.embedding,
+      quality: match.candidate.quality,
+      boxPx: Math.min(match.candidate.bbox.width, match.candidate.bbox.height),
+      bbox: match.candidate.bbox,
+      photoFingerprint: match.candidate.fingerprint,
     });
-    partition.set(match.obsId, reference.clusterId);
+    partition.set(match.candidate.obsId, match.reference.clusterId);
   }
 
-  const matchedNativeIds = new Set(matchedIds.values());
+  const unmatchedReference = referenceRecords.filter((reference) => {
+    const fingerprint = referenceFingerprint(reference);
+    return fingerprint === null || reference.bbox === undefined || !matchedReferenceIds.has(reference.observationId);
+  }).length;
   const unmatchedNative = nativeObservations.filter((observation) => !matchedNativeIds.has(observation.obsId)).length;
   return {
     observations,
@@ -186,11 +195,15 @@ export const runBenchmark = (
     right.pairwise.f1 - left.pairwise.f1
     || right.threshold - left.threshold
     || right.minEdgeDensity - left.minEdgeDensity)[0];
+  const bestReferencePairwise = [...rows].sort((left, right) =>
+    right.referencePairwise.f1 - left.referencePairwise.f1
+    || right.threshold - left.threshold
+    || right.minEdgeDensity - left.minEdgeDensity)[0];
   const largestZeroDifferent = [...rows]
     .filter((row) => row.differentPairsMerged === 0)
     .sort((left, right) => right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0];
   const candidates = rows.filter((row) =>
-    row.differentPairsMerged === 0 && bestPairwise !== undefined && row.threshold >= bestPairwise.threshold);
+    row.differentPairsMerged === 0 && bestReferencePairwise !== undefined && row.threshold >= bestReferencePairwise.threshold);
   const selected = (candidates.length === 0 ? largestZeroDifferent : [...candidates].sort((left, right) =>
     right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0])
     ?? [...rows].sort((left, right) => right.threshold - left.threshold)[0];
@@ -200,6 +213,8 @@ export const runBenchmark = (
     selectedMinEdgeDensity: selected?.minEdgeDensity ?? 0,
     bestPairwiseF1Threshold: bestPairwise?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
     bestPairwiseF1MinEdgeDensity: bestPairwise?.minEdgeDensity ?? 0,
+    bestReferencePairwiseF1Threshold: bestReferencePairwise?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
+    bestReferencePairwiseF1MinEdgeDensity: bestReferencePairwise?.minEdgeDensity ?? 0,
     largestZeroDifferentThreshold: largestZeroDifferent?.threshold ?? null,
     largestZeroDifferentMinEdgeDensity: largestZeroDifferent?.minEdgeDensity ?? null,
     pairSample: stratifiedPairSample(corpus.observations),
@@ -210,12 +225,15 @@ export const runBenchmark = (
 
 export const benchmarkReportTable = (report: BenchmarkReport): string => {
   const lines = [
-    'threshold precision recall f1 density purity completeness clusters largest differentMerged elapsedMs',
+    'threshold samplePrecision sampleRecall sampleF1 referencePrecision referenceRecall referenceF1 density purity completeness clusters largest differentMerged elapsedMs',
     ...report.thresholds.map((row) => [
       row.threshold.toFixed(2),
       row.pairwise.precision.toFixed(3),
       row.pairwise.recall.toFixed(3),
       row.pairwise.f1.toFixed(3),
+      row.referencePairwise.precision.toFixed(3),
+      row.referencePairwise.recall.toFixed(3),
+      row.referencePairwise.f1.toFixed(3),
       row.minEdgeDensity.toFixed(2),
       row.purity.toFixed(3),
       row.completeness.toFixed(3),
@@ -225,7 +243,8 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
       String(row.elapsedMs),
     ].join(' ')),
     `selected ${report.selectedThreshold.toFixed(2)} density=${report.selectedMinEdgeDensity.toFixed(2)}`,
-    `bestPairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)} density=${report.bestPairwiseF1MinEdgeDensity.toFixed(2)}`,
+    `bestLabelledSamplePairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)} density=${report.bestPairwiseF1MinEdgeDensity.toFixed(2)}`,
+    `bestReferencePairwiseF1 ${report.bestReferencePairwiseF1Threshold.toFixed(2)} density=${report.bestReferencePairwiseF1MinEdgeDensity.toFixed(2)}`,
     `largestZeroDifferent ${report.largestZeroDifferentThreshold === null ? 'none' : report.largestZeroDifferentThreshold.toFixed(2)} density=${report.largestZeroDifferentMinEdgeDensity === null ? 'none' : report.largestZeroDifferentMinEdgeDensity.toFixed(2)}`,
     `pairSample ${String(report.pairSample.length)}`,
     `unmatched reference=${String(report.unmatchedReference)} native=${String(report.unmatchedNative)}`,
@@ -236,15 +255,7 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
 const referenceFingerprint = (record: ReferencePartitionRecord): string | null => {
   const raw = record.photoFingerprint ?? record.sourceContentHash;
   if (raw === undefined) return null;
-  return raw.startsWith('ph_') ? raw : `ph_${raw}`;
-};
-
-const bestNativeMatch = (bbox: FaceBox, candidates: readonly NativeObservation[]): NativeObservation | null => {
-  const ranked = candidates
-    .map((candidate) => ({ candidate, iou: boxIoU(bbox, candidate.bbox) }))
-    .filter((entry) => entry.iou >= EXEMPLAR_BBOX_MIN_IOU)
-    .sort((left, right) => right.iou - left.iou || left.candidate.obsId.localeCompare(right.candidate.obsId));
-  return ranked[0]?.candidate ?? null;
+  return raw.startsWith('ph_') ? raw : photoFingerprintFromSha256(raw);
 };
 
 const benchmarkThreshold = (
@@ -261,11 +272,13 @@ const benchmarkThreshold = (
   }
   for (const obsId of outcome.unassignedObsIds) clusterByObsId.set(obsId, `unassigned:${obsId}`);
   const pairwise = scorePairs(corpus.pairs, clusterByObsId);
+  const referencePairwise = scorePartitionPairwise(corpus.partition, clusterByObsId);
   const partitionScores = scorePartition(corpus.partition, clusterByObsId);
   return {
     threshold,
     minEdgeDensity,
     pairwise,
+    referencePairwise,
     purity: partitionScores.purity,
     completeness: partitionScores.completeness,
     clusterCount: outcome.clusters.length,
@@ -347,6 +360,37 @@ const scorePairs = (
   const recall = truePositive + falseNegative === 0 ? 0 : truePositive / (truePositive + falseNegative);
   const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
   return { precision, recall, f1, truePositive, falsePositive, falseNegative };
+};
+
+const scorePartitionPairwise = (
+  referenceByObsId: ReadonlyMap<string, string>,
+  clusterByObsId: ReadonlyMap<string, string>,
+): ThresholdBenchmarkRow['pairwise'] => {
+  const matched = [...referenceByObsId.entries()].filter(([obsId]) => clusterByObsId.has(obsId));
+  const predictedCounts = new Map<string, number>();
+  const referenceCounts = new Map<string, number>();
+  const intersectionCounts = new Map<string, number>();
+  for (const [obsId, reference] of matched) {
+    const predicted = clusterByObsId.get(obsId);
+    if (predicted === undefined) continue;
+    predictedCounts.set(predicted, (predictedCounts.get(predicted) ?? 0) + 1);
+    referenceCounts.set(reference, (referenceCounts.get(reference) ?? 0) + 1);
+    const intersectionKey = `${predicted}\u0000${reference}`;
+    intersectionCounts.set(intersectionKey, (intersectionCounts.get(intersectionKey) ?? 0) + 1);
+  }
+  const truePositive = pairCountSum(intersectionCounts);
+  const falsePositive = pairCountSum(predictedCounts) - truePositive;
+  const falseNegative = pairCountSum(referenceCounts) - truePositive;
+  const precision = truePositive + falsePositive === 0 ? 0 : truePositive / (truePositive + falsePositive);
+  const recall = truePositive + falseNegative === 0 ? 0 : truePositive / (truePositive + falseNegative);
+  const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
+  return { precision, recall, f1, truePositive, falsePositive, falseNegative };
+};
+
+const pairCountSum = (counts: ReadonlyMap<string, number>): number => {
+  let total = 0;
+  for (const count of counts.values()) total += count < 2 ? 0 : (count * (count - 1)) / 2;
+  return total;
 };
 
 const scorePartition = (
