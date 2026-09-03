@@ -93,7 +93,7 @@ const recoveryKeyDocument = (recoveryKey: string, locale: 'en' | 'pl'): string =
         recoveryKey,
         '',
         'Ten klucz jest jedynym sposobem odczytania zaszyfrowanych kopii na innym Macu.',
-        'Kazda osoba z tym kluczem moze je odczytac. Przechowuj go tam, gdzie hasla.',
+        'Każda osoba z tym kluczem może je odczytać. Przechowuj go tam, gdzie hasła.',
         '',
       ]
     : [

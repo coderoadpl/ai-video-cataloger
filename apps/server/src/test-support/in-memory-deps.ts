@@ -646,6 +646,10 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return path.join('.ai-video-cataloger', 'catalog.db');
   }
 
+  durabilityStatus(): ReturnType<GlobalCatalogStore['durabilityStatus']> {
+    return { degraded: false, pendingWrites: false, lastErrorCode: null };
+  }
+
   snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
     return Promise.resolve(ok({ sizeBytes: 0, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION }));
   }
@@ -1544,6 +1548,14 @@ class InMemoryFileSystemPort implements FileSystemPort {
   }
 
   renamePath(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  syncFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  syncDirectory(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 

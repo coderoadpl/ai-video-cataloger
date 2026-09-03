@@ -255,7 +255,9 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
 const referenceFingerprint = (record: ReferencePartitionRecord): string | null => {
   const raw = record.photoFingerprint ?? record.sourceContentHash;
   if (raw === undefined) return null;
-  return raw.startsWith('ph_') ? raw : photoFingerprintFromSha256(raw);
+  if (raw.startsWith('ph_')) return raw;
+  if (/^[0-9a-f]{64}$/i.test(raw)) return photoFingerprintFromSha256(raw);
+  return null;
 };
 
 const benchmarkThreshold = (

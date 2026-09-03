@@ -26,6 +26,7 @@ interface BackupRestoreDialogProps {
   error: string | null;
   errorCode: BackupErrorCode | null;
   recoveryKeyRequired: boolean;
+  recoveryKeyHelperText: string;
   onConfirm: (remoteId: string, recoveryKey: string | undefined) => void;
   onClose: () => void;
 }
@@ -37,6 +38,7 @@ export const BackupRestoreDialog = ({
   error,
   errorCode,
   recoveryKeyRequired,
+  recoveryKeyHelperText,
   onConfirm,
   onClose,
 }: BackupRestoreDialogProps) => {
@@ -76,7 +78,7 @@ export const BackupRestoreDialog = ({
           size="small"
           sx={{ mt: 2 }}
           label={dictionary.backup.restoreRecoveryKeyLabel}
-          helperText={dictionary.backup.restoreRecoveryKeyHelper}
+          helperText={recoveryKeyHelperText}
           value={recoveryKey}
           onChange={(event) => setRecoveryKey(event.target.value)}
           disabled={running}

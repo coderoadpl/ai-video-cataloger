@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs from 'sql.js';
@@ -407,6 +407,43 @@ describe('SqlJsPhotosStore', () => {
     const reopened = new SqlJsPhotosStore({ homeDirectory: home });
     const counts = await reopened.counts(null);
     expect(counts.ok && counts.value.paths).toBe(23);
+  });
+
+  it('keeps dirty photo writes after a timer flush persist failure and retries them', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsPhotosStore({ homeDirectory: home, nowMs: () => Date.now(), onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    for (let index = 0; index < 23; index += 1) {
+      await store.upsertSighting(sighting({ currentPath: `/media/photos/retry-${String(index)}.jpg` }));
+    }
+    await mkdir(`${store.databasePath()}.tmp`);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(persistCount).toBe(0);
+    expect(store.durabilityStatus()).toEqual({
+      degraded: true,
+      pendingWrites: true,
+      lastErrorCode: 'internal',
+    });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('internal'), expect.any(String));
+
+    await rm(`${store.databasePath()}.tmp`, { recursive: true, force: true });
+    expect(await store.flush()).toEqual({ ok: true, value: undefined });
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const counts = await reopened.counts(null);
+    expect(counts.ok && counts.value.paths).toBe(23);
+    expect(store.durabilityStatus()).toEqual({
+      degraded: false,
+      pendingWrites: false,
+      lastErrorCode: null,
+    });
   });
 
   it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {

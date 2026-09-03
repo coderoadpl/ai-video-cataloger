@@ -114,6 +114,7 @@ describe('index status and rebuild', () => {
     expect(status.ok).toBe(true);
     if (!status.ok) return;
     expect(status.value.counts).toEqual({ folders: 1, files: 1, analyses: 1 });
+    expect(status.value.durability).toEqual({ degraded: false, pendingWrites: false, lastErrorCode: null });
     expect(status.value.folders[0]?.currentPath).toBe('/work');
 
     const recoveredStore = new InMemoryGlobalCatalogStore();

@@ -18,6 +18,7 @@ describe('photosStatusHuman', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: null,
+      durability: { degraded: false, pendingWrites: false, lastErrorCode: null },
       counts: { photos: 10, paths: 12, exifRead: 8, exifFailed: 2, missing: 1, duplicates: 2, proxied: 7, proxyFailed: 1, analysed: 5, facesIndexed: 0 },
     });
     expect(text).toBe(
@@ -35,9 +36,21 @@ describe('photosStatusHuman', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: '/media/photos',
+      durability: { degraded: false, pendingWrites: false, lastErrorCode: null },
       counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 1, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0, facesIndexed: 0 },
     });
     expect(text).toContain('Scope: /media/photos');
+  });
+
+  it('formats degraded durability status', () => {
+    const text = photosStatusHuman({
+      media: 'photo',
+      root: null,
+      durability: { degraded: true, pendingWrites: true, lastErrorCode: 'internal' },
+      counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 0, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0, facesIndexed: 0 },
+    });
+
+    expect(text).toContain('Durability: degraded=true pendingWrites=true lastError=internal');
   });
 });
 

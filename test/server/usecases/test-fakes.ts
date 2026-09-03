@@ -363,6 +363,20 @@ export class InMemoryFileSystem implements FileSystemPort {
     return Promise.resolve({ ok: false, error: appError('file_not_found', `File not found: ${normalizedFrom}`) });
   }
 
+  syncFile(value: string): Promise<Result<void, AppError>> {
+    const normalized = this.normalize(value);
+    return Promise.resolve(this.files.has(normalized)
+      ? ok(undefined)
+      : { ok: false, error: appError('file_not_found', `File not found: ${normalized}`) });
+  }
+
+  syncDirectory(value: string): Promise<Result<void, AppError>> {
+    const normalized = this.normalize(value);
+    return Promise.resolve(this.directories.has(normalized)
+      ? ok(undefined)
+      : { ok: false, error: appError('not_a_directory', `Not a directory: ${normalized}`) });
+  }
+
   deleteFile(value: string): Promise<Result<void, AppError>> {
     this.files.delete(this.normalize(value));
     return Promise.resolve(ok(undefined));
@@ -1235,6 +1249,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   databasePath(): string {
     return this.path;
+  }
+
+  durabilityStatus(): ReturnType<GlobalCatalogStore['durabilityStatus']> {
+    return { degraded: false, pendingWrites: false, lastErrorCode: null };
   }
 
   snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
@@ -2183,6 +2201,10 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   databasePath(): string {
     return '/home/.ai-video-cataloger/photos.db';
+  }
+
+  durabilityStatus(): ReturnType<PhotosStore['durabilityStatus']> {
+    return { degraded: false, pendingWrites: false, lastErrorCode: null };
   }
 
   snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {

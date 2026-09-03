@@ -287,6 +287,50 @@ describe('Google service-account backup destination', () => {
     });
     expect(queries.some((query) => query.includes("appProperties has { key='tier'"))).toBe(true);
   });
+
+  it('fails backup listing when Drive repeats a page token', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const pageTokens: Array<string | null> = [];
+    await config.set({ kind: 'home' }, 'backup_shared_drive_id', 'drive-1');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleServiceAccountBackupDestination({
+      config,
+      secrets,
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeGoogleWithRepeatedBackupPageToken(pageTokens),
+    });
+    await destination.importKeyJson(serviceAccountKey());
+
+    expect(await destination.list(null, new AbortController().signal)).toMatchObject({
+      ok: false,
+      error: { code: 'backup_destination_error' },
+    });
+    expect(pageTokens).toEqual([null, 'same-token']);
+  });
+
+  it('fails membership verification when Drive repeats a permissions page token', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const pageTokens: Array<string | null> = [];
+    await config.set({ kind: 'home' }, 'backup_shared_drive_id', 'drive-1');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleServiceAccountBackupDestination({
+      config,
+      secrets,
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeGoogleWithRepeatedPermissionPageToken(pageTokens),
+    });
+    await destination.importKeyJson(serviceAccountKey());
+
+    expect(await destination.test(new AbortController().signal)).toMatchObject({
+      ok: false,
+      error: { code: 'backup_destination_error' },
+    });
+    expect(pageTokens).toEqual([null, 'same-token']);
+  });
 });
 
 class FailingFingerprintConfig extends InMemoryConfig implements ConfigStore {
@@ -413,6 +457,46 @@ const fakeGoogleWithMalformedSibling = (queries: string[]): typeof fetch => asyn
       },
     ] });
   }
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const fakeGoogleWithRepeatedBackupPageToken = (pageTokens: Array<string | null>): typeof fetch => async (input) => {
+  const url = new URL(String(input));
+  if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
+  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1' });
+  if (url.pathname.endsWith('/files')) {
+    const query = url.searchParams.get('q') ?? '';
+    if (query.includes("key='kind'")) return Response.json({ files: [] });
+    const token = url.searchParams.get('pageToken');
+    pageTokens.push(token);
+    if (pageTokens.length <= 2) return Response.json({ files: [], nextPageToken: 'same-token' });
+    return Response.json({ files: [] });
+  }
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const fakeGoogleWithRepeatedPermissionPageToken = (pageTokens: Array<string | null>): typeof fetch => async (input, init) => {
+  const url = new URL(String(input));
+  if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
+  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1' });
+  if (url.pathname.endsWith('/drives/drive-1')) return Response.json({ id: 'drive-1', name: 'Company Archive' });
+  if (url.pathname.endsWith('/permissions')) {
+    const token = url.searchParams.get('pageToken');
+    pageTokens.push(token);
+    if (pageTokens.length <= 2) {
+      return Response.json({
+        permissions: [{ emailAddress: 'someone@example.com', role: 'fileOrganizer', type: 'user' }],
+        nextPageToken: 'same-token',
+      });
+    }
+    return Response.json({ permissions: [{ emailAddress: 'backup@example.com', role: 'fileOrganizer', type: 'user' }] });
+  }
+  if (url.pathname.endsWith('/files') && !url.pathname.includes('/upload/') && init?.method !== 'POST') return Response.json({ files: [] });
+  if (url.pathname.includes('/upload/') && init?.method === 'POST') {
+    return Response.json({ id: 'probe-1', name: 'connection-test.bin', size: '1024' });
+  }
+  if (url.pathname.endsWith('/files/probe-1')) return Response.json({ id: 'probe-1', parents: ['folder-1'], driveId: 'drive-1' });
+  if (init?.method === 'DELETE') return new Response(null, { status: 204 });
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };
 

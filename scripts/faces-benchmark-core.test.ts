@@ -147,6 +147,32 @@ describe('faces benchmark metrics', () => {
     expect(corpus.unmatchedNative).toBe(1);
   });
 
+  it('does not derive a native SHA-256 photo fingerprint from PHOTO LIBRA MD5 hashes', () => {
+    const md5 = '0123456789abcdef0123456789abcdef';
+    const reference: ReferencePartitionRecord[] = [
+      {
+        observationId: 'external-md5',
+        clusterId: 'identity-a',
+        sourceContentHash: md5,
+        bbox: { x: 10, y: 10, width: 50, height: 50 },
+      },
+    ];
+    const fingerprint = photoFingerprintFromSha256(`${md5}${md5}`);
+    const native: NativeObservation[] = [{
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      bbox: { x: 10, y: 10, width: 50, height: 50 },
+      embedding: [1, 0],
+      quality: 1,
+    }];
+
+    const corpus = matchReferenceToNative(reference, native, []);
+
+    expect(corpus.observations).toEqual([]);
+    expect(corpus.unmatchedReference).toBe(1);
+    expect(corpus.unmatchedNative).toBe(1);
+  });
+
   it('matches reference boxes to native detections one-to-one by descending IoU', () => {
     const fingerprint = 'ph_0123456789abcdef';
     const reference: ReferencePartitionRecord[] = [

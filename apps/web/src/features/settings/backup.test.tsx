@@ -55,7 +55,7 @@ const status = (overrides: StatusOverrides = {}) => ({
     : overrides.recoveryKeyFingerprint,
 });
 
-const backupRow = (overrides: { remoteId: string; globalCatalog?: number; appVersion?: string }) => ({
+const backupRow = (overrides: { remoteId: string; globalCatalog?: number; appVersion?: string; keyFingerprint?: string | null }) => ({
   remoteId: overrides.remoteId,
   name: `${overrides.remoteId}.avcbak`,
   tier: 'critical',
@@ -63,7 +63,7 @@ const backupRow = (overrides: { remoteId: string; globalCatalog?: number; appVer
   sizeBytes: 2048,
   appVersion: overrides.appVersion ?? '0.7.0',
   schemaVersions: { globalCatalog: overrides.globalCatalog ?? 7, photos: 3 },
-  keyFingerprint: 'sha256:0123456789ab',
+  keyFingerprint: overrides.keyFingerprint === undefined ? 'sha256:0123456789ab' : overrides.keyFingerprint,
 });
 
 const respondOk = (data: unknown) => HttpResponse.json({ ok: true, data });
@@ -181,6 +181,34 @@ describe('Settings > Backup', () => {
     await screen.findByTestId('backup-restore-dialog');
 
     expect(screen.getByTestId('backup-restore-confirm').hasAttribute('disabled')).toBe(true);
+    fireEvent.change(screen.getByTestId('backup-restore-recovery-key'), { target: { value: 'RECOVERY-KEY-FROM-OTHER-MAC' } });
+    fireEvent.click(screen.getByTestId('backup-restore-confirm'));
+    fireEvent.click(screen.getByTestId('backup-restore-confirm-final'));
+
+    await waitFor(() => expect(submitted).toEqual([
+      JSON.stringify({ remoteId: 'old', recoveryKey: 'RECOVERY-KEY-FROM-OTHER-MAC' }),
+    ]));
+  });
+
+  it('requires a recovery key when the backup was encrypted with a different stored key', async () => {
+    const submitted: string[] = [];
+    server.use(
+      statusHandler({ recoveryKeyStored: true, recoveryKeyFingerprint: 'sha256:stored000000' }),
+      listHandler([backupRow({ remoteId: 'old', keyFingerprint: 'sha256:remote000000' })]),
+      http.post('/api/backup/restore', async ({ request }) => {
+        submitted.push(JSON.stringify(await request.json()));
+        return respondOk({ jobId: 'restore-1' });
+      }),
+    );
+    renderThemed(<SettingsBackupSection open />);
+
+    await waitFor(() => expect(screen.getByTestId('backup-restore-old')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('backup-restore-old'));
+    const dialog = await screen.findByTestId('backup-restore-dialog');
+
+    expect(screen.getByTestId('backup-restore-confirm').hasAttribute('disabled')).toBe(true);
+    expect(dialog.textContent).toContain(en.backup.restoreRecoveryKeyMismatchHelper);
+
     fireEvent.change(screen.getByTestId('backup-restore-recovery-key'), { target: { value: 'RECOVERY-KEY-FROM-OTHER-MAC' } });
     fireEvent.click(screen.getByTestId('backup-restore-confirm'));
     fireEvent.click(screen.getByTestId('backup-restore-confirm-final'));

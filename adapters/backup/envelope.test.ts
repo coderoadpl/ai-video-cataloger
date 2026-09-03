@@ -153,6 +153,7 @@ describe('backup encryption envelope', () => {
     expect(created).toMatchObject({ ok: true });
     if (!created.ok) throw new Error(created.error.message);
     expect(created.value.document).toContain('klucz odzyskiwania kopii zapasowej');
+    expect(created.value.document).toContain('Każda osoba z tym kluczem może je odczytać. Przechowuj go tam, gdzie hasła.');
     expect(created.value.document).not.toContain('This key is the only way');
   });
 

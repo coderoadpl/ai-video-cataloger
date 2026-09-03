@@ -31,6 +31,12 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
   const [stepperOpen, setStepperOpen] = useState(false);
   const [restoreTarget, setRestoreTarget] = useState<RemoteBackupView | null>(null);
   const status = backup.status;
+  const restoreKeyMismatch = restoreTarget?.keyFingerprint !== null
+    && restoreTarget?.keyFingerprint !== undefined
+    && status?.recoveryKeyFingerprint !== null
+    && status?.recoveryKeyFingerprint !== undefined
+    && restoreTarget.keyFingerprint !== status.recoveryKeyFingerprint;
+  const restoreRecoveryKeyRequired = status?.recoveryKeyStored === false || restoreKeyMismatch;
   const enabled = status?.enabled === true;
   const lastSuccessAt = formatCapturedAt(status?.lastSuccessAt ?? null, dictionary.locale);
   const nextDueAt = formatCapturedAt(status?.nextDueAt ?? null, dictionary.locale);
@@ -197,7 +203,10 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
 
       <BackupRestoreDialog
         backup={restoreTarget}
-        recoveryKeyRequired={status?.recoveryKeyStored === false}
+        recoveryKeyRequired={restoreRecoveryKeyRequired}
+        recoveryKeyHelperText={restoreKeyMismatch
+          ? dictionary.backup.restoreRecoveryKeyMismatchHelper
+          : dictionary.backup.restoreRecoveryKeyHelper}
         phase={backup.restorePhase}
         isRestoring={backup.isRestoring}
         error={backup.restoreError}

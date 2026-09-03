@@ -156,6 +156,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly nowMs: () => number;
   private readonly onPersist: () => void;
   private dirtyCount = 0;
+  private durabilityErrorCode: AppError['code'] | null = null;
   private lastPersistedAtMs: number;
   private batchDepth = 0;
   private readonly autoFlushState = createAutoFlushState();
@@ -165,10 +166,10 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       this.lock.takeWriteLock();
       this.persist(this.state);
       this.lock.releaseIfIdle();
-    } catch {
-      clearAutoFlush(this.autoFlushState);
-      this.state = null;
-      this.dirtyCount = 0;
+    } catch (cause) {
+      const failed = failure<undefined>(cause);
+      if (!failed.ok) this.markDurabilityFailure(failed.error);
+      this.lock.releaseIfIdle();
     }
   };
   private readonly pendingSearchDocuments = new Set<string>();
@@ -204,6 +205,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   databasePath(): string {
     return this.filePath;
+  }
+
+  durabilityStatus(): ReturnType<GlobalCatalogStore['durabilityStatus']> {
+    return {
+      degraded: this.durabilityErrorCode !== null,
+      pendingWrites: this.dirtyCount > 0,
+      lastErrorCode: this.durabilityErrorCode,
+    };
   }
 
   async snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
@@ -252,10 +261,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       this.lock.releaseIfIdle();
       return ok(undefined);
     } catch (cause) {
-      clearAutoFlush(this.autoFlushState);
-      this.state = null;
-      this.dirtyCount = 0;
-      return failure(cause);
+      const failed = failure<undefined>(cause);
+      if (!failed.ok) this.markDurabilityFailure(failed.error);
+      this.lock.releaseIfIdle();
+      this.lastPersistedAtMs = this.nowMs();
+      this.scheduleAutoFlush();
+      return failed;
     }
   }
 
@@ -308,7 +319,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       }
       this.pendingSearchDocuments.clear();
       state.client.run('COMMIT');
-      if (this.dirtyCount > 0) this.persist(state);
+      if (this.dirtyCount > 0) {
+        try {
+          this.persist(state);
+        } catch (cause) {
+          const failed = failure<T>(cause);
+          if (!failed.ok) this.markDurabilityFailure(failed.error);
+          this.lastPersistedAtMs = this.nowMs();
+          this.scheduleAutoFlush();
+          return failed;
+        }
+      }
       return result;
     } catch (cause) {
       if (this.state !== null) {
@@ -1489,8 +1510,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
-      if (this.batchDepth === 0 && this.shouldAutoFlush()) this.persist(state);
-      else if (this.batchDepth === 0) this.scheduleAutoFlush();
+      if (this.batchDepth === 0 && this.shouldAutoFlush()) {
+        try {
+          this.persist(state);
+        } catch (cause) {
+          const failed = failure<T>(cause);
+          if (!failed.ok) this.markDurabilityFailure(failed.error);
+          this.lastPersistedAtMs = this.nowMs();
+          this.scheduleAutoFlush();
+          return failed;
+        }
+      } else if (this.batchDepth === 0) this.scheduleAutoFlush();
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
@@ -1520,7 +1550,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     this.onPersist();
     state.fileState = fileStateOf(this.filePath);
     this.dirtyCount = 0;
+    this.durabilityErrorCode = null;
     this.lastPersistedAtMs = this.nowMs();
+  }
+
+  private markDurabilityFailure(error: AppError): void {
+    this.durabilityErrorCode = error.code;
   }
 
   private shouldAutoFlush(): boolean {
@@ -1534,7 +1569,11 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     scheduleAutoFlush(
       this.autoFlushState,
       Math.max(0, AUTO_FLUSH_INTERVAL_MS - (this.nowMs() - this.lastPersistedAtMs)),
-      () => { void this.flush(); },
+      () => {
+        void this.flush().then((result) => {
+          if (!result.ok) console.error(`Global catalog auto-flush failed: ${result.error.code}`, result.error.message);
+        });
+      },
       this.flushOnExit,
     );
   }

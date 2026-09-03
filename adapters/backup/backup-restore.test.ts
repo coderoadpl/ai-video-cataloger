@@ -194,6 +194,24 @@ describe('backup restore pipeline', () => {
     expect(readFileSync(liveFolderConfig, 'utf8')).toContain('restored-folder-config');
   });
 
+  it('fsyncs the staged file and live directory before completing a cross-device restore swap', async () => {
+    const fixture = await createRestoreFixture();
+    const folder = fixture.backupManifest.folders[0];
+    if (folder === undefined) throw new Error('expected a backed-up folder');
+    const liveFolderConfig = path.join(folder.path, '.ai-video-cataloger', 'config.json');
+    await fixture.replaceRemoteArchive(async (extracted, manifest) => {
+      await writeFile(path.join(extracted, 'folders', folder.folderId, 'config.json'), '{"marker":"restored-folder-config"}\n');
+      await rewriteManifestForExtractedTree(extracted, manifest);
+    });
+    const fsyncingFs = new FsyncingCrossDeviceRestoreRenameFs(fixture.fs, liveFolderConfig);
+
+    const result = await runRestore({ ...fixture.restoreDeps, fs: fsyncingFs }, { remoteId: fixture.remoteId }, context('exdev-fsync'));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(fsyncingFs.syncedFiles).toContain(`${liveFolderConfig}.restore-tmp`);
+    expect(fsyncingFs.syncedDirectories).toContain(path.dirname(liveFolderConfig));
+  });
+
   it('keeps the rollback marker when post-restore state persistence fails', async () => {
     const fixture = await createRestoreFixture();
     const marker = path.join(fixture.targetHome, '.ai-video-cataloger', 'restore-incomplete.json');
@@ -203,7 +221,7 @@ describe('backup restore pipeline', () => {
       state: new FailingBackupState(),
     }, { remoteId: fixture.remoteId }, context('state-failure'));
 
-    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'restore_incomplete' } });
     expect(existsSync(marker)).toBe(true);
   });
 
@@ -371,6 +389,21 @@ class FailingCrossDeviceRestoreRenameFs extends NodeFileSystemPort {
       return Promise.resolve({ ok: false, error: appError('internal', 'EXDEV: cross-device link not permitted') });
     }
     return this.delegate.renamePath(from, to);
+  }
+}
+
+class FsyncingCrossDeviceRestoreRenameFs extends FailingCrossDeviceRestoreRenameFs {
+  readonly syncedFiles: string[] = [];
+  readonly syncedDirectories: string[] = [];
+
+  override syncFile(filePath: string): Promise<Result<void, AppError>> {
+    this.syncedFiles.push(filePath);
+    return Promise.resolve(ok(undefined));
+  }
+
+  override syncDirectory(directoryPath: string): Promise<Result<void, AppError>> {
+    this.syncedDirectories.push(directoryPath);
+    return Promise.resolve(ok(undefined));
   }
 }
 
