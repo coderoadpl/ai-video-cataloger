@@ -1,6 +1,6 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import initSqlJs from 'sql.js';
 import { z } from 'zod';
@@ -9,7 +9,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { fileArtifactPath } from '../../adapters/whisper/index.js';
 import { derivedFolderId, FILE_ARTIFACTS, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
-import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT } from './helpers.js';
+import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -87,7 +87,16 @@ const seedCatalog = async (workdir: string): Promise<SeededLibrary> => {
   writeFileSync(videoPath, Buffer.from([2]));
   writeFileSync(photoPath, REAL_JPEG_RED_LARGE);
 
-  for (const artifact of Object.values(FILE_ARTIFACTS)) writeArtifact(fileArtifactPath(homeDirectory, artifact));
+  for (const artifact of Object.values(FILE_ARTIFACTS)) {
+    const targetPath = fileArtifactPath(homeDirectory, artifact);
+    const realPath = fileArtifactPath(userInfo().homedir, artifact);
+    mkdirSync(dirname(targetPath), { recursive: true });
+    if (existsSync(realPath)) {
+      copyFileSync(realPath, targetPath);
+    } else {
+      writeArtifact(targetPath);
+    }
+  }
 
   const videoSidecarFrame = join(folderPath, '.ai-video-cataloger', 'artifacts', 'frames', videoSoloFingerprint, 'frame.jpg');
   const videoLooseFrame = join(folderPath, 'frames', 'solo-person', 'frame-001.jpg');
@@ -313,7 +322,9 @@ const openCollection = async (page: Page): Promise<void> => {
 };
 
 const restoreAllHidden = async (page: Page, fingerprint: string): Promise<void> => {
-  await openCollection(page);
+  await page.getByTestId('mode-library').click();
+  await page.getByTestId('subnav-collection').click();
+  await expect(page.getByTestId('library-hidden-filter')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId('library-hidden-filter').click();
   const hiddenTile = page.locator(`[data-testid="library-tile"][data-fingerprint="${fingerprint}"]`);
   await expect(hiddenTile).toBeVisible({ timeout: 20_000 });
@@ -324,15 +335,19 @@ const restoreAllHidden = async (page: Page, fingerprint: string): Promise<void> 
   await page.getByTestId('library-hidden-filter').click();
 };
 
-const installTrashRecorder = async (app: ElectronApplication, logPath: string): Promise<void> => {
-  await app.evaluate(async ({ shell }, targetLogPath) => {
-    const fs = await import('node:fs/promises');
+const installTrashRecorder = async (app: ElectronApplication): Promise<void> => {
+  await app.evaluate(({ shell }) => {
+    Reflect.set(globalThis, 'avcTrashedPaths', []);
+    const originalTrashItem = shell.trashItem.bind(shell);
     shell.trashItem = async (targetPath: string): Promise<void> => {
-      await fs.appendFile(targetLogPath, `${targetPath}\n`, 'utf8');
-      await fs.unlink(targetPath);
+      Reflect.get(globalThis, 'avcTrashedPaths').push(targetPath);
+      await originalTrashItem(targetPath);
     };
-  }, logPath);
+  });
 };
+
+const trashedPaths = async (app: ElectronApplication): Promise<readonly string[]> =>
+  app.evaluate(() => Reflect.get(globalThis, 'avcTrashedPaths') ?? []);
 
 test.describe('Library hide and trash', () => {
   test('Kolekcja and Osoby hide, restore, and move selected media to Trash', async () => {
@@ -340,7 +355,6 @@ test.describe('Library hide and trash', () => {
     const fixture = await seedCatalog(workdir);
     const session = await launch(workdir);
     const homeDirectory = isolatedHome(workdir);
-    const trashLogPath = join(workdir, 'trash-log.txt');
     try {
       await openCollection(session.page);
       await expect(session.page.getByTestId('library-tile')).toHaveCount(3, { timeout: 30_000 });
@@ -360,6 +374,13 @@ test.describe('Library hide and trash', () => {
       await expect.poll(() => hiddenAt(homeDirectory, fixture.videoSharedFingerprint)).toBeNull();
       await expect.poll(() => hiddenAt(homeDirectory, fixture.videoSoloFingerprint)).toBeNull();
 
+      await stubOpenDialog(session.app, fixture.folderPath);
+      await session.page.getByTestId('mode-analysis').click();
+      const openFolderButton = session.page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+      await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
+      await openFolderButton.click();
+      await expect(session.page.getByText(fixture.folderPath)).toBeVisible({ timeout: 20_000 });
+
       await enableFaces(session.page);
       await session.page.getByTestId('mode-library').click();
       await session.page.getByTestId('subnav-people').click();
@@ -377,12 +398,12 @@ test.describe('Library hide and trash', () => {
       await expect(personCard).toBeVisible({ timeout: 30_000 });
       await personCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
       await session.page.getByTestId('people-trash-files').click();
-      await expect(session.page.getByTestId('library-trash-person-summary')).toContainText(/1 file|1 plik/, { timeout: 20_000 });
+      await expect(session.page.getByTestId('library-trash-person-summary')).toContainText(/2 files, including 0|2 pliki, z czego 0/, { timeout: 20_000 });
       await expect(session.page.getByTestId('people-library-skip-shared').locator('input[type="checkbox"]')).toBeChecked();
       await session.page.keyboard.press('Escape');
 
       await openCollection(session.page);
-      await installTrashRecorder(session.app, trashLogPath);
+      await installTrashRecorder(session.app);
       expect(existsSync(fixture.videoPath)).toBe(true);
       expect(existsSync(fixture.videoSidecarFrame)).toBe(true);
       expect(existsSync(fixture.videoFaceCrop)).toBe(true);
@@ -400,7 +421,7 @@ test.describe('Library hide and trash', () => {
       await expect.poll(() => fileCount(homeDirectory, 'files', fixture.videoSoloFingerprint)).toBe(0);
       await expect.poll(() => fileCount(homeDirectory, 'analyses', fixture.videoSoloFingerprint)).toBe(0);
       await expect.poll(() => fileCount(homeDirectory, 'face_observations', fixture.videoSoloFingerprint)).toBe(0);
-      await expect.poll(() => existsSync(trashLogPath) ? readFileSync(trashLogPath, 'utf8') : '').toContain(fixture.videoPath);
+      await expect.poll(async () => trashedPaths(session.app)).toContain(fixture.videoPath);
       await expect(session.page.locator(`[data-testid="library-tile"][data-fingerprint="${fixture.photoFingerprint}"]`)).toBeVisible();
       await expect.poll(() => existsSync(fixture.photoPath)).toBe(true);
       await expect.poll(() => existsSync(fixture.photoThumb)).toBe(true);
