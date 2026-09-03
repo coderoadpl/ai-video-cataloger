@@ -14,8 +14,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { tmpdir, userInfo } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createApiClient } from '@core/client/index.js';
@@ -38,6 +38,7 @@ import { z } from 'zod';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = join(rootDir, 'apps/cli/src/main.ts');
+const hostHomeDirectory = resolve(userInfo().homedir);
 
 // Gates must never read or write the developer's real macOS Keychain.
 process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN = '1';
@@ -51,6 +52,34 @@ const fail = (message: string): never => {
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new SmokeFailure(message);
 }
+
+const isolatedSmokeHome = (homeDirectory: string): string => {
+  const resolved = resolve(homeDirectory);
+  if (resolved === hostHomeDirectory) {
+    fail('Smoke home isolation violation: temp home resolved to the host home');
+  }
+  return resolved;
+};
+
+const assertSmokeHomeEnvironment = (homeDirectory: string): void => {
+  const resolved = isolatedSmokeHome(homeDirectory);
+  if (process.env.HOME === undefined || resolve(process.env.HOME) !== resolved) {
+    fail('Smoke home isolation violation: HOME is not set to the isolated smoke home');
+  }
+  if (process.env.AVC_HOME_DIRECTORY === undefined || resolve(process.env.AVC_HOME_DIRECTORY) !== resolved) {
+    fail('Smoke home isolation violation: AVC_HOME_DIRECTORY is not set to the isolated smoke home');
+  }
+};
+
+const smokeCliEnv = (homeDirectory: string): NodeJS.ProcessEnv => {
+  const resolved = isolatedSmokeHome(homeDirectory);
+  return { HOME: resolved, AVC_HOME_DIRECTORY: resolved };
+};
+
+const restoreEnv = (key: 'HOME' | 'AVC_HOME_DIRECTORY', value: string | undefined): void => {
+  if (value === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = value;
+};
 
 interface Run {
   code: number;
@@ -205,8 +234,9 @@ const lockLint = (): Promise<void> =>
     });
   });
 
-const bootInProcess = async (): Promise<void> => {
-  const app = createApp();
+const bootInProcess = async (homeDirectory: string): Promise<void> => {
+  assertSmokeHomeEnvironment(homeDirectory);
+  const app = createApp({ homeDirectory });
   try {
     const response = await app.honoApp.request('/api/health');
     assert(response.ok, `in-process health returned HTTP ${response.status}`);
@@ -222,7 +252,7 @@ const bootInProcess = async (): Promise<void> => {
     await app.dispose();
   }
 
-  const ready = createApp({ dbDriver: 'memory' }, createInMemoryDeps);
+  const ready = createApp({ dbDriver: 'memory', homeDirectory }, createInMemoryDeps);
   try {
     const response = await ready.honoApp.request('/api/health/ready');
     assert(response.ok, `in-process readiness returned HTTP ${response.status}`);
@@ -296,7 +326,7 @@ const bootInProcess = async (): Promise<void> => {
     mtimeMs: 1,
     lastSeenAt: '2026-01-01T00:00:00.000Z',
   });
-  const facesApp = createApp({ dbDriver: 'memory', workingDirectory: photoRoot }, () => deps);
+  const facesApp = createApp({ dbDriver: 'memory', homeDirectory, workingDirectory: photoRoot }, () => deps);
   try {
     const api = createApiClient({
       baseUrl: '',
@@ -445,7 +475,7 @@ const seedSmokeVariant = async (home: string, folder: string): Promise<string> =
 };
 
 const driveCli = async (home: string, folder: string): Promise<void> => {
-  const env = { HOME: home };
+  const env = smokeCliEnv(home);
 
   const doctor = await run(['doctor', '--json'], env, folder);
   const doctorOk = doctor.code === 0 || doctor.code === EXIT_CODE_BY_ERROR_CODE.prerequisites_failed;
@@ -608,7 +638,7 @@ const proxyArtifactCounts = (home: string): { proxies: number; thumbs: number; g
 };
 
 const photosCli = async (home: string, folder: string): Promise<void> => {
-  const env = { HOME: home };
+  const env = smokeCliEnv(home);
   const photosDir = join(folder, 'photos');
   mkdirSync(photosDir, { recursive: true });
   writeFileSync(join(photosDir, 'a.jpg'), REAL_JPEG_RED_LARGE);
@@ -818,17 +848,24 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
 
 const startedAt = Date.now();
 const tempDirs: string[] = [];
+const previousHome = process.env.HOME;
+const previousAvcHome = process.env.AVC_HOME_DIRECTORY;
 try {
+  const home = isolatedSmokeHome(mkdtempSync(join(tmpdir(), 'avc-smoke-home-')));
+  tempDirs.push(home);
+  process.env.HOME = home;
+  process.env.AVC_HOME_DIRECTORY = home;
+  assertSmokeHomeEnvironment(home);
+
   console.log('smoke: checking the installed dependency tree...');
   checkInstalledTree();
   console.log('smoke: linting the lockfile under frozen-lockfile semantics...');
   await lockLint();
   console.log('smoke: booting the in-process app via createApp...');
-  await bootInProcess();
+  await bootInProcess(home);
   console.log('smoke: driving the CLI...');
-  const home = mkdtempSync(join(tmpdir(), 'avc-smoke-home-'));
   const folder = mkdtempSync(join(tmpdir(), 'avc-smoke-folder-'));
-  tempDirs.push(home, folder);
+  tempDirs.push(folder);
   await driveCli(home, folder);
   console.log('smoke: driving the photos CLI...');
   await photosCli(home, folder);
@@ -838,5 +875,7 @@ try {
   console.error(`\nsmoke: FAIL\n${message}`);
   process.exitCode = 1;
 } finally {
+  restoreEnv('HOME', previousHome);
+  restoreEnv('AVC_HOME_DIRECTORY', previousAvcHome);
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 }

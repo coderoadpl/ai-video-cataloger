@@ -58,6 +58,7 @@ async function verifyStagedCli(sourceDir) {
     }
     const result = await runNode([path.join(isolated, 'index.js'), 'tags', 'list', '--json'], {
       HOME: home,
+      AVC_HOME_DIRECTORY: home,
       AVC_WORKING_DIRECTORY: folder,
       AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
     });
