@@ -299,3 +299,38 @@ changes the in-memory representation and adds two quality controls:
   still include borderline detections. `FACE_IDENTITY_MIN_SCORE` is the higher
   identity floor; observations below it do not join existing identities, seed
   new identities, or participate in full reclustering.
+
+## Amendment: calibration lessons
+
+Date: 2026-09-03 · Status: accepted
+
+Calibrating the benchmark against a real, human-supplied reference partition
+surfaced three lessons that change how future calibration runs must be read:
+
+- **A reference partition is a hint, not ground truth.** Any partition
+  produced by another clustering run — even with manual corrections layered
+  on top — carries that run's own biases, most commonly over-splitting one
+  identity into several. Purity, completeness and "identities spanned"
+  computed against such a partition are dominated by the reference's own
+  splitting, not by the candidate algorithm's errors. These metrics are
+  useful for spotting large regressions, never for picking a final
+  threshold.
+- **The trustworthy acceptance metric is the human-labelled pair set.** A
+  small sample of pairs labelled "same person" / "different person" by a
+  human is the only signal that is not contaminated by another algorithm's
+  choices. The acceptance bar is zero labelled-different pairs merged, with
+  the split rate (labelled-same pairs left apart) reported alongside it as
+  the cost of that bar. This is complemented, not replaced, by a human visual
+  check of the largest resulting clusters — a contact-sheet sample that
+  includes the lowest-score and smallest-box tails, not just a random draw —
+  before concluding that a large cluster is a merge error rather than one
+  identity with many observations.
+- **Tightening the merge criterion fragments real identities well before it
+  fixes a genuinely mixed cluster.** Raising the strong-edge fraction or
+  moving toward complete linkage first splits identities that have a wide
+  spread of poses, lighting or crop quality — the visual check catches this
+  as a person now scattered across many small clusters — long before it
+  breaks the rare cluster that actually mixes two people. A quality-gate
+  change is therefore justified by the visual audit of its effect on cluster
+  counts and composition, never by movement in the reference-partition
+  metrics alone.
