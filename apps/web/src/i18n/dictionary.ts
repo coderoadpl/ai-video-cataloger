@@ -690,6 +690,8 @@ export interface Dictionary {
     providerServiceAccount: string;
     providerServiceAccountHelper: string;
     connectGoogle: string;
+    connectWaiting: string;
+    connectCancel: string;
     sharedDriveIdLabel: string;
     sharedDriveIdHelper: string;
     keyJsonLabel: string;
@@ -702,6 +704,11 @@ export interface Dictionary {
     recoveryKeyExported: (path: string) => string;
     recoveryKeyFingerprint: (fingerprint: string) => string;
     recoveryKeySavedCheckbox: string;
+    existingArchivesWarning: string;
+    importRecoveryKeyLabel: string;
+    importRecoveryKey: string;
+    recoveryKeyImported: (fingerprint: string) => string;
+    acknowledgeUnreadableArchives: string;
     finish: string;
     listTitle: string;
     listEmpty: string;
@@ -716,6 +723,8 @@ export interface Dictionary {
     restoreDialogOverwrite: string;
     restoreDialogPreRestore: string;
     restoreDialogRelaunch: string;
+    restoreRecoveryKeyLabel: string;
+    restoreRecoveryKeyHelper: string;
     restoreConfirm: string;
     restoreConfirmAgain: string;
     restoreRunning: (phase: string) => string;
@@ -1697,6 +1706,8 @@ export const en: Dictionary = {
     providerServiceAccount: 'Service account (advanced)',
     providerServiceAccountHelper: 'For a company Shared Drive. Follow the setup runbook before you continue.',
     connectGoogle: 'Connect Google Drive',
+    connectWaiting: 'Waiting for your browser…',
+    connectCancel: 'Cancel connecting',
     sharedDriveIdLabel: 'Shared Drive id',
     sharedDriveIdHelper: 'The last part of the Shared Drive address in your browser.',
     keyJsonLabel: 'Service-account key JSON',
@@ -1709,6 +1720,11 @@ export const en: Dictionary = {
     recoveryKeyExported: (path) => `Saved to ${path}`,
     recoveryKeyFingerprint: (fingerprint) => `Fingerprint: ${fingerprint}`,
     recoveryKeySavedCheckbox: 'I saved my recovery key',
+    existingArchivesWarning: 'This destination already holds backups written on another Mac. Paste that recovery key to keep them readable, or confirm that they stay unreadable.',
+    importRecoveryKeyLabel: 'Recovery key from the other Mac',
+    importRecoveryKey: 'Use this key',
+    recoveryKeyImported: (fingerprint) => `Key accepted: ${fingerprint}`,
+    acknowledgeUnreadableArchives: 'I understand the existing backups will stay unreadable',
     finish: 'Finish',
     listTitle: 'Backups',
     listEmpty: 'No backups yet.',
@@ -1723,6 +1739,8 @@ export const en: Dictionary = {
     restoreDialogOverwrite: 'Your catalog, photo database, app settings, per-folder settings and face crops will be replaced by the ones in this backup.',
     restoreDialogPreRestore: 'A local copy of the current catalog is taken first, so nothing is lost if the restore fails.',
     restoreDialogRelaunch: 'The app restarts when the restore finishes.',
+    restoreRecoveryKeyLabel: 'Recovery key',
+    restoreRecoveryKeyHelper: 'Needed when this Mac never held the key that encrypted this backup.',
     restoreConfirm: 'Restore',
     restoreConfirmAgain: 'Yes, restore now',
     restoreRunning: (phase) => `Restoring: ${phase}`,
@@ -1750,6 +1768,7 @@ export const en: Dictionary = {
       backup_quota_exceeded: 'The Drive storage quota is exhausted.',
       backup_encryption_failed: 'The archive could not be encrypted or decrypted.',
       backup_integrity_failed: 'The archive did not pass its integrity check.',
+      restore_incomplete: 'Restore did not finish. Restart the app so it can roll back from the local pre-restore copy.',
       restore_refused: 'Restore is blocked while another catalog job is running.',
       recovery_key_required: 'The recovery key is required.',
     },
@@ -2735,7 +2754,7 @@ export const pl: Dictionary = {
   },
   backup: {
     sectionTitle: 'Kopia zapasowa',
-    sectionHelper: 'Zaszyfrowana kopia katalogu — nigdy samych plików wideo — na Twoim własnym Dysku Google.',
+    sectionHelper: 'Zaszyfrowana kopia katalogu — nigdy Twoich zdjęć ani filmów — na Twoim własnym Dysku Google.',
     enableLabel: 'Rób kopię zapasową katalogu',
     statusConnected: (account) => `Połączono jako ${account}`,
     statusNotConnected: 'Brak połączenia',
@@ -2745,10 +2764,10 @@ export const pl: Dictionary = {
     nextDueUnknown: 'Następne sprawdzenie: przy kolejnym uruchomieniu',
     runNow: 'Kopia teraz',
     running: 'Trwa kopia…',
-    optionalTierLabel: 'Kopiuj też pliki odtwarzalne',
+    optionalTierLabel: 'Kopiuj też pliki pochodne (można je wygenerować ponownie)',
     optionalTierHelper: 'Podglądy zdjęć, miniatury i lustrzane klatki, jako osobna seria archiwów.',
-    keepLastLabel: 'Zachowaj ostatnich',
-    keepWeeklyLabel: 'Zachowaj tygodniowe (tygodni)',
+    keepLastLabel: 'Ostatnie kopie (liczba)',
+    keepWeeklyLabel: 'Kopie tygodniowe (tygodni)',
     retentionHelper: 'Starsze archiwa są usuwane po każdej udanej wysyłce; ostatnie nigdy nie znika.',
     stepperTitle: 'Włącz kopię zapasową',
     stepProvider: 'Miejsce docelowe',
@@ -2759,10 +2778,12 @@ export const pl: Dictionary = {
     providerServiceAccount: 'Konto serwisowe (zaawansowane)',
     providerServiceAccountHelper: 'Dla firmowego Dysku współdzielonego. Najpierw wykonaj instrukcję konfiguracji.',
     connectGoogle: 'Połącz z Dyskiem Google',
+    connectWaiting: 'Czekam na przeglądarkę…',
+    connectCancel: 'Anuluj łączenie',
     sharedDriveIdLabel: 'Identyfikator Dysku współdzielonego',
     sharedDriveIdHelper: 'Ostatni fragment adresu Dysku współdzielonego w przeglądarce.',
     keyJsonLabel: 'Klucz konta serwisowego (JSON)',
-    keyJsonHelper: 'Wklejasz go raz, trafia do pęku kluczy macOS i nigdy nie jest zapisywany na dysku.',
+    keyJsonHelper: 'Wklejasz go raz, trafia do pęku kluczy macOS i nigdy do plików aplikacji.',
     importKeyJson: 'Zaimportuj klucz i połącz',
     testConnection: 'Testuj połączenie',
     connectionReport: (account, folder) => `${account} → ${folder}`,
@@ -2770,14 +2791,19 @@ export const pl: Dictionary = {
     exportRecoveryKey: 'Zapisz klucz odzyskiwania…',
     recoveryKeyExported: (path) => `Zapisano w ${path}`,
     recoveryKeyFingerprint: (fingerprint) => `Odcisk klucza: ${fingerprint}`,
-    recoveryKeySavedCheckbox: 'Zapisałem klucz odzyskiwania',
+    recoveryKeySavedCheckbox: 'Mam zapisany klucz odzyskiwania',
+    existingArchivesWarning: 'W tym miejscu docelowym są już kopie z innego Maca. Wklej tamten klucz odzyskiwania, żeby dało się je odczytać, albo potwierdź, że pozostaną nieczytelne.',
+    importRecoveryKeyLabel: 'Klucz odzyskiwania z tamtego Maca',
+    importRecoveryKey: 'Użyj tego klucza',
+    recoveryKeyImported: (fingerprint) => `Klucz przyjęty: ${fingerprint}`,
+    acknowledgeUnreadableArchives: 'Rozumiem, że stare kopie pozostaną nieczytelne',
     finish: 'Zakończ',
     listTitle: 'Kopie zapasowe',
     listEmpty: 'Nie ma jeszcze żadnej kopii.',
     listLoading: 'Wczytywanie kopii…',
     tierFilterAll: 'Wszystkie',
     tierCritical: 'Katalog',
-    tierOptional: 'Pliki odtwarzalne',
+    tierOptional: 'Pliki pochodne',
     backupRow: (date, size, appVersion) => `${date} · ${size} · wersja ${appVersion}`,
     restore: 'Przywróć',
     restoreUnsupported: (appVersion) => `Wymaga aplikacji w wersji ≥ ${appVersion}`,
@@ -2785,6 +2811,8 @@ export const pl: Dictionary = {
     restoreDialogOverwrite: 'Katalog, baza zdjęć, ustawienia aplikacji, ustawienia folderów i wycinki twarzy zostaną zastąpione tymi z kopii.',
     restoreDialogPreRestore: 'Najpierw powstanie lokalna kopia obecnego katalogu, więc nic nie przepadnie, jeśli przywracanie się nie uda.',
     restoreDialogRelaunch: 'Po zakończeniu aplikacja uruchomi się ponownie.',
+    restoreRecoveryKeyLabel: 'Klucz odzyskiwania',
+    restoreRecoveryKeyHelper: 'Potrzebny, gdy ten Mac nigdy nie miał klucza, którym zaszyfrowano tę kopię.',
     restoreConfirm: 'Przywróć',
     restoreConfirmAgain: 'Tak, przywróć teraz',
     restoreRunning: (phase) => `Przywracanie: ${phase}`,
@@ -2812,6 +2840,7 @@ export const pl: Dictionary = {
       backup_quota_exceeded: 'Skończyło się miejsce na Dysku.',
       backup_encryption_failed: 'Nie udało się zaszyfrować lub odszyfrować archiwum.',
       backup_integrity_failed: 'Archiwum nie przeszło kontroli spójności.',
+      restore_incomplete: 'Przywracanie nie zakończyło się. Uruchom aplikację ponownie, żeby mogła wycofać zmiany z lokalnej kopii sprzed przywracania.',
       restore_refused: 'Przywracanie jest zablokowane, dopóki trwa inne zadanie katalogu.',
       recovery_key_required: 'Wymagany jest klucz odzyskiwania.',
     },

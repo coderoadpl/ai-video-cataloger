@@ -9,10 +9,14 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  TextField,
   Typography,
 } from '@mui/material';
 
+import type { BackupErrorCode } from '@core/domain/index.js';
+
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { formatArchiveSize, type RemoteBackupView } from './backup-model.js';
 
 interface BackupRestoreDialogProps {
@@ -20,7 +24,9 @@ interface BackupRestoreDialogProps {
   phase: string | null;
   isRestoring: boolean;
   error: string | null;
-  onConfirm: (remoteId: string) => void;
+  errorCode: BackupErrorCode | null;
+  recoveryKeyRequired: boolean;
+  onConfirm: (remoteId: string, recoveryKey: string | undefined) => void;
   onClose: () => void;
 }
 
@@ -29,15 +35,21 @@ export const BackupRestoreDialog = ({
   phase,
   isRestoring,
   error,
+  errorCode,
+  recoveryKeyRequired,
   onConfirm,
   onClose,
 }: BackupRestoreDialogProps) => {
   const dictionary = useDictionary();
   const [armed, setArmed] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState('');
   const running = isRestoring && error === null;
+  const missingRecoveryKey = recoveryKeyRequired && recoveryKey.trim().length === 0;
+  const targetCreatedAt = formatCapturedAt(backup?.createdAt ?? null, dictionary.locale);
 
   const close = () => {
     setArmed(false);
+    setRecoveryKey('');
     onClose();
   };
 
@@ -53,12 +65,24 @@ export const BackupRestoreDialog = ({
       <DialogContent dividers>
         {backup === null ? null : (
           <Typography variant="body2" sx={{ mb: 1.5 }} data-testid="backup-restore-target">
-            {dictionary.backup.backupRow(backup.createdAt, formatArchiveSize(backup.sizeBytes), backup.appVersion)}
+            {dictionary.backup.backupRow(targetCreatedAt ?? backup.createdAt, formatArchiveSize(backup.sizeBytes), backup.appVersion)}
           </Typography>
         )}
         <DialogContentText>{dictionary.backup.restoreDialogOverwrite}</DialogContentText>
         <DialogContentText>{dictionary.backup.restoreDialogPreRestore}</DialogContentText>
         <DialogContentText>{dictionary.backup.restoreDialogRelaunch}</DialogContentText>
+        <TextField
+          fullWidth
+          size="small"
+          sx={{ mt: 2 }}
+          label={dictionary.backup.restoreRecoveryKeyLabel}
+          helperText={dictionary.backup.restoreRecoveryKeyHelper}
+          value={recoveryKey}
+          onChange={(event) => setRecoveryKey(event.target.value)}
+          disabled={running}
+          required={recoveryKeyRequired}
+          slotProps={{ htmlInput: { 'data-testid': 'backup-restore-recovery-key' } }}
+        />
         {running && phase !== null ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }} data-testid="backup-restore-progress">
             <CircularProgress size={16} />
@@ -67,7 +91,7 @@ export const BackupRestoreDialog = ({
         ) : null}
         {error === null ? null : (
           <Alert severity="error" sx={{ mt: 2 }} data-testid="backup-restore-error">
-            {`${error} ${dictionary.backup.restoreFailedNothingChanged}`}
+            {errorCode === 'restore_incomplete' ? error : `${error} ${dictionary.backup.restoreFailedNothingChanged}`}
           </Alert>
         )}
       </DialogContent>
@@ -79,9 +103,9 @@ export const BackupRestoreDialog = ({
           <Button
             variant="contained"
             color="warning"
-            disabled={backup === null || running}
+            disabled={backup === null || running || missingRecoveryKey}
             onClick={() => {
-              if (backup !== null) onConfirm(backup.remoteId);
+              if (backup !== null) onConfirm(backup.remoteId, recoveryKey.trim() === '' ? undefined : recoveryKey.trim());
             }}
             data-testid="backup-restore-confirm-final"
           >
@@ -90,7 +114,7 @@ export const BackupRestoreDialog = ({
         ) : (
           <Button
             variant="contained"
-            disabled={backup === null || running}
+            disabled={backup === null || running || missingRecoveryKey}
             onClick={() => setArmed(true)}
             data-testid="backup-restore-confirm"
           >

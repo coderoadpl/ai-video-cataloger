@@ -11,10 +11,12 @@ export const selectForDeletion = (
   backups: readonly RemoteBackup[],
   policy: BackupRetentionPolicy,
   now: Date,
+  keyFingerprint: string,
 ): RemoteBackup[] => {
+  const own = backups.filter((backup) => backup.keyFingerprint === keyFingerprint);
   const keep = new Set<string>();
   for (const tier of ['critical', 'optional'] satisfies readonly BackupTier[]) {
-    const series = backups
+    const series = own
       .filter((backup) => backup.tier === tier)
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
     for (const backup of series.slice(0, Math.max(0, policy.keepLast))) keep.add(backup.remoteId);
@@ -30,7 +32,7 @@ export const selectForDeletion = (
     const newest = series[0];
     if (newest !== undefined) keep.add(newest.remoteId);
   }
-  return backups.filter((backup) => !keep.has(backup.remoteId));
+  return own.filter((backup) => !keep.has(backup.remoteId));
 };
 
 const isoWeekStart = (date: Date): Date => {

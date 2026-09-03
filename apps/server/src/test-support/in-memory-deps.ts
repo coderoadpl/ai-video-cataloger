@@ -6,7 +6,7 @@ import packageJson from '../../../../package.json' with { type: 'json' };
 import { z } from 'zod';
 
 import { PHOTOS_SCHEMA_VERSION } from '@adapters/db/index.js';
-import { ensureBackupRecoveryKey } from '@adapters/backup/envelope.js';
+import { backupKeyFingerprint, ensureBackupRecoveryKey, parseRecoveryKey } from '@adapters/backup/envelope.js';
 import { MemoryBackupDestination } from '@adapters/backup/memory-destination.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { FakeExifPort, FakePhotoMediaPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
@@ -15,6 +15,7 @@ import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
   acceptsGpsWrite,
+  BACKUP_ENCRYPTION_KEY_ACCOUNT,
   appError,
   canonicalPath,
   compareUtf8Bytes,
@@ -42,6 +43,7 @@ import {
 import {
   ReadinessCache,
   confirmBackupRecoveryKey,
+  importBackupRecoveryKey,
   connectBackupDestination,
   createRecoveryKeyCeremony,
   disableBackup,
@@ -160,11 +162,13 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     ceremony: createRecoveryKeyCeremony(),
     fileSave: { save: config.saveFile ?? (() => Promise.resolve(memoryModeUnavailable())) },
     destination: () => Promise.resolve(ok(backupDestination)),
-    enqueueBackup: (input) => enqueueSimulatedBackup(jobs, backupDestination, backupState, {
+    enqueueBackup: (input) => enqueueSimulatedBackup(jobs, backupDestination, backupState, secrets, {
       ...input,
       appVersion: config.version ?? packageJson.version,
     }),
     recoveryKey: () => ensureBackupRecoveryKey(secrets),
+    parseRecoveryKey,
+    fingerprintKey: backupKeyFingerprint,
   };
   return {
     version: config.version ?? packageJson.version,
@@ -193,12 +197,13 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     cleanupBackupStaging: () => Promise.resolve(ok(undefined)),
     evaluateScheduledBackup: () => Promise.resolve(ok(undefined)),
     listBackups: (tier: 'critical' | 'optional' | null, signal: AbortSignal) => backupDestination.list(tier, signal),
-    restoreBackup: (input: { remoteId: string }) =>
+    restoreBackup: (input: { remoteId: string; recoveryKey?: string | undefined }) =>
       enqueueSimulatedRestore(jobs, backupDestination, input.remoteId),
     backupStatus: (input: { testConnection: boolean }) => readBackupStatus({
       config: configStore,
       state: backupState,
       jobs,
+      secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: () => Promise.resolve(ok(backupDestination)),
     }, input),
@@ -209,6 +214,8 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     disableBackup: (request: { purgeCredentials: boolean }) => disableBackup(backupEnablement, request),
     exportBackupRecoveryKey: () => exportBackupRecoveryKey(backupEnablement),
     confirmBackupRecoveryKey: () => confirmBackupRecoveryKey(backupEnablement),
+    importBackupRecoveryKey: (request: { recoveryKey: string }) =>
+      importBackupRecoveryKey(backupEnablement, request),
     runBackup: (request: { tier: BackupTier }) => runBackupNow(backupEnablement, request),
     readiness,
   };
@@ -271,6 +278,7 @@ const enqueueSimulatedBackup = (
   jobs: JobsPort,
   destination: MemoryBackupDestination,
   state: BackupStatePort,
+  secrets: SecretsStore,
   input: { tier: BackupTier; manual: boolean; appVersion: string },
 ): Promise<Result<{ jobId: string }, AppError>> => jobs.enqueue({
   kind: 'backup',
@@ -282,6 +290,8 @@ const enqueueSimulatedBackup = (
       const reported = await context.reportProgress({ step, percentage });
       if (!reported.ok) return reported;
     }
+    const storedKey = await secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
+    if (!storedKey.ok) return storedKey;
     const archivePath = path.join(tmpdir(), `avc-memory-backup-${randomUUID()}.avcbak`);
     await writeFile(archivePath, Buffer.alloc(1024), { mode: 0o600 });
     try {
@@ -298,6 +308,9 @@ const enqueueSimulatedBackup = (
           totalBytes: 1024,
           files: [],
           folders: [],
+          keyFingerprint: storedKey.value === null
+            ? null
+            : backupKeyFingerprint(Buffer.from(storedKey.value, 'base64')),
         },
       }, context.signal);
       if (!uploaded.ok) return uploaded;
@@ -326,7 +339,7 @@ const enqueueSimulatedRestore = (
   run: async (context) => {
     const listed = await destination.list(null, context.signal);
     if (!listed.ok) return listed;
-    const restored = listed.value.find((backup) => backup.remoteId === remoteId);
+    const restored = listed.value.backups.find((backup) => backup.remoteId === remoteId);
     if (restored === undefined) return { ok: false, error: appError('not_found', 'Remote backup not found') };
     for (const [step, percentage] of RESTORE_PROGRESS) {
       const reported = await context.reportProgress({ step, percentage });
@@ -353,6 +366,7 @@ const memoryBackupSeedSchema = z.array(z.object({
       globalCatalog: z.number().int().nonnegative(),
       photos: z.number().int().nonnegative(),
     }).strict(),
+    keyFingerprint: z.string().min(1).nullable().default(null),
   }).strict(),
   base64: z.string(),
 }).strict());

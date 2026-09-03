@@ -5,7 +5,9 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ok } from '@core/domain/index.js';
+import { API_ROUTES, looseEnvelopeSchema } from '@core/contract/index.js';
+import { appError, ok } from '@core/domain/index.js';
+import type { AppError, Result } from '@core/domain/index.js';
 
 import { createApp } from './create-app.js';
 import { createInMemoryDeps } from './test-support/in-memory-deps.js';
@@ -47,6 +49,69 @@ describe('backup application lifecycle', () => {
 
     await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
     expect(calls).toEqual(['cleanup', 'evaluate', 'evaluate']);
+    await app.dispose();
+  });
+
+  it('runs backup cleanup during CLI startup before commands can use stores', async () => {
+    const calls: string[] = [];
+    let resolveCleanup: (result: Result<void, AppError>) => void = () => undefined;
+    const cleanupResult = new Promise<Result<void, AppError>>((resolve) => {
+      resolveCleanup = resolve;
+    });
+    const app = createApp({ dbDriver: 'memory', processName: 'cli' }, (config) => ({
+      ...createInMemoryDeps(config),
+      cleanupBackupStaging: () => {
+        calls.push('cleanup');
+        return cleanupResult;
+      },
+    }));
+
+    let settled = false;
+    const responsePromise = Promise.resolve(app.honoApp.request(API_ROUTES.health.path)).then((response) => {
+      settled = true;
+      return response;
+    });
+    await Promise.resolve();
+
+    expect(calls).toEqual(['cleanup']);
+    expect(settled).toBe(false);
+    resolveCleanup(ok(undefined));
+    expect((await responsePromise).status).toBe(200);
+    await app.dispose();
+  });
+
+  it('returns startup recovery failure from app requests', async () => {
+    const app = createApp({ dbDriver: 'memory', processName: 'cli' }, (config) => ({
+      ...createInMemoryDeps(config),
+      cleanupBackupStaging: () => Promise.resolve({ ok: false, error: appError('restore_incomplete', 'Restore recovery failed') }),
+    }));
+
+    const response = await app.honoApp.request(API_ROUTES.health.path);
+    const body = looseEnvelopeSchema.safeParse(await response.json());
+
+    expect(response.status).toBe(500);
+    expect(body.success && !body.data.ok ? body.data.error : null).toMatchObject({ code: 'restore_incomplete' });
+    await app.dispose();
+  });
+
+  it('does not evaluate scheduled backups when startup restore recovery fails', async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    const app = createApp({ dbDriver: 'memory', processName: 'gui' }, (config) => ({
+      ...createInMemoryDeps(config),
+      cleanupBackupStaging: () => {
+        calls.push('cleanup');
+        return Promise.resolve({ ok: false, error: appError('restore_incomplete', 'Restore recovery failed') });
+      },
+      evaluateScheduledBackup: () => {
+        calls.push('evaluate');
+        return Promise.resolve(ok(undefined));
+      },
+    }));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(calls).toEqual(['cleanup']);
     await app.dispose();
   });
 

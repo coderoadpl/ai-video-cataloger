@@ -87,10 +87,11 @@ const exerciseDestination = async (destination: BackupDestinationPort): Promise<
       totalBytes: 17,
       files: [],
       folders: [],
+      keyFingerprint: 'sha256:0123456789ab',
     } satisfies BackupManifest;
     expect(await destination.list('critical', new AbortController().signal)).toMatchObject({
       ok: true,
-      value: [{ remoteId: 'backup-1', tier: 'critical' }],
+      value: { backups: [{ remoteId: 'backup-1', tier: 'critical' }] },
     });
     expect(await destination.upload({ sourcePath, name: 'archive.avcbak', manifest }, new AbortController().signal)).toMatchObject({
       ok: true,

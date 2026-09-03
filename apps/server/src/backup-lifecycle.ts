@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import { PHOTOS_SCHEMA_VERSION, sqlJsWasmConfig } from '@adapters/db/index.js';
 import { BackupStateFile } from '@adapters/backup/state-store.js';
 import {
+  backupKeyFingerprint,
   decryptBackupEnvelope,
   encryptBackupEnvelope,
   ensureBackupRecoveryKey,
@@ -16,9 +17,9 @@ import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
   ok,
+  uiLanguageSchema,
   type AppError,
   type BackupTier,
-  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import {
@@ -32,6 +33,7 @@ import {
   enqueueRestore,
   evaluateScheduledBackup,
   exportBackupRecoveryKey,
+  importBackupRecoveryKey,
   listBackups,
   performRestoreStartupRecovery,
   prepareBackupScope,
@@ -44,6 +46,7 @@ import {
   type BackupConnectionReport,
   type BackupEnableRequest,
   type BackupEnablementDeps,
+  type BackupListResult,
   type BackupRestoreDeps,
   type BackupRestoreInput,
   type BackupRunDeps,
@@ -75,7 +78,7 @@ export interface BackupLifecycleOptions {
 export interface BackupLifecycle {
   cleanup(): Promise<Result<void, AppError>>;
   evaluate(): Promise<Result<void, AppError>>;
-  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>>;
   restore(input: BackupRestoreInput): Promise<Result<{ jobId: string }, AppError>>;
   status(input: { testConnection: boolean }): Promise<Result<BackupStatusView, AppError>>;
   connect(request: BackupConnectRequest, signal: AbortSignal): Promise<Result<BackupConnectResult, AppError>>;
@@ -84,6 +87,7 @@ export interface BackupLifecycle {
   disable(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
   exportRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
   confirmRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  importRecoveryKey(request: { recoveryKey: string }): Promise<Result<{ fingerprint: string }, AppError>>;
   run(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
 }
 
@@ -103,6 +107,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       state,
       now,
       loadEncryptionKey: () => loadBackupEncryptionKey(options.secrets),
+      fingerprintKey: backupKeyFingerprint,
       archive: (entries, targetPath, createdAt, signal) => writeTarZstd(entries, targetPath, createdAt, { signal }),
       encrypt: encryptBackupEnvelope,
     });
@@ -165,7 +170,14 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     fileSave: options.fileSave,
     destination: options.destination,
     enqueueBackup: enqueueTier,
-    recoveryKey: () => ensureBackupRecoveryKey(options.secrets),
+    recoveryKey: async () => {
+      const locale = await options.config.get({ kind: 'home' }, 'ui_language');
+      if (!locale.ok) return locale;
+      const parsed = uiLanguageSchema.safeParse(locale.value ?? undefined);
+      return ensureBackupRecoveryKey(options.secrets, parsed.success ? parsed.data : 'en');
+    },
+    parseRecoveryKey,
+    fingerprintKey: backupKeyFingerprint,
   };
   return {
     cleanup: async () => {
@@ -198,6 +210,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       config: options.config,
       state,
       jobs: options.jobs,
+      secrets: options.secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: options.destination,
     }, input),
@@ -207,6 +220,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     disable: (request) => disableBackup(enablementDeps, request),
     exportRecoveryKey: () => exportBackupRecoveryKey(enablementDeps),
     confirmRecoveryKey: () => confirmBackupRecoveryKey(enablementDeps),
+    importRecoveryKey: (request) => importBackupRecoveryKey(enablementDeps, request),
     run: (request) => runBackupNow(enablementDeps, request),
   };
 };

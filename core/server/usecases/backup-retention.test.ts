@@ -5,6 +5,7 @@ import type { BackupTier, RemoteBackup } from '@core/domain/index.js';
 import { selectForDeletion } from './backup-retention.js';
 
 const now = new Date('2026-09-02T12:00:00.000Z');
+const KEY = 'sha256:0123456789ab';
 
 describe('backup retention', () => {
   it.each([
@@ -22,7 +23,7 @@ describe('backup retention', () => {
     ['old duplicate week pruned', [70, 71, 72], { keepLast: 1, keepWeekly: 1 }, [71, 72]],
   ] as const)('%s', (_name, ages, policy, deletedAges) => {
     const backups = ages.map((age, index) => backup(`backup-${String(index)}`, age, 'critical'));
-    const deleted = selectForDeletion(backups, policy, now);
+    const deleted = selectForDeletion(backups, policy, now, KEY);
     expect(deleted.map((item) => ageInDays(item.createdAt))).toEqual(deletedAges);
   });
 
@@ -34,10 +35,22 @@ describe('backup retention', () => {
       backup('optional-old', 40, 'optional'),
     ];
 
-    expect(selectForDeletion(backups, { keepLast: 1, keepWeekly: 0 }, now).map((item) => item.remoteId)).toEqual([
+    expect(selectForDeletion(backups, { keepLast: 1, keepWeekly: 0 }, now, KEY).map((item) => item.remoteId)).toEqual([
       'critical-old',
       'optional-old',
     ]);
+  });
+
+  it('never prunes archives written under another recovery key', () => {
+    const backups = [
+      backup('mine-new', 0, 'critical'),
+      backup('mine-old', 30, 'critical'),
+      { ...backup('other-old', 30, 'critical'), keyFingerprint: 'sha256:ffffffffffff' },
+      { ...backup('unknown-old', 40, 'critical'), keyFingerprint: null },
+    ];
+
+    expect(selectForDeletion(backups, { keepLast: 1, keepWeekly: 0 }, now, KEY).map((item) => item.remoteId))
+      .toEqual(['mine-old']);
   });
 });
 
@@ -49,6 +62,7 @@ const backup = (remoteId: string, daysOld: number, tier: BackupTier): RemoteBack
   sizeBytes: 100,
   appVersion: '1.0.0',
   schemaVersions: { globalCatalog: 15, photos: 5 },
+  keyFingerprint: KEY,
 });
 
 const ageInDays = (createdAt: string): number => Math.round(

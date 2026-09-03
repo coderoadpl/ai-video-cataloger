@@ -12,6 +12,7 @@ import {
   realpathSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -38,7 +39,9 @@ import type {
   ConfigScope,
   ConfigStore,
 } from '@core/server/index.js';
+import { JOB_CANCELLED_ERROR_MESSAGE } from '@core/server/index.js';
 
+import { CatalogAppError, type HomeLock } from './home-lock.js';
 import { createCatalogSchemaSql, createConfigSchemaSql, schema, videos } from './schema.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
@@ -50,6 +53,8 @@ const appGlobalConfigKeys = new Set<string>(APP_GLOBAL_CONFIG_KEYS);
 const persistedConfigSchema = z.record(z.string(), z.string());
 const errnoSchema = z.object({ code: z.string() });
 const READ_ONLY_ERRNO_CODES: ReadonlySet<string> = new Set(['EACCES', 'EROFS', 'EPERM']);
+const SNAPSHOT_LEASE_RETRY_MS = 10;
+export const SNAPSHOT_LEASE_TIMEOUT_MS = 30_000;
 
 type DatabaseSchema = typeof schema;
 type SqlJsDrizzle = SQLJsDatabase<DatabaseSchema>;
@@ -62,6 +67,62 @@ interface DatabaseFileState {
 export interface SqlJsAdapterOptions {
   homeDirectory?: string | undefined;
 }
+
+export const acquireSnapshotLease = async (lock: HomeLock, signal?: AbortSignal | undefined): Promise<void> => {
+  const deadline = Date.now() + SNAPSHOT_LEASE_TIMEOUT_MS;
+  for (;;) {
+    if (signal?.aborted === true) throw cancelledError();
+    try {
+      lock.acquireLease();
+      return;
+    } catch (cause) {
+      if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
+      if (Date.now() >= deadline) throw cause;
+      await sleepUntilRetry(signal);
+    }
+  }
+};
+
+export const verifySnapshotIntegrity = (SQL: SqlJsStatic, targetPath: string, message: string): void => {
+  const client = new SQL.Database(readFileSync(targetPath));
+  try {
+    if (client.exec('PRAGMA integrity_check')[0]?.values[0]?.[0] !== 'ok') {
+      throw new CatalogAppError(appError('backup_integrity_failed', message));
+    }
+  } finally {
+    client.close();
+  }
+};
+
+export const removeSnapshotFile = (targetPath: string): void => {
+  for (const filePath of [targetPath, `${targetPath}.tmp`]) {
+    try {
+      unlinkSync(filePath);
+    } catch (cause) {
+      if (!(cause instanceof Error) || !('code' in cause) || cause.code !== 'ENOENT') throw cause;
+    }
+  }
+};
+
+const sleepUntilRetry = (signal?: AbortSignal | undefined): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted === true) {
+    reject(cancelledError());
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const onAbort = (): void => {
+    if (timer !== null) clearTimeout(timer);
+    reject(cancelledError());
+  };
+  timer = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, SNAPSHOT_LEASE_RETRY_MS);
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
+
+const cancelledError = (): CatalogAppError =>
+  new CatalogAppError(appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE));
 
 export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
   private readonly opened = new Map<string, SqlJsCatalogRepository>();

@@ -15,6 +15,7 @@ import {
   type BackupConnectionReport,
   type BackupDestinationDescription,
   type BackupDestinationPort,
+  type BackupListResult,
 } from '@core/server/index.js';
 
 export interface MemoryBackupDestinationOptions {
@@ -74,14 +75,14 @@ export class MemoryBackupDestination implements BackupDestinationPort {
     return Promise.resolve(ok({ folderId: 'memory-folder', name: 'AI Video Cataloger Backups' }));
   }
 
-  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>> {
     if (signal.aborted) return Promise.resolve(cancelled());
     if (this.failList) return Promise.resolve({ ok: false, error: appError('backup_destination_error', 'Memory destination list failed') });
     const backups = [...this.backups.values()]
       .map((stored) => stored.metadata)
       .filter((backup) => tier === null || backup.tier === tier)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-    return Promise.resolve(ok(backups));
+    return Promise.resolve(ok({ backups, skipped: 0 }));
   }
 
   async upload(
@@ -111,6 +112,7 @@ export class MemoryBackupDestination implements BackupDestinationPort {
       sizeBytes: bytes.length,
       appVersion: input.manifest.appVersion,
       schemaVersions: input.manifest.schemaVersions,
+      keyFingerprint: input.manifest.keyFingerprint,
     };
     this.backups.set(remoteId, { metadata, bytes });
     return ok(metadata);

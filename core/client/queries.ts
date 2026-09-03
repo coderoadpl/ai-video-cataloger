@@ -82,6 +82,7 @@ export type BackupConnectInput = z.input<typeof API_ROUTES.backupConnect.input>;
 export type BackupEnableInput = z.input<typeof API_ROUTES.backupEnable.input>;
 export type BackupDisableInput = z.input<typeof API_ROUTES.backupDisable.input>;
 export type BackupRestoreInput = z.input<typeof API_ROUTES.backupRestore.input>;
+export type BackupRecoveryKeyImportInput = z.input<typeof API_ROUTES.backupRecoveryKeyImport.input>;
 export type BackupStatusOutput = z.output<typeof API_ROUTES.backupStatus.output>;
 export type BackupListOutput = z.output<typeof API_ROUTES.backupList.output>;
 export type ProcessVideoInput = z.input<typeof API_ROUTES.process.input>;
@@ -385,6 +386,8 @@ export const mutationScopes = {
   backupRestore: () => ['backup', 'restore'] as const,
   backupRecoveryKeyExport: () => ['backup', 'recovery-key', 'export'] as const,
   backupRecoveryKeyConfirm: () => ['backup', 'recovery-key', 'confirm'] as const,
+  backupRecoveryKeyImport: () => ['backup', 'recovery-key', 'import'] as const,
+  backupConnectCancel: () => ['backup', 'connect', 'cancel'] as const,
 };
 
 const invalidateVariantConsumers = async (
@@ -951,6 +954,19 @@ export const backupRecoveryKeyConfirmMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.backupRecoveryKeyConfirm(),
     call: () => api.backupRecoveryKeyConfirm(),
+  });
+
+export const backupRecoveryKeyImportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupRecoveryKeyImport(),
+    call: (variables: BackupRecoveryKeyImportInput) => api.backupRecoveryKeyImport(variables),
+    onSuccess: (_data, _variables, _context, mutationContext) => invalidateBackupQueries(mutationContext.client),
+  });
+
+export const backupConnectCancelMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.backupConnectCancel(),
+    call: () => api.backupConnectCancel(),
   });
 
 export const cancelJobMutation = (api: ApiClient) =>

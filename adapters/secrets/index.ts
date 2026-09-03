@@ -73,6 +73,8 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async get(account: string): Promise<Result<string | null, AppError>> {
+    const structural = this.structuralAvailability();
+    if (structural !== null) return structuralKeychainUnavailable();
     const result = await this.commandRunner.run(this.securityPath, [
       'find-generic-password', '-s', this.service, '-a', account, '-w', ...this.keychain,
     ]);
@@ -82,6 +84,8 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async set(account: string, secret: string): Promise<Result<void, AppError>> {
+    const structural = this.structuralAvailability();
+    if (structural !== null) return structuralKeychainUnavailable();
     const validation = await this.validateCustomKeychain();
     if (!validation.ok) return validation;
     // -w takes the password as an argument, briefly exposing it in this process's argv.
@@ -98,6 +102,8 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    const structural = this.structuralAvailability();
+    if (structural !== null) return structuralKeychainUnavailable();
     const result = await this.commandRunner.run(this.securityPath, [
       'delete-generic-password', '-s', this.service, '-a', account, ...this.keychain,
     ]);
@@ -131,6 +137,19 @@ export class KeychainSecretsAdapter implements SecretsStore {
       return 'unavailable';
     }
   }
+
+  private structuralAvailability(): Extract<SecretsAvailability, 'disabled' | 'unsupported'> | null {
+    if (this.structural !== null) return this.structural;
+    if (this.platform !== 'darwin') {
+      this.structural = 'unsupported';
+      return this.structural;
+    }
+    if (this.disabled) {
+      this.structural = 'disabled';
+      return this.structural;
+    }
+    return null;
+  }
 }
 
 const stripTrailingNewline = (value: string): string => value.replace(/\r?\n$/, '');
@@ -146,6 +165,11 @@ const customKeychainUnavailable = (): Result<never, AppError> => ({
     'keychain_unavailable',
     'The configured macOS Keychain could not be read. Check AI_VIDEO_CATALOGER_KEYCHAIN and try again.',
   ),
+});
+
+const structuralKeychainUnavailable = (): Result<never, AppError> => ({
+  ok: false,
+  error: appError('keychain_unavailable', 'The macOS Keychain is not available in this process.'),
 });
 
 const securityCommandRunner: SecretsCommandRunner = {

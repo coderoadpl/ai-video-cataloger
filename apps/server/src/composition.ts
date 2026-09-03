@@ -40,7 +40,6 @@ import {
   type ConfigKey,
   type CredentialDeletion,
   type CredentialsBackendStatus,
-  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import { ReadinessCache } from '@core/server/index.js';
@@ -56,6 +55,7 @@ import type {
   BackupConnectionReport,
   BackupDestinationPort,
   BackupEnableRequest,
+  BackupListResult,
   BackupStatusView,
   CatalogRepositoryFactory,
   ConfigScope,
@@ -102,6 +102,7 @@ const CLI_OWNED_INSTALL_PATHS = ['/usr/local/bin/ai-video-cataloger'];
 export interface AppDeps {
   version: string;
   cliPath: CliPathPort;
+  beforeRequest?: (() => Promise<Result<void, AppError>>) | undefined;
   catalogs: CatalogRepositoryFactory;
   globalCatalog: GlobalCatalogStore;
   photos: PhotosStore;
@@ -126,7 +127,7 @@ export interface AppDeps {
   backupDestination(): Promise<Result<BackupDestinationPort, AppError>>;
   cleanupBackupStaging(): Promise<Result<void, AppError>>;
   evaluateScheduledBackup(): Promise<Result<void, AppError>>;
-  listBackups(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  listBackups(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>>;
   restoreBackup(input: { remoteId: string; recoveryKey?: string | undefined }): Promise<Result<{ jobId: string }, AppError>>;
   backupStatus(input: { testConnection: boolean }): Promise<Result<BackupStatusView, AppError>>;
   connectBackup(request: BackupConnectRequest, signal: AbortSignal): Promise<Result<BackupConnectResult, AppError>>;
@@ -135,6 +136,7 @@ export interface AppDeps {
   disableBackup(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
   exportBackupRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
   confirmBackupRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  importBackupRecoveryKey(request: { recoveryKey: string }): Promise<Result<{ fingerprint: string }, AppError>>;
   runBackup(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
   readiness: ReadinessCache;
 }
@@ -278,6 +280,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     disableBackup: backupLifecycle.disable,
     exportBackupRecoveryKey: backupLifecycle.exportRecoveryKey,
     confirmBackupRecoveryKey: backupLifecycle.confirmRecoveryKey,
+    importBackupRecoveryKey: backupLifecycle.importRecoveryKey,
     runBackup: backupLifecycle.run,
     readiness,
   };

@@ -6,8 +6,10 @@ import {
   backupDisableOutputSchema,
   backupEnableOutputSchema,
   backupListOutputSchema,
+  backupConnectCancelOutputSchema,
   backupRecoveryKeyConfirmOutputSchema,
   backupRecoveryKeyExportOutputSchema,
+  backupRecoveryKeyImportOutputSchema,
   backupStatusOutputSchema,
   backupTestOutputSchema,
   catalogFolderOutputSchema,
@@ -475,6 +477,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.backupRecoveryKeyConfirm.method,
       API_ROUTES.backupRecoveryKeyConfirm.path,
       backupRecoveryKeyConfirmOutputSchema,
+      {},
+      signal,
+    ),
+  backupRecoveryKeyImport: (
+    input: z.input<typeof API_ROUTES.backupRecoveryKeyImport.input>,
+    signal?: AbortSignal,
+  ) => {
+    const parsed = parseInput(API_ROUTES.backupRecoveryKeyImport.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupRecoveryKeyImport.method,
+      API_ROUTES.backupRecoveryKeyImport.path,
+      backupRecoveryKeyImportOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  backupConnectCancel: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.backupConnectCancel.method,
+      API_ROUTES.backupConnectCancel.path,
+      backupConnectCancelOutputSchema,
       {},
       signal,
     ),
