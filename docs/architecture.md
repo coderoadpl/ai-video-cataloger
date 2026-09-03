@@ -139,6 +139,16 @@ unconditionally inside `open`) — a pre-existing characteristic of the sql.js
 adapter, not new here, and out of scope for this pass; only *creating* one
 newly is fixed.
 
+`files` and the photos store's `photos` each carry a nullable
+`hidden_at INTEGER` (migrations V17 / v7), the browse-visibility annotation
+behind Kolekcja's hide action; `hiddenAt` travels in the `catalog.ndjson`
+snapshot from `CATALOG_SNAPSHOT_SCHEMA_VERSION` 13 onwards and is never
+cleared by a scan, an analysis run or a snapshot import **over an existing
+row** — it is excluded from the upsert conflict clause, so only an INSERT of a
+row the index does not have carries it. See "Library — hide and
+move-to-trash" below and
+[ADR-0020](decisions/0020-library-hide-and-trash.md).
+
 Exactly one variant resolves as selected for a file. Resolution uses the
 file's explicit `selected_config_id` when that variant exists, then the viewing
 folder's default configuration when that variant exists for the file, then the
@@ -1119,6 +1129,182 @@ islands, so small pure helpers are duplicated rather than cross-imported,
 matching the pre-existing `day-groups.ts`/`grid-rows.ts` split) — never a
 video-shaped `folder.currentPath` join.
 
+### Library — hide and move-to-trash (W88)
+
+Kolekcja gains two removal verbs with deliberately different weights, decided
+in [ADR-0020](decisions/0020-library-hide-and-trash.md) and specified in
+[tasks/prd-library-hide-and-trash.md](../tasks/prd-library-hide-and-trash.md).
+
+**Hide is a column, not a config entry.** `catalog.db` `files` and `photos.db`
+`photos` each carry a nullable `hidden_at INTEGER` (epoch milliseconds,
+mirroring the existing `missing_at` convention), added by migrations **V17**
+and **v7** and indexed. It lives in the databases because the predicate has to
+be pushed to SQL — `total`, `mediaTotals` and the composite cursor are all
+derived from the same `WHERE` as the returned rows, exactly as W71 required for
+`hideUnavailable` — because hide is fingerprint-scoped and a per-folder
+`config.json` cannot express one decision shared by every sighting of the same
+content, and because a read-only source cannot receive a config write at all
+while the home-scope databases always can.
+
+**Hide is scoped to the library surfaces.** A hidden file leaves
+`GET /api/library/collection` (both legs), `GET /api/search`,
+`GET /api/photos/search`, `GET /api/library/facets` (every facet, every count,
+plus the new `counts.hidden`), `GET /api/catalog/locations` (pins *and* the
+catalog-wide total the coverage caption is measured against) and
+`GET /api/faces/people` — where hidden files never count and a person whose
+every observation sits on hidden files is omitted from the response, the
+`people` row surviving untouched so unhiding restores the same card, name and
+exemplars. It does **not** leave the Analysis surfaces (`scan`,
+`catalog-tree*`, `photos/tree`, `photos/list`, `status`, `variants`,
+`index/status`) or the backup scope: Analysis is the filesystem-truth view, and
+hiding there would strip a file from the surface whose job is to show what
+exists and silently shrink the not-yet-analyzed counts that drive the run
+buttons. `searchInputSchema`, `collectionInputSchema` and
+`photosSearchInputSchema` each carry a `hidden` tri-state
+(`exclude` default / `only` / `include`), so the "Ukryte" view is the same
+query surface as every other filter rather than a second endpoint. The
+predicate is SQL in every store method that feeds those routes — on the
+catalog store `search` (the one method behind both `GET /api/search` and the
+video leg of the collection feed; the predicate arrives on
+`CatalogSearchFilters` and must be applied in both its FTS-match and its
+browse branch), `listLibraryFacets` and `listLocations`; on the photos store
+`collectionPage`, `searchPhotos` and `listPhotoLocations`. Two surfaces cannot express it in one store: `counts.hidden`
+spans both media, so `libraryFacets` gains a `photos` dependency and a
+`PhotosStore.countHidden()`; and face observations for photos live in
+`catalog.db` under `ph_*` fingerprints that `catalog.db` cannot join to
+`photos.hidden_at`, so `facesPeople` assembles the hidden set from
+`listHiddenFingerprints()` on both stores.
+
+**Trash goes through a port, never through `rm`.** `TrashPort.moveToTrash`
+has two real implementations — `shell.trashItem` supplied by the Electron
+composition root alongside the existing `openExternal`/`saveFile` host
+capabilities, and a Finder-backed `osascript` move for the CLI and headless
+compositions — so a CLI delete lands in the same macOS Trash, with the same
+"Put Back", as a GUI delete. The Electron wiring supplies a call-site wrapper
+(`(targetPath) => shell.trashItem(targetPath)`), as `openExternal` already
+does, not a captured reference: the e2e trash leg stubs that native surface in
+the main process after boot, and a captured reference cannot be replaced. The
+Finder adapter (`adapters/fs/finder-trash.ts`) passes the path through the
+script's `argv` — `execFile('osascript', ['-e', 'on run argv', '-e', 'tell
+application "Finder" to delete (POSIX file (item 1 of argv) as alias)', '-e',
+'end run', '--', path])` — never interpolated into the AppleScript source,
+where a `"` in a file name is an injection; it calls `node:child_process`
+directly, as `apps/desktop/src/cli-install.ts` already does for its own
+`osascript` call, because the repo has no generic command-runner port and adds
+none. `FileSystemPort.deleteFile`/`deletePath` stay the
+mechanism for the app's own artifacts, whose recovery path is regeneration,
+and are never applied to a user's media file.
+
+**All-or-nothing per folder root.** The selection is resolved to a fingerprint
+list, then to the set of affected roots (the owning folder plus the parent
+directory of every selected file); each is probed with the non-mutating
+`FileSystemPort.isWritable` (`access(W_OK)` — the same probe
+`materialize --dry-run` uses to report a still-read-only mount without
+touching it). Any failure returns `target_read_only` with the offending roots
+in `details` and **zero** moves, row changes and artifact deletions. The probe
+runs twice — synchronously before the job envelope is issued, so the refusal
+reaches the dialog rather than a failed background job, and again at the top of
+the job body, so a drive unmounted between confirm and start aborts before the
+first move. A failure mid-run stops at that file and leaves the remainder
+untouched; partial best-effort progress is not a supported outcome.
+
+**What a trash erases** is the closed checklist in ADR-0020 D7: the `files`
+row with its GPS/place/capture columns, every analysis variant, `file_tags`,
+the search document and its FTS row, `face_observations` and
+`face_index_state` with affected people recomputed (a person left with zero
+observations is deleted); for a photo, every `photo_paths` sighting and the
+`photos`/`photo_analyses`/`photo_file_tags`/`photo_search_documents`/
+`photo_face_index_state` rows **plus** that photo's `face_observations` rows in
+`catalog.db`, since the identity pool is shared (ADR-0016); the per-observation
+crop directory, the photo proxy/thumb/grid-thumb/variant artifacts, and — under
+the video artifact root, which is the folder's own `.ai-video-cataloger/` when
+writable and `~/.ai-video-cataloger/read-only-folders/{folderId}/` otherwise —
+the content-addressed frames and transcripts, the per-variant outputs, the
+thumbnails and the full name-based projection `artifactPaths()` produces
+(`frames/<base>/`, `transcripts/<base>.txt` **and** `.json`,
+`summaries/<base>.txt`/`.json`/`-debug.log`). The row deletions reuse the
+existing ports rather than new SQL, and the two media use different ones: a
+video is `forgetEntry` alone (it already removes the observations, recomputes
+the affected people and returns the crop paths), a photo is
+`deleteFaceObservationsForFile` plus `PhotosStore.deletePhoto` — `forgetEntry`
+no-ops on a fingerprint with no `files` row. The shared `tags`
+vocabulary, `drive_runs`, the spend ledger and the non-canonical legacy
+per-folder `catalog.db` are deliberately left alone.
+
+**Two invariants the folder watcher makes load-bearing.** A trashed file must
+not resurrect. Two paths lead back: the `catalog.ndjson` snapshot import for a
+marked folder unknown to the local index (Delta 3), closed by re-exporting the
+snapshot for every affected writable folder on *every* exit path — success,
+mid-run failure, cancellation; and a rescan started while the batch is
+half-processed, when a file's rows are already deleted but its bytes are still
+on disk, closed by adding `library_trash` to `folder-watch.ts`'s
+`RUN_JOB_KINDS` (so the watcher holds refreshes until the run settles) and by
+the trash job acquiring the debounced photo scan's `photo-scan:<root>` resource
+key for every affected root before its first move — that key does not collide
+with the job's own `library-trash`, and it is built from the resolved root the
+way `enqueuePhotoScan` builds it, or the two never match. A photo scan
+requested while the claim is held is refused with `conflict`, not queued
+(`enqueue` fails closed on a busy `resourceKey`; only `acquireResource`
+waits), and it runs from the watcher's single post-settle refresh.
+
+A hidden file must survive rescans, and structurally rather than by convention:
+every rescan and analysis path reaches the row through `upsertFile` /
+`upsertPhoto`, whose conflict `set` clause **omits** `hiddenAt`, so an UPDATE
+can never clear it while an INSERT still carries it. `scan`, `process`,
+`process-drive`, `materialize`, `photos scan`, `photos process`,
+`photos import-libra` and `index rebuild` are all covered by that one rule, and
+`CATALOG_SNAPSHOT_SCHEMA_VERSION` goes 12 → 13 so `hiddenAt` round-trips
+through the snapshot instead of being lost by an import.
+
+**Hide is synchronous, trash is a job.** Hide and unhide are one `UPDATE` per
+store inside one transaction and return directly. Trash is unbounded I/O, so
+it runs as a `library_trash` job with the literal `resourceKey:
+'library-trash'` (global — a trash can span roots, so a per-root key could not
+serialize two overlapping runs), cancellable through the existing
+`JobsPort.cancel` with the abort check between files. Its result schema
+carries a required literal `kind: 'library_trash'` and sits before the
+absorbing members of `jobResultSchema`'s untagged union, per the challenge-B5
+rule in [docs/architecture-photos.md](architecture-photos.md) §7.
+
+**Selection is a server-side scope.** `POST /api/library/hide`,
+`/api/library/unhide`, `/api/library/trash` and
+`/api/library/selection/preview` all take one closed discriminated union,
+declared in `core/domain` (with `hiddenScopeSchema`, which the contract
+re-exports) — an explicit fingerprint list, the current filter (exactly the
+set-defining fields of `collectionInputSchema`: everything except `sort`,
+`limit` and `cursor`), or a person (optionally skipping files that also carry
+an observation assigned to a *different* person; unassigned faces do not
+count). "Zaznacz wszystko" projects to the `filter` variant, so the renderer
+never enumerates pages to act on a filter result. The shared resolver answers
+with one entry per fingerprint carrying `hiddenAt` and every sighting of that
+fingerprint (`folderId`, root path, file path), because trash removes all of
+them and each contributes a root to the writability check. The preview route answers the
+two confirmation dialogs with counts, the shared-with-other-people count and
+the affected roots' writability in one round trip. `POST /api/library/trash`
+answers with a `kind`-discriminated union rather than `jobAcceptedOutputSchema`
+— a `plan` for `dryRun: true`, a `{ kind: 'job', jobId }` for a confirmed run —
+because a dry run's plan does not fit in a job envelope.
+
+**One confirmation dialog, extracted downward.** Kolekcja's action bar and a
+person card in Osoby open the same trash confirmation, and the renderer's
+features are lint-enforced islands, so the component lives in
+`components/ui/dialogs/` beside `CancelConfirmationDialog` and
+`DriveSummaryDialog`: props-only, copy from `useDictionary()`, no query and no
+mutation of its own, prop types declared locally because `components/ui` may
+not import `core/`. Each feature runs its own `librarySelectionPreview` and
+`libraryTrash` calls and maps the preview output onto those props. This is the
+same island rule that made `ownerPhotoRootFor` a duplicated pure helper above,
+resolved the other way: a whole destructive dialog is worth extracting, a
+three-line path helper is not.
+
+**No new taxonomy.** `confirmation_required` (409 / 18) covers a trash without
+confirmation, `target_read_only` (409 / 46) the read-only refusal,
+`validation`, `not_found` and `unavailable` the rest. Feature specificity
+lives in NDJSON progress-step names (`library-trash-preflight`,
+`library-trash-file`, `library-trash-artifacts`, `library-trash-summary`) and
+job-result fields, following the precedent
+[docs/architecture-photos.md](architecture-photos.md) §7 set for photos.
+
 ### Offset pagination — sanctioned ADR-0003 deviation (dated 2026-08-03)
 
 `GET /api/search`, `GET /api/photos/list` and `GET /api/photos/search` still
@@ -1458,6 +1644,14 @@ managed runtimes, and its working-directory fallback.
   feature; ONNX Runtime adapter (darwin-only binding). The drive job composes it (and
   `ModelDownloadPort`) optionally, so a composition without a face engine degrades to a
   reported skip instead of a failure.
+- `TrashPort` — `moveToTrash(path)`, the only way a user's media file leaves
+  its folder. Two real implementations and a real platform difference between
+  them: the Electron composition root supplies `shell.trashItem`, the CLI and
+  headless compositions supply a Finder-backed `osascript` move, and a
+  composition with neither returns `unavailable`. `rm`/`unlink` and
+  `FileSystemPort.deleteFile`/`deletePath` are never applied to a media file;
+  they stay the mechanism for the app's own regenerable artifacts. See
+  [ADR-0020](decisions/0020-library-hide-and-trash.md).
 - `ProvidersPort` — analyzer-provider listing and credential/connectivity
   test, routed across the same three analyzer families.
 - `FileSystemPort` — fs primitives incl. `partialContentHash` (ADR-0002(c))

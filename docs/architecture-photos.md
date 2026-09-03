@@ -384,6 +384,60 @@ original", and only when the owning folder is reachable under the existing
 scope rules. `ALLOWED_EXTENSIONS` (`media-scope.ts`) stays as-is — no
 `.heic`/`.arw` is ever served.
 
+### 3a. Hide and trash — the photo half (W88)
+
+[ADR-0020](decisions/0020-library-hide-and-trash.md) adds two Kolekcja removal
+verbs. The video half is described in
+[docs/architecture.md](architecture.md), "Library — hide and move-to-trash";
+three things differ on the photo side.
+
+**Hide.** `photos.hidden_at INTEGER` (nullable, epoch milliseconds) is added by
+migration **v7** and indexed, mirroring the existing `missing_at` column.
+`PhotosStore.collectionPage`, `searchPhotos` and `listPhotoLocations` gain the
+same `hidden: 'exclude' | 'only' | 'include'` filter the catalog store gains,
+pushed down to SQL in both the FTS-match and the plain-`WHERE` branch so a
+hidden photo drops out of `total`, `mediaTotals` and the composite cursor
+together with the rows. Two catalog-side surfaces cannot answer without the
+photos store either, so it also gains `countHidden()` (for
+`libraryFacets`'s `counts.hidden`, which spans both media) and
+`listHiddenFingerprints()` (for `facesPeople`, whose observation rows live in
+`catalog.db` under `ph_*` fingerprints it cannot join to `photos.hidden_at`).
+`GET /api/photos/list` and `GET /api/photos/tree` are
+deliberately **not** filtered: they serve Analysis → Zdjęcia, whose job is to
+list every scanned photo so it can be picked and analyzed, and they already
+diverge from `collectionPage` on the analyzed-only rule (W60) for the same
+reason.
+
+**Trash is a two-database operation.** A photo's identity data — its
+`face_observations` rows and the `people` they point at — lives in
+`catalog.db` (§5, ADR-0016), while everything else lives in `photos.db`.
+`PhotosStore.deletePhoto` already erases `photo_paths`, `photos`,
+`photo_analyses`, `photo_analysis_errors`, `photo_file_tags`,
+`photo_search_documents` (row and FTS) and `photo_face_index_state`; it does
+**not** and must not reach into the catalog. The trash use-case therefore
+writes to both stores, catalog first, so a failure between them leaves an
+orphaned — visible, re-deletable — `photos` row rather than an observation
+pointing at nothing. The catalog pass is
+`GlobalCatalogStore.deleteFaceObservationsForFile(fingerprint)`, which deletes
+the observations, recomputes the affected people (a person left with zero
+observations is deleted) and returns the crop paths; it is **not**
+`forgetEntry`, which the video path uses and which no-ops on a `ph_*`
+fingerprint because there is no `files` row for it.
+
+**Trash removes every sighting.** A fingerprint sighted from several folders is
+one `photos` row and many `photo_paths` rows (§1 Duplicates); "every record
+disappears" cannot be honoured while one copy remains, so every sighting's file
+is moved to the Trash and every sighting's owning folder enters the
+all-or-nothing writability check. The home-root artifacts —
+`photo-artifacts/proxies/{fingerprint}.jpg`,
+`thumbs/{fingerprint}.jpg`, `thumbs/{fingerprint}.grid.jpg` and
+`variants/{fingerprint}/` (which no current writer produces — `photo-artifacts.ts`
+resolves proxies and thumbs only — and is therefore deleted only if present)
+— are content-addressed and deleted once, and they
+are deleted outright rather than trashed: they are app-owned and regenerable,
+and the user has no map of them. This is the same explicit-order deletion path
+§3 already reserves for `photos forget`, now reachable from a second caller.
+
 ## 4. Analyzer input, prompt identity, batching
 
 **Input shape**: one photo = one proxy image. No 3-frames mosaic — the video
@@ -646,7 +700,11 @@ geometry-only and needs no change beyond a marker kind.
   `GET /api/library/collection` (`docs/architecture.md`, "Library collection
   feed") is the one video+photo merge route; it reads photos through a new
   `PhotosStore.collectionPage` port method, not through `photosSearch` or a
-  new photo-only route.
+  new photo-only route. The W88 removal verbs are library routes, not photo
+  routes: `POST /api/library/hide|unhide|trash|selection/preview` act on both
+  media through one selection scope (§3a,
+  [ADR-0020](decisions/0020-library-hide-and-trash.md)), so no
+  `/api/photos/hide` exists.
 - **Job results are discriminated (challenge B5).** `jobResultSchema` is an
   untagged `z.union` of stripping object schemas — first-success wins, so a
   photo summary sharing keys with `gpsBackfillSummarySchema` or
