@@ -405,6 +405,30 @@ describe('libraryCollection', () => {
     expect(result.value.items[0]?.media).toBe('video');
   });
 
+  it('ends relevance paging on an exactly full last page instead of serving an empty one', async () => {
+    const { deps, globalCatalog } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    for (let index = 0; index < 4; index += 1) {
+      await globalCatalog.upsertFile(video(`v${String(index)}`, null, `drone-shot-${String(index)}.mp4`));
+      await globalCatalog.upsertAnalysis(videoAnalysis(`v${String(index)}`));
+    }
+
+    const page1 = await libraryCollection(deps, {
+      query: 'drone', filters: EMPTY_FILTERS, sort: 'relevance', media: 'video', limit: 2, cursor: null,
+    });
+    expect(page1.ok).toBe(true);
+    if (!page1.ok) return;
+    expect(page1.value.nextCursor).not.toBeNull();
+
+    const page2 = await libraryCollection(deps, {
+      query: 'drone', filters: EMPTY_FILTERS, sort: 'relevance', media: 'video', limit: 2, cursor: page1.value.nextCursor,
+    });
+    expect(page2.ok).toBe(true);
+    if (!page2.ok) return;
+    expect(page2.value.items).toHaveLength(2);
+    expect(page2.value.nextCursor).toBeNull();
+  });
+
   it('honors an explicit non-relevance sort in match mode, merging both media in capture-date order', async () => {
     const { deps, globalCatalog, photos } = buildDeps();
     await globalCatalog.upsertFolder(folderA);

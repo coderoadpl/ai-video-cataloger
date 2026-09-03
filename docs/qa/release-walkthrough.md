@@ -33,9 +33,10 @@ Every run launches with:
   (`apps/server/src/composition.ts`) gives the backup lifecycle and the Drive
   destination a 0600 file-backed secrets store at
   `<home>/.ai-video-cataloger/secrets.json` instead of the Keychain adapter,
-  which would otherwise fail every backup call with `keychain_unavailable`; a
-  shipped build never selects it, and the composition logs a warning whenever it
-  does.
+  which would otherwise fail every backup call with `keychain_unavailable`. The
+  file-backed store is selected only when the variable is set **and** the build
+  is not packaged (`isPackaged`), and the composition logs a warning whenever it
+  is selected.
 - `AVC_GOOGLE_DRIVE_BASE_URL` / `AVC_GOOGLE_UPLOAD_BASE_URL` — pointed at the
   in-memory fake Drive the run starts for itself (see below), so the backup step
   needs no Google account and no network.

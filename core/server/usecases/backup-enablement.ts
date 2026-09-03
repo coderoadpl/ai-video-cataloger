@@ -172,7 +172,7 @@ export const importBackupRecoveryKey = async (
     return {
       ok: false,
       error: appError(
-        'recovery_key_required',
+        'recovery_key_conflict',
         'A different backup key is already stored on this Mac and this destination holds archives written with it',
       ),
     };

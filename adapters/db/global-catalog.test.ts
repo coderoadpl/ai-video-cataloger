@@ -701,6 +701,27 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value.files).toBe(25);
   });
 
+  it('keeps a write applied and reports the persist failure through durabilityStatus', async () => {
+    const home = await tempHome();
+    let nowMs = 1_000;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, nowMs: () => nowMs });
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 24; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-degraded-${String(index)}`, fileName: `degraded-${String(index)}.mp4` });
+    }
+    await mkdir(`${store.databasePath()}.tmp`);
+    nowMs = 31_000;
+
+    expect(await store.upsertFile({ ...file, fingerprint: 'fp-degraded-24', fileName: 'degraded-24.mp4' }))
+      .toEqual({ ok: true, value: undefined });
+    expect(store.durabilityStatus()).toEqual({ degraded: true, pendingWrites: true, lastErrorCode: 'internal' });
+    const counts = await store.counts();
+    expect(counts.ok && counts.value.files).toBe(25);
+
+    await rm(`${store.databasePath()}.tmp`, { recursive: true, force: true });
+    expect((await store.flush()).ok).toBe(true);
+  });
+
   it('auto-flushes from wall-clock time without another mutation', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -755,6 +776,90 @@ describe('SqlJsGlobalCatalogStore', () => {
       pendingWrites: false,
       lastErrorCode: null,
     });
+  });
+
+  it('serves every keyset anchor the exact tail of the ordered result', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    const rows = [
+      { fingerprint: 'fp-k1', fileName: 'dup.mp4', capturedAt: '2026-01-01T00:00:00.000Z', finalName: 'shared.mp4' },
+      { fingerprint: 'fp-k2', fileName: 'dup.mp4', capturedAt: '2026-01-01T00:00:00.000Z', finalName: 'shared.mp4' },
+      { fingerprint: 'fp-k3', fileName: 'alpha.mp4', capturedAt: '2026-01-01T00:00:00.000Z', finalName: null },
+      { fingerprint: 'fp-k4', fileName: 'beta.mp4', capturedAt: null, finalName: 'shared.mp4' },
+      { fingerprint: 'fp-k5', fileName: 'gamma.mp4', capturedAt: null, finalName: null },
+      { fingerprint: 'fp-k6', fileName: 'delta.mp4', capturedAt: '2026-02-01T00:00:00.000Z', finalName: 'zulu.mp4' },
+    ];
+    for (const row of rows) {
+      await store.upsertFile({ ...file, fingerprint: row.fingerprint, fileName: row.fileName, capturedAt: row.capturedAt });
+      await store.upsertAnalysis({
+        fingerprint: row.fingerprint,
+        finalName: row.finalName,
+        description: 'drone survey',
+        transcript: null,
+        language: 'en',
+        tags: [],
+      });
+    }
+
+    for (const sort of ['captured_desc', 'captured_asc', 'name_asc'] as const) {
+      const ordered = await store.search({ match: null, rankingTerms: [], filters: NO_SEARCH_FILTERS, sort, limit: 50, offset: 0 });
+      expect(ordered.ok).toBe(true);
+      if (!ordered.ok) return;
+      expect(ordered.value.rows).toHaveLength(rows.length);
+      for (const [index, row] of ordered.value.rows.entries()) {
+        const page = await store.search({
+          match: null,
+          rankingTerms: [],
+          filters: NO_SEARCH_FILTERS,
+          sort,
+          limit: 50,
+          offset: 0,
+          after: {
+            capturedAt: row.capturedAt,
+            fileName: row.fileName,
+            displayName: row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName,
+            fingerprint: row.fingerprint,
+          },
+        });
+        expect(page.ok).toBe(true);
+        if (!page.ok) return;
+        expect(page.value.rows.map((tail) => tail.fingerprint))
+          .toEqual(ordered.value.rows.slice(index + 1).map((tail) => tail.fingerprint));
+      }
+    }
+
+    const relevance = await store.search({ match: 'drone*', rankingTerms: ['drone'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 50, offset: 0 });
+    expect(relevance.ok).toBe(true);
+    if (!relevance.ok) return;
+    const relevancePage = await store.search({ match: 'drone*', rankingTerms: ['drone'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 2, offset: 2 });
+    expect(relevancePage.ok && relevancePage.value.rows.map((row) => row.fingerprint))
+      .toEqual(relevance.value.rows.slice(2, 4).map((row) => row.fingerprint));
+    expect(relevancePage.ok && relevancePage.value.total).toBe(rows.length);
+  });
+
+  it('keeps holding the catalog lock while a failed flush leaves dirty writes in memory', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'cli', nowMs: () => Date.now() });
+    const lockPath = path.join(home, '.ai-video-cataloger', 'catalog.lock');
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 24; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-lock-${String(index)}`, fileName: `lock-${String(index)}.mp4` });
+    }
+    await mkdir(`${store.databasePath()}.tmp`);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(store.durabilityStatus().pendingWrites).toBe(true);
+    expect(existsSync(lockPath)).toBe(true);
+
+    await rm(`${store.databasePath()}.tmp`, { recursive: true, force: true });
+    expect(await store.flush()).toEqual({ ok: true, value: undefined });
+
+    expect(existsSync(lockPath)).toBe(false);
   });
 
   it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {

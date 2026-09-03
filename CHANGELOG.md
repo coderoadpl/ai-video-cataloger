@@ -54,6 +54,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Fixed
 
 - The smoke gate now boots the in-process app against an isolated temp home instead of the developer home.
+- A failed catalog or photo flush now keeps holding the home lock while dirty writes stay in memory, so another process cannot take the lock and have its committed writes overwritten by the retry.
+- A catalog or photo write whose immediate persist fails now reports success and carries the failure in `durabilityStatus()` instead of returning an error for a write that stays applied.
+- Auto-flush no longer re-raises `SIGINT`/`SIGTERM` when a one-shot listener was registered before it, so a process shutting down through its own handler is not terminated abruptly.
+- Google Drive resumable uploads now count non-progressing `308` responses against a monotonic acknowledged high-water mark, so an alternating acknowledged range can no longer reset the stall guard forever.
+- Backup staging directories are published behind a sibling `<job>.owner.json` marker written before the directory, so a concurrent cleanup can no longer delete the staging area of a starting backup or restore.
+- Restore-rollback and staging ownership now verify the owner process start time (and no longer treat a foreign hostname as alive forever), so a crashed owner whose pid was reused stops blocking recovery; a skipped rollback is logged with the owning pid.
+- Refusing an imported recovery key because this Mac already stores a different key that wrote archives now reports the new `recovery_key_conflict` code (HTTP 409, CLI exit code 57) with its own message instead of the generic "recovery key required" one.
+- The file-backed secrets store used by QA runs now serializes concurrent writes, so a set and a delete can no longer drop each other's change.
+- The file-backed secrets store is never selected in a packaged build, even with `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` set.
+- Relevance (offset) collection paging ends on an exactly full last page instead of serving one extra empty page.
+- The bottom bar now warns with the failing error code when the catalog or photo store cannot persist its writes.
 - SQL.js catalog and photo stores now keep dirty writes after auto-flush persistence failures, log the failed error code, retry later, and expose durability status.
 - Auto-flush SIGINT/SIGTERM handling no longer re-raises a signal while another listener remains registered for that signal.
 - Google Drive resumable uploads now fail after repeated `308` responses that acknowledge no new bytes instead of retrying forever.

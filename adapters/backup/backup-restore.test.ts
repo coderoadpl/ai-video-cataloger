@@ -171,7 +171,7 @@ describe('backup restore pipeline', () => {
       fs: fixture.fs,
       homeDirectory: fixture.targetHome,
       isOwnerAlive: () => false,
-    })).toEqual(ok(undefined));
+    })).toEqual(ok({ pendingOwner: null }));
     expect(existsSync(marker)).toBe(false);
     expect(readFileSync(path.join(fixture.targetHome, '.ai-video-cataloger', 'config.json'), 'utf8')).toContain('current-target');
     await expectCatalogCounts(fixture.targetHome, { folders: 0, files: 0 });
@@ -244,7 +244,7 @@ describe('backup restore pipeline', () => {
       isOwnerAlive: (candidate) => candidate.pid === owner.pid,
     });
 
-    expect(recovered).toEqual(ok(undefined));
+    expect(recovered).toEqual(ok({ pendingOwner: owner }));
     expect(existsSync(marker)).toBe(true);
     await expectCatalogCounts(fixture.targetHome, { folders: 1, files: 1 });
   });

@@ -1,4 +1,4 @@
-import type { BackupErrorCode, BackupPhase } from '@core/domain/index.js';
+import type { BackupErrorCode, BackupPhase, ErrorCode } from '@core/domain/index.js';
 
 import type { AnalyzerErrorMessages } from '../lib/analyzer-error-message.js';
 
@@ -735,6 +735,10 @@ export interface Dictionary {
     indicatorFailed: string;
     phases: Record<BackupPhase, string>;
     errorMessages: Record<BackupErrorCode, string>;
+  };
+  durability: {
+    indicatorLabel: string;
+    indicatorDetail: (code: ErrorCode | null) => string;
   };
   errors: AnalyzerErrorMessages;
   folderBar: {
@@ -1774,7 +1778,14 @@ export const en: Dictionary = {
       restore_refused: 'Restore is blocked while another catalog job is running.',
       recovery_key_required: 'The recovery key is required.',
       recovery_key_mismatch: 'This recovery key does not match any archive in this destination. Paste the key from the Mac that wrote them.',
+      recovery_key_conflict: 'This Mac already holds a key that wrote some of the backups here. Paste that key when restoring them, or confirm that they stay unreadable.',
     },
+  },
+  durability: {
+    indicatorLabel: 'Unsaved changes',
+    indicatorDetail: (code) => code === null
+      ? 'The catalog could not be written to disk. Free some space and keep the app open until it saves.'
+      : `The catalog could not be written to disk (${code}). Free some space and keep the app open until it saves.`,
   },
   errors: {
     analyzerFailed: 'Analysis failed.',
@@ -2848,7 +2859,14 @@ export const pl: Dictionary = {
       restore_refused: 'Przywracanie jest zablokowane, dopóki trwa inne zadanie katalogu.',
       recovery_key_required: 'Wymagany jest klucz odzyskiwania.',
       recovery_key_mismatch: 'Ten klucz odzyskiwania nie pasuje do żadnej kopii w tym miejscu docelowym. Wklej klucz z Maca, który je zapisał.',
+      recovery_key_conflict: 'Ten Mac ma już klucz, którym zapisano część kopii. Tamte kopie odczytasz przy przywracaniu, wklejając tamten klucz, albo potwierdź, że pozostaną nieczytelne.',
     },
+  },
+  durability: {
+    indicatorLabel: 'Niezapisane zmiany',
+    indicatorDetail: (code) => code === null
+      ? 'Nie udało się zapisać katalogu na dysku. Zwolnij miejsce i nie zamykaj aplikacji, aż zapisze zmiany.'
+      : `Nie udało się zapisać katalogu na dysku (${code}). Zwolnij miejsce i nie zamykaj aplikacji, aż zapisze zmiany.`,
   },
   errors: {
     analyzerFailed: 'Analiza nie powiodła się.',

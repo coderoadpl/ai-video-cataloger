@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { hostname } from 'node:os';
 import initSqlJs from 'sql.js';
 
 import { PHOTOS_SCHEMA_VERSION, sqlJsWasmConfig } from '@adapters/db/index.js';
@@ -40,7 +39,8 @@ import {
   prepareBackupScope,
   readBackupSettings,
   readBackupStatus,
-  writeBackupStagingOwner,
+  claimBackupStaging,
+  releaseBackupStaging,
   runBackupNow,
   testBackupDestination,
   type BackupConnectRequest,
@@ -64,6 +64,8 @@ import {
   type PhotosStore,
   type SecretsStore,
 } from '@core/server/index.js';
+
+import { createBackupOwnerLiveness, currentBackupOwner } from './backup-owner-liveness.js';
 
 export interface BackupLifecycleOptions {
   homeDirectory: string;
@@ -100,8 +102,8 @@ export interface BackupLifecycle {
 export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLifecycle => {
   const state = new BackupStateFile({ homeDirectory: options.homeDirectory });
   const now = options.now ?? (() => new Date());
-  const owner = options.owner ?? { pid: process.pid, hostname: hostname() };
-  const isOwnerAlive = options.isOwnerAlive ?? defaultOwnerLiveness;
+  const owner = options.owner ?? currentBackupOwner();
+  const isOwnerAlive = options.isOwnerAlive ?? createBackupOwnerLiveness();
   const runDeps = async (): Promise<Result<BackupRunDeps, AppError>> => {
     const destination = await options.destination();
     if (!destination.ok) return destination;
@@ -197,6 +199,9 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
         isOwnerAlive,
       });
       if (!recovered.ok) return recovered;
+      if (recovered.value.pendingOwner !== null) {
+        console.warn(`[backup] Restore rollback marker is owned by live PID ${String(recovered.value.pendingOwner.pid)}; recovery skipped`);
+      }
       return cleanupBackupStaging(options.fs, options.homeDirectory, isOwnerAlive);
     },
     evaluate: async () => {
@@ -260,17 +265,6 @@ const verifySqliteIntegrity = async (
   }
 };
 
-const defaultOwnerLiveness: BackupOwnerLiveness = (owner) => {
-  if (owner.hostname !== hostname()) return true;
-  if (owner.pid === process.pid) return true;
-  try {
-    process.kill(owner.pid, 0);
-    return true;
-  } catch (cause) {
-    return !(cause instanceof Error && 'code' in cause && cause.code === 'ESRCH');
-  }
-};
-
 const scheduledFingerprint = async (
   options: BackupLifecycleOptions,
   owner: BackupOwner,
@@ -281,15 +275,13 @@ const scheduledFingerprint = async (
     'backup-staging',
     `schedule-${randomUUID()}`,
   );
-  const created = await options.fs.ensureDirectory(stagingDirectory);
-  if (!created.ok) return created;
-  const owned = await writeBackupStagingOwner(options.fs, stagingDirectory, owner);
-  if (!owned.ok) return owned;
+  const claimed = await claimBackupStaging(options.fs, stagingDirectory, owner);
+  if (!claimed.ok) return claimed;
   try {
     const prepared = await prepareBackupScope(options, 'critical', stagingDirectory, undefined, options.jobs);
     return prepared.ok ? ok(prepared.value.fingerprint) : prepared;
   } finally {
-    await options.fs.deletePath(stagingDirectory);
+    await releaseBackupStaging(options.fs, stagingDirectory);
   }
 };
 

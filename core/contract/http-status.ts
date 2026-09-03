@@ -50,6 +50,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   restore_refused: 423,
   recovery_key_required: 409,
   recovery_key_mismatch: 409,
+  recovery_key_conflict: 409,
   unavailable: 503,
   internal: 500,
 };
@@ -104,6 +105,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   restore_refused: 53,
   recovery_key_required: 54,
   recovery_key_mismatch: 56,
+  recovery_key_conflict: 57,
   unavailable: 8,
   internal: 10,
 };
@@ -158,6 +160,7 @@ export const LEGACY_ERROR_CODE_BY_ERROR_CODE: Record<ErrorCode, string> = {
   restore_refused: 'RESTORE_REFUSED',
   recovery_key_required: 'RECOVERY_KEY_REQUIRED',
   recovery_key_mismatch: 'RECOVERY_KEY_MISMATCH',
+  recovery_key_conflict: 'RECOVERY_KEY_CONFLICT',
   unavailable: 'UNAVAILABLE',
   internal: 'INTERNAL',
 };
