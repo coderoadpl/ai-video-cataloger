@@ -23,10 +23,17 @@ import {
   type JobsPort,
   type PhotosStore,
 } from '../ports.js';
+import {
+  writeBackupStagingOwner,
+  backupOwnerSchema,
+  type BackupOwner,
+  type BackupOwnerLiveness,
+} from './backup-owner.js';
 import { BACKUP_CONFLICTING_JOB_KINDS, type BackupStatePort, prepareBackupScope } from './backup-run.js';
 
 export interface BackupRestoreDeps {
   homeDirectory: string;
+  owner: BackupOwner;
   supportedSchemaVersions: BackupManifest['schemaVersions'];
   fs: FileSystemPort;
   globalCatalog: GlobalCatalogStore;
@@ -98,6 +105,8 @@ export const runRestore = async (
     if (!compatible.ok) return compatible;
     const created = await deps.fs.ensureDirectory(stagingDirectory);
     if (!created.ok) return created;
+    const owned = await writeBackupStagingOwner(deps.fs, stagingDirectory, deps.owner);
+    if (!owned.ok) return owned;
     const downloading = await report(context, 'downloading', 15);
     if (!downloading.ok) return downloading;
     const encryptedPath = deps.fs.join(stagingDirectory, remote.value.name);
@@ -131,6 +140,7 @@ export const runRestore = async (
     if (!restoring.ok) return restoring;
     const plan = restorePlan(deps.fs, deps.homeDirectory, extractedDirectory, manifest.value);
     const marker = await writeRestoreMarker(deps.fs, deps.homeDirectory, {
+      owner: deps.owner,
       preRestoreDirectory: preRestore.value.directory,
       restoredFiles: plan.map((entry) => ({ archivePath: entry.archivePath, livePath: entry.livePath })),
       preRestoreArchivePaths: preRestore.value.archivePaths,
@@ -164,7 +174,7 @@ export const runRestore = async (
 };
 
 export const performRestoreStartupRecovery = async (
-  deps: { fs: FileSystemPort; homeDirectory: string },
+  deps: { fs: FileSystemPort; homeDirectory: string; isOwnerAlive: BackupOwnerLiveness },
 ): Promise<Result<void, AppError>> => {
   const markerPath = restoreMarkerPath(deps.fs, deps.homeDirectory);
   const markerText = await deps.fs.readTextFile(markerPath);
@@ -178,6 +188,8 @@ export const performRestoreStartupRecovery = async (
     }
     const parsed = restoreMarkerSchema.safeParse(decoded);
     if (!parsed.success) return { ok: false, error: appError('backup_integrity_failed', 'Restore rollback marker is invalid') };
+    const owner = parsed.data.owner;
+    if (owner !== undefined && deps.isOwnerAlive(owner)) return ok(undefined);
     const preRestorePaths = new Set(parsed.data.preRestoreArchivePaths);
     for (const file of parsed.data.restoredFiles) {
       const backupPath = deps.fs.join(parsed.data.preRestoreDirectory, ...file.archivePath.split('/'));
@@ -211,6 +223,7 @@ export const restoreAdmissionError = (records: readonly JobRecord[]): AppError |
 };
 
 const restoreMarkerSchema = z.object({
+  owner: backupOwnerSchema.optional(),
   preRestoreDirectory: z.string().min(1),
   restoredFiles: z.array(z.object({
     archivePath: z.string().min(1),

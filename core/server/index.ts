@@ -11,6 +11,7 @@ export * from './usecases/backup-settings.js';
 export * from './usecases/backup-status.js';
 export * from './usecases/backup-enablement.js';
 export * from './usecases/backup-retention.js';
+export * from './usecases/backup-owner.js';
 export * from './usecases/backup-run.js';
 export * from './usecases/backup-restore.js';
 export * from './usecases/artifact-store.js';

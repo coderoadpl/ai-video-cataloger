@@ -16,7 +16,7 @@ import {
   type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
-import { enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index.js';
+import { cleanupBackupStaging, enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index.js';
 import type { BackupListResult, JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 import {
@@ -329,6 +329,48 @@ const backup = (remoteId: string, tier: 'critical' | 'optional', createdAt: stri
   keyFingerprint: TEST_KEY_FINGERPRINT,
 });
 
+describe('cleanupBackupStaging', () => {
+  it('deletes orphaned staging directories but keeps the one a live process still owns', async () => {
+    const fixture = await createFixture();
+    const stagingRoot = path.join(fixture.home, '.ai-video-cataloger', 'backup-staging');
+    const live = path.join(stagingRoot, 'live-job');
+    const dead = path.join(stagingRoot, 'dead-job');
+    const unowned = path.join(stagingRoot, 'unowned-job');
+    for (const directory of [live, dead, unowned]) mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(live, 'owner.json'), JSON.stringify({ pid: 424242, hostname: 'test-host' }));
+    writeFileSync(path.join(dead, 'owner.json'), JSON.stringify({ pid: 424243, hostname: 'test-host' }));
+    writeFileSync(path.join(live, 'backup.tar.zst'), 'streaming');
+
+    const cleaned = await cleanupBackupStaging(
+      fixture.deps.fs,
+      fixture.home,
+      (owner) => owner.pid === 424242,
+    );
+
+    expect(cleaned).toEqual(ok(undefined));
+    expect(existsSync(path.join(live, 'backup.tar.zst'))).toBe(true);
+    expect(existsSync(dead)).toBe(false);
+    expect(existsSync(unowned)).toBe(false);
+  });
+
+  it('marks a running backup staging directory with the owning process', async () => {
+    const fixture = await createFixture();
+    const owner = { pid: 424242, hostname: 'test-host' } as const;
+    let stagedOwner: string | null = null;
+
+    await runBackup({
+      ...fixture.deps,
+      owner,
+      archive: (entries, targetPath, createdAt, signal) => {
+        stagedOwner = readFileSync(path.join(fixture.home, '.ai-video-cataloger', 'backup-staging', 'owner-job', 'owner.json'), 'utf8');
+        return writeTarZstd(entries, targetPath, createdAt, { signal });
+      },
+    }, { tier: 'critical', keepLast: 7, keepWeekly: 8 }, context('owner-job'));
+
+    expect(stagedOwner === null ? null : JSON.parse(stagedOwner)).toEqual(owner);
+  });
+});
+
 const createFixture = async (destination = new MemoryBackupDestination()): Promise<{
   home: string;
   destination: MemoryBackupDestination;
@@ -369,6 +411,7 @@ const createFixture = async (destination = new MemoryBackupDestination()): Promi
     state,
     deps: {
       homeDirectory: home,
+      owner: { pid: process.pid, hostname: 'test-host' },
       appVersion: '1.0.0',
       fs,
       globalCatalog,

@@ -54,6 +54,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Fixed
 
 - Face clustering now blocks sparse bridge merges with an effective strong-edge fraction guard.
+- Backup startup recovery no longer races a second running process: each backup and restore staging directory records the owning process, `cleanupBackupStaging` keeps directories a live owner still holds, and the restore rollback marker is only replayed once its owning process is gone.
 - SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur.
 - Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version.
 - PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities.
