@@ -403,6 +403,7 @@ export const backupStatusInputSchema = z.object({
 export const backupStatusOutputSchema = z.object({
   enabled: z.boolean(),
   provider: backupProviderSchema,
+  googleOAuthAvailable: z.boolean(),
   connected: z.boolean(),
   accountEmail: z.string().nullable(),
   serviceAccountFingerprint: z.string().nullable(),

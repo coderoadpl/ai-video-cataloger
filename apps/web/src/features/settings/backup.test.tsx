@@ -26,6 +26,7 @@ interface StatusOverrides {
   lastErrorCode?: string | null;
   recoveryKeyStored?: boolean;
   recoveryKeyFingerprint?: string | null;
+  googleOAuthAvailable?: boolean;
 }
 
 const status = (overrides: StatusOverrides = {}) => ({
@@ -54,6 +55,7 @@ const status = (overrides: StatusOverrides = {}) => ({
   recoveryKeyFingerprint: overrides.recoveryKeyFingerprint === undefined
     ? ((overrides.recoveryKeyStored ?? true) ? 'sha256:0123456789ab' : null)
     : overrides.recoveryKeyFingerprint,
+  googleOAuthAvailable: overrides.googleOAuthAvailable ?? true,
 });
 
 const backupRow = (overrides: { remoteId: string; globalCatalog?: number; appVersion?: string; keyFingerprint?: string | null }) => ({
@@ -445,6 +447,76 @@ describe('backup enablement stepper', () => {
     })}`));
     expect(calls).toContain('confirm');
     await waitFor(() => expect(screen.queryByTestId('backup-stepper')).toBeNull());
+  });
+
+  it('defaults setup to service account when Google OAuth is unavailable', async () => {
+    const calls: string[] = [];
+    server.use(
+      statusHandler({ enabled: false, indicator: 'disabled', googleOAuthAvailable: false }),
+      listHandler([]),
+      http.post('/api/backup/connect', async ({ request }) => {
+        calls.push(JSON.stringify(await request.json()));
+        return respondOk({
+          provider: 'service_account',
+          connection: {
+            accountEmail: 'backup@example.com',
+            driveName: 'Company Backups',
+            folderName: 'AI Video Cataloger Backups',
+            remainingQuotaBytes: null,
+          },
+          serviceAccountFingerprint: 'sha256:0123456789ab',
+        });
+      }),
+    );
+    await openStepper();
+
+    expect(screen.queryByTestId('backup-provider-google')).toBeNull();
+    expect(screen.getByTestId('backup-provider-service-account')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('backup-stepper-next'));
+    expect(screen.queryByText(en.backup.connectGoogle)).toBeNull();
+    fireEvent.click(screen.getByTestId('backup-connect'));
+
+    await waitFor(() => expect(calls).toEqual([JSON.stringify({
+      provider: 'service_account',
+      keyJson: null,
+      sharedDriveId: null,
+    })]));
+  });
+
+  it('keeps Google account as the default when Google OAuth is available', async () => {
+    const calls: string[] = [];
+    server.use(
+      statusHandler({ enabled: false, indicator: 'disabled', googleOAuthAvailable: true }),
+      listHandler([]),
+      http.post('/api/backup/connect', async ({ request }) => {
+        calls.push(JSON.stringify(await request.json()));
+        return respondOk({
+          provider: 'google_oauth',
+          connection: {
+            accountEmail: 'person@example.com',
+            driveName: null,
+            folderName: 'AI Video Cataloger Backups',
+            remainingQuotaBytes: null,
+          },
+          serviceAccountFingerprint: null,
+        });
+      }),
+    );
+    await openStepper();
+
+    expect(screen.getByTestId('backup-provider-google')).toBeTruthy();
+    expect(screen.getByTestId('backup-provider-service-account')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('backup-stepper-next'));
+    expect(screen.getByText(en.backup.connectGoogle)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('backup-connect'));
+
+    await waitFor(() => expect(calls).toEqual([JSON.stringify({
+      provider: 'google_oauth',
+      keyJson: null,
+      sharedDriveId: null,
+    })]));
   });
 
   it('demands the other Mac\'s recovery key before minting a new one over existing archives', async () => {

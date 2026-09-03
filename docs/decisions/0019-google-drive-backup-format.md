@@ -27,7 +27,11 @@ wire format and the provider boundary as an ADR.
    every file.
 4. The desktop OAuth destination uses Google Drive `drive.file` only. It creates
    or reuses the app backup folder visible to this app, and it does not support
-   Shared Drive folder management on the OAuth path.
+   Shared Drive folder management on the OAuth path. The status read model
+   reports only whether an OAuth client is available; it never exposes the
+   client id itself. Settings hides the Google-account destination when that
+   flag is false, leaving the service-account destination as the only setup
+   path.
 5. Shared Drive backups use the service-account destination. That path verifies
    the service account has an organizer or content-manager style role on the
    configured Shared Drive folder before enablement succeeds.
@@ -40,7 +44,7 @@ wire format and the provider boundary as an ADR.
   cannot delete a previous Mac's unreadable backups after a reinstall.
 - OAuth builds require `AVC_GOOGLE_OAUTH_CLIENT_ID` and
   `AVC_GOOGLE_OAUTH_CLIENT_SECRET` at packaging time. A build without them can
-  still run, but the Google-account backup destination is unavailable.
+  still run, but new backup setup shows only the service-account destination.
 - Tests and walkthroughs can point `AVC_GOOGLE_DRIVE_BASE_URL` and
   `AVC_GOOGLE_UPLOAD_BASE_URL` at the fake Drive endpoint while preserving the
   production archive and authorization decisions.

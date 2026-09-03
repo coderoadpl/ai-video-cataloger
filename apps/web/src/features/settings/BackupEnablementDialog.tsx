@@ -31,6 +31,7 @@ interface BackupEnablementDialogProps {
   keepLast: number;
   keepWeekly: number;
   includeOptional: boolean;
+  googleOAuthAvailable: boolean;
   onClose: () => void;
   onEnabled: () => void;
 }
@@ -40,6 +41,7 @@ export const BackupEnablementDialog = ({
   keepLast,
   keepWeekly,
   includeOptional,
+  googleOAuthAvailable: initialGoogleOAuthAvailable,
   onClose,
   onEnabled,
 }: BackupEnablementDialogProps) => {
@@ -63,6 +65,8 @@ export const BackupEnablementDialog = ({
   const exportRecoveryKey = useMutation(actions.backupRecoveryKeyExport);
   const confirmRecoveryKey = useMutation(actions.backupRecoveryKeyConfirm);
   const enable = useMutation(actions.backupEnable);
+  const googleOAuthAvailable = statusQuery.data?.googleOAuthAvailable ?? initialGoogleOAuthAvailable;
+  const selectedProvider: BackupProvider = googleOAuthAvailable ? provider : 'service_account';
 
   const connection = testConnection.data?.connection ?? connect.data?.connection ?? null;
   const failure = connect.error ?? testConnection.error ?? exportRecoveryKey.error ?? importRecoveryKey.error ?? enable.error;
@@ -95,7 +99,7 @@ export const BackupEnablementDialog = ({
 
   const runConnect = () => {
     connect.mutate({
-      provider,
+      provider: selectedProvider,
       keyJson: keyJson.length === 0 ? null : keyJson,
       sharedDriveId: sharedDriveId.length === 0 ? null : sharedDriveId,
     }, {
@@ -139,15 +143,19 @@ export const BackupEnablementDialog = ({
 
         {step === 0 ? (
           <RadioGroup
-            value={provider}
+            value={selectedProvider}
             onChange={(event) => setProvider(event.target.value === 'service_account' ? 'service_account' : 'google_oauth')}
           >
-            <FormControlLabel
-              value="google_oauth"
-              control={<Radio data-testid="backup-provider-google" />}
-              label={dictionary.backup.providerGoogle}
-            />
-            <Typography variant="caption" sx={{ ml: 4, mb: 1 }}>{dictionary.backup.providerGoogleHelper}</Typography>
+            {googleOAuthAvailable ? (
+              <>
+                <FormControlLabel
+                  value="google_oauth"
+                  control={<Radio data-testid="backup-provider-google" />}
+                  label={dictionary.backup.providerGoogle}
+                />
+                <Typography variant="caption" sx={{ ml: 4, mb: 1 }}>{dictionary.backup.providerGoogleHelper}</Typography>
+              </>
+            ) : null}
             <FormControlLabel
               value="service_account"
               control={<Radio data-testid="backup-provider-service-account" />}
@@ -159,7 +167,7 @@ export const BackupEnablementDialog = ({
 
         {step === 1 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {provider === 'service_account' ? (
+            {selectedProvider === 'service_account' ? (
               <>
                 <TextField
                   fullWidth
@@ -192,7 +200,7 @@ export const BackupEnablementDialog = ({
                 disabled={connect.isPending}
                 data-testid="backup-connect"
               >
-                {provider === 'service_account' ? dictionary.backup.importKeyJson : dictionary.backup.connectGoogle}
+                {selectedProvider === 'service_account' ? dictionary.backup.importKeyJson : dictionary.backup.connectGoogle}
               </Button>
               <Button
                 color="inherit"

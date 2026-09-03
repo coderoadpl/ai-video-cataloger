@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path.
+
 ### Security
 
 - Desktop dependency floor moved to Electron 39.8.10.

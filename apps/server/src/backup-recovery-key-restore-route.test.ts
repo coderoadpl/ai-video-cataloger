@@ -63,6 +63,7 @@ describe('POST /api/backup/restore on a Mac whose Keychain holds no backup key',
         jobs: deps.jobs,
         fileSave: { save: () => Promise.resolve(ok(null)) },
         destination: () => Promise.resolve(ok(destination)),
+        googleOAuthAvailable: true,
       });
       return { ...deps, restoreBackup: (input) => composed.lifecycle?.restore(input) ?? deps.restoreBackup(input) };
     });

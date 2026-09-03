@@ -41,13 +41,13 @@ skipped legs are named in the release notes to the owner.
 The Google-account backup destination is a build-time secret: export
 `AVC_GOOGLE_OAUTH_CLIENT_ID` and `AVC_GOOGLE_OAUTH_CLIENT_SECRET` **before**
 `pnpm run electron:package`. A bundle built without them still runs, but
-`Settings > Backup > Google account` fails immediately with
-`backup_destination_error` instead of opening a browser, and only the
-service-account path works. Record that the variables were present, not their
-values, in the release notes handed to the owner. The walkthrough's own `backup`
-step exercises the **service-account** destination against the in-memory fake
-Drive it starts for itself, so it proves the enablement flow without either
-variable and without a Google account; the OAuth path stays a manual check.
+Settings hides the Google-account destination during new backup setup and leaves
+the service-account destination as the only path. Record that the variables were
+present, not their values, in the release notes handed to the owner. The
+walkthrough's own `backup` step exercises the **service-account** destination
+against the in-memory fake Drive it starts for itself, so it proves the
+enablement flow without either variable and without a Google account; the OAuth
+path stays a manual check.
 
 | Step | Command | Pass condition |
 |---|---|---|

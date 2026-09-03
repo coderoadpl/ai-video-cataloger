@@ -4,6 +4,7 @@ import { buildConfigDescriptor, configId } from '@core/domain/index.js';
 
 import {
   API_ROUTES,
+  backupStatusOutputSchema,
   doctorOutputSchema,
   driveRunFacesSchema,
   facesIndexOutputSchema,
@@ -42,6 +43,37 @@ import {
 } from './routes.js';
 
 describe('route schemas', () => {
+  it('requires the backup status OAuth availability flag', () => {
+    const status = {
+      enabled: false,
+      provider: 'google_oauth',
+      connected: false,
+      accountEmail: null,
+      serviceAccountFingerprint: null,
+      sharedDriveId: null,
+      folderName: 'AI Video Cataloger Backups',
+      includeOptional: false,
+      keepLast: 7,
+      keepWeekly: 8,
+      indicator: 'disabled',
+      phase: 'idle',
+      percentage: null,
+      activeJobId: null,
+      lastSuccessAt: null,
+      lastArchiveName: null,
+      lastErrorCode: null,
+      lastRestoreAt: null,
+      nextDueAt: null,
+      supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      connection: null,
+      recoveryKeyStored: false,
+      recoveryKeyFingerprint: null,
+    };
+
+    expect(backupStatusOutputSchema.parse({ ...status, googleOAuthAvailable: false }).googleOAuthAvailable).toBe(false);
+    expect(() => backupStatusOutputSchema.parse(status)).toThrow();
+  });
+
   it('defines the translation import route and its summary envelope', () => {
     expect(API_ROUTES.variantsImportTranslation).toMatchObject({
       method: 'POST',

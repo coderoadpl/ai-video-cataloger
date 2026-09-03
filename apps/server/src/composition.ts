@@ -165,6 +165,11 @@ export interface InMemoryDepsConfig {
 
 export type InMemoryDepsFactory = (config: InMemoryDepsConfig) => AppDeps;
 
+export const resolveGoogleOAuthClientId = (
+  config: Pick<AppConfig, 'googleOAuthClientId'>,
+  env: { AVC_GOOGLE_OAUTH_CLIENT_ID?: string | undefined } = process.env,
+): string => config.googleOAuthClientId ?? env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '';
+
 export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemoryDepsFactory): AppDeps => {
   const dbDriver = config.dbDriver ?? dbDriverFromEnv(process.env.DB_DRIVER);
   const workingDirectory = config.workingDirectory ?? process.cwd();
@@ -226,10 +231,11 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
   });
   const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
   const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
+  const oauthClientId = resolveGoogleOAuthClientId(config);
   const backupDestination = () => createGoogleBackupDestination({
     config: configStore,
     secrets: backupSecrets,
-    oauthClientId: config.googleOAuthClientId ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '',
+    oauthClientId,
     oauthClientSecret: config.googleOAuthClientSecret ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '',
     openExternal: config.openExternal ?? (() => Promise.reject(new Error('System browser integration is unavailable'))),
     driveBaseUrl: process.env.AVC_GOOGLE_DRIVE_BASE_URL,
@@ -245,6 +251,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     secrets: backupSecrets,
     jobs,
     destination: backupDestination,
+    googleOAuthAvailable: oauthClientId.length > 0,
     fileSave: { save: config.saveFile ?? (() => Promise.resolve(unavailableSaveDialog())) },
   });
   return {

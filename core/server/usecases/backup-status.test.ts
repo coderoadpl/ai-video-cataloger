@@ -121,6 +121,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable: true,
       fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => {
         destinationCalls += 1;
@@ -152,8 +153,28 @@ describe('backup status', () => {
       connection: null,
       recoveryKeyStored: false,
       recoveryKeyFingerprint: null,
+      googleOAuthAvailable: true,
     }));
     expect(destinationCalls).toBe(0);
+  });
+
+  it.each([
+    [false],
+    [true],
+  ] as const)('reports Google OAuth availability as %s without exposing the client id', async (googleOAuthAvailable) => {
+    const status = await readBackupStatus({
+      config: new InMemoryConfig(),
+      state: new StubState(null),
+      jobs: new InMemoryJobs(),
+      secrets: stubSecrets(),
+      supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable,
+      fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
+      destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
+    }, { testConnection: false });
+
+    expect(status).toMatchObject({ ok: true, value: { googleOAuthAvailable } });
+    expect(JSON.stringify(status)).not.toContain('client');
   });
 
   it('reports the connected account, retention and last run once enabled', async () => {
@@ -175,6 +196,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable: true,
       fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
@@ -206,6 +228,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets(),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable: true,
       fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: true });
@@ -220,6 +243,7 @@ describe('backup status', () => {
       jobs: new InMemoryJobs(),
       secrets: stubSecrets({ [BACKUP_ENCRYPTION_KEY_ACCOUNT]: Buffer.alloc(32, 5).toString('base64') }),
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable: true,
       fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
@@ -239,6 +263,7 @@ describe('backup status', () => {
         delete: () => Promise.resolve(ok({ existed: false })),
       },
       supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      googleOAuthAvailable: true,
       fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
       destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
     }, { testConnection: false });
