@@ -1681,7 +1681,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const peopleCounts = new Map<string, number>();
     for (const observation of this.faceObservations.values()) {
       if (observation.personId === null) continue;
-      if (!visibleFileByFingerprint.has(observation.fingerprint)) continue;
+      const file = this.files.get(observation.fingerprint);
+      if (file !== undefined && (file.hiddenAt ?? null) !== null) continue;
       peopleCounts.set(observation.personId, (peopleCounts.get(observation.personId) ?? 0) + 1);
     }
     const people = [...peopleCounts.entries()]

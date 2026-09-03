@@ -34,7 +34,7 @@ describe('backup database snapshots', () => {
     }
     const result = await store.snapshotTo(target);
 
-    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 16 } });
+    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 17 } });
     const SQL = await initSqlJs();
     const client = new SQL.Database(await readFile(target));
     expect(client.exec('SELECT COUNT(*) FROM folders')[0]?.values[0]?.[0]).toBe(25);
@@ -115,7 +115,7 @@ describe('backup database snapshots', () => {
 
     const result = await store.snapshotTo(path.join(home, 'staging', 'photos.db'));
 
-    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 6 } });
+    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 7 } });
   });
 });
 

@@ -2005,7 +2005,9 @@ export const libraryHideInputSchema = z.object({
   scope: librarySelectionScopeSchema,
 }).strict();
 
-export const libraryUnhideInputSchema = libraryHideInputSchema;
+export const libraryUnhideInputSchema = z.object({
+  scope: librarySelectionScopeSchema,
+}).strict();
 
 export const libraryHideOutputSchema = z.object({
   requested: nonNegativeIntegerSchema,
@@ -2015,7 +2017,13 @@ export const libraryHideOutputSchema = z.object({
   photos: nonNegativeIntegerSchema,
 }).strict();
 
-export const libraryUnhideOutputSchema = libraryHideOutputSchema;
+export const libraryUnhideOutputSchema = z.object({
+  requested: nonNegativeIntegerSchema,
+  changed: nonNegativeIntegerSchema,
+  unchanged: nonNegativeIntegerSchema,
+  videos: nonNegativeIntegerSchema,
+  photos: nonNegativeIntegerSchema,
+}).strict();
 
 export const librarySelectionRootSchema = z.object({
   folderId: folderIdSchema,

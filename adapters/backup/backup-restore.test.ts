@@ -489,7 +489,7 @@ const createRestoreFixture = async (): Promise<{
   const restoreDeps: BackupRestoreDeps = {
     homeDirectory: target.home,
     owner: TEST_OWNER,
-    supportedSchemaVersions: { globalCatalog: 16, photos: 6 },
+    supportedSchemaVersions: { globalCatalog: 17, photos: 7 },
     fs: target.fs,
     globalCatalog: target.globalCatalog,
     photos: target.photos,

@@ -135,7 +135,7 @@ describe('createApiClient route calls', () => {
 
   it('sends search input as GET query params', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
-      expect(input).toBe('/api/search?query=drone+clip&thumbnails=ensure&limit=25&offset=5');
+      expect(input).toBe('/api/search?query=drone+clip&hidden=exclude&thumbnails=ensure&limit=25&offset=5');
       expect(init).toMatchObject({ method: 'GET' });
       return jsonResponse({
         ok: true,

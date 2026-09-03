@@ -955,8 +955,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         `SELECT p.person_id, p.display_name, COUNT(DISTINCT o.fingerprint)
           FROM face_observations o
           JOIN people p ON p.person_id = o.person_id
-          JOIN files f ON f.fingerprint = o.fingerprint
-          WHERE f.hidden_at IS NULL AND o.person_id IS NOT NULL
+          LEFT JOIN files f ON f.fingerprint = o.fingerprint
+          WHERE o.person_id IS NOT NULL AND (f.fingerprint IS NULL OR f.hidden_at IS NULL)
           GROUP BY p.person_id, p.display_name
           ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
       )[0]?.values ?? [];

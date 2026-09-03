@@ -425,6 +425,7 @@ describe('search', () => {
       folderId: folderA.folderId,
       excludeFolderIds: [],
       excludeMissing: false,
+      hidden: 'exclude',
     });
     expect(store.lastSearchInput?.sort).toBe('captured_desc');
     expect(store.lastSearchInput?.match).toBeNull();

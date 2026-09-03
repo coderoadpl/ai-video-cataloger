@@ -81,3 +81,5 @@ scripts/build-app-icon.mjs:email
 tasks/prd-gui-mvp.md:home-path
 # Illustrative Google service-account address format in a setup runbook, not a real account.
 tasks/prd-google-drive-backup.md:email
+# Synthetic database locations back the shared use-case test fakes.
+test/server/usecases/test-fakes.ts:home-path
