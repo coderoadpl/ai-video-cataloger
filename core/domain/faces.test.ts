@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 import {
   FACE_CLUSTERING,
-  FACE_CLUSTER_MIN_EDGE_DENSITY,
+  FACE_CLUSTER_MIN_STRONG_FRACTION,
   FACE_EMBEDDING_DIM,
   FACE_ENGINE_VERSION,
   FACE_IDENTITY_MIN_SCORE,
@@ -13,6 +13,7 @@ import {
   boxIoU,
   classifyFace,
   clusterFaceObservations,
+  clusterPreparedFaceObservations,
   cosineSimilarity,
   faceCropFileName,
   faceObservationSchema,
@@ -27,6 +28,7 @@ import {
   updateCentroid,
   type ExemplarCandidate,
   type ExemplarPlanObservation,
+  type PreparedFaceClustering,
 } from './faces.js';
 
 const unitAtCosine = (cosine: number): number[] => [cosine, Math.sqrt(Math.max(0, 1 - cosine * cosine))];
@@ -37,6 +39,23 @@ const unitAtAngleDeg = (deg: number): number[] => {
 };
 
 const embedding = (fill: number): number[] => Array.from({ length: FACE_EMBEDDING_DIM }, () => fill);
+
+interface PreparedEdge {
+  left: number;
+  right: number;
+  similarity: number;
+}
+
+const preparedFromEdges = (obsIds: readonly string[], edges: readonly PreparedEdge[]): PreparedFaceClustering => ({
+  ordered: obsIds.map((obsId) => ({ obsId, embedding: [1, 0], quality: 0.9 })),
+  unassignedObsIds: [],
+  edges: {
+    leftIds: Uint32Array.from(edges.map((edge) => edge.left)),
+    rightIds: Uint32Array.from(edges.map((edge) => edge.right)),
+    similarities: Float64Array.from(edges.map((edge) => edge.similarity)),
+    count: edges.length,
+  },
+});
 
 const twoDistinctIdentityPool = (): number[][] => [
   unitAtAngleDeg(0),
@@ -156,9 +175,9 @@ describe('clusterFaceObservations', () => {
   it('stores more pair scores than the V8 Map entry cap', () => {
     const pairCount = 16_777_217;
     const store = buildFacePairSumStoreForTest(pairCount);
-    for (let index = 0; index < pairCount; index += 1) store.add(index, pairCount + index, 0.6, 1);
-    expect(store.get(0, pairCount)).toEqual({ sum: 0.6, count: 1 });
-    expect(store.get(pairCount - 1, pairCount + pairCount - 1)).toEqual({ sum: 0.6, count: 1 });
+    for (let index = 0; index < pairCount; index += 1) store.add(index, pairCount + index, 0.6, 1, 1);
+    expect(store.get(0, pairCount)).toEqual({ sum: 0.6, count: 1, strongCount: 1 });
+    expect(store.get(pairCount - 1, pairCount + pairCount - 1)).toEqual({ sum: 0.6, count: 1, strongCount: 1 });
   }, scaledTimeout(60_000));
 
   it('clusters hundreds of observations across multiple similarity blocks', () => {
@@ -231,31 +250,75 @@ describe('clusterFaceObservations', () => {
     ]);
   });
 
-  it('blocks sparse bridge merges when both candidate clusters are established', () => {
-    const left = [1, 0];
-    const rightX = 0.2;
-    const rightY = Math.sqrt(1 - rightX * rightX);
-    const right = [rightX, rightY];
-    const bridge = normalizeEmbedding([1 + rightX, rightY]);
-    const observations = [
-      { obsId: 'a-1', embedding: left, quality: 0.9 },
-      { obsId: 'a-2', embedding: left, quality: 0.9 },
-      { obsId: 'a-3', embedding: left, quality: 0.9 },
-      { obsId: 'bridge', embedding: bridge, quality: 0.9 },
-      { obsId: 'b-1', embedding: right, quality: 0.9 },
-      { obsId: 'b-2', embedding: right, quality: 0.9 },
-      { obsId: 'b-3', embedding: right, quality: 0.9 },
-    ];
+  it('blocks an established-cluster bridge that average linkage would accept', () => {
+    const crossSimilarities = [0.9, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55];
+    const oldAverageLinkageScore = crossSimilarities.reduce((sum, similarity) => sum + similarity, 0) / crossSimilarities.length;
+    const strongFraction = crossSimilarities.filter((similarity) => similarity >= DEFAULT_FACE_CLUSTER_CUT_SIMILARITY).length
+      / crossSimilarities.length;
+    const prepared = preparedFromEdges(
+      ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3'],
+      [
+        { left: 0, right: 1, similarity: 0.9 },
+        { left: 0, right: 2, similarity: 0.9 },
+        { left: 1, right: 2, similarity: 0.9 },
+        { left: 3, right: 4, similarity: 0.9 },
+        { left: 3, right: 5, similarity: 0.9 },
+        { left: 4, right: 5, similarity: 0.9 },
+        { left: 0, right: 3, similarity: crossSimilarities[0] ?? 0 },
+        { left: 0, right: 4, similarity: crossSimilarities[1] ?? 0 },
+        { left: 0, right: 5, similarity: crossSimilarities[2] ?? 0 },
+        { left: 1, right: 3, similarity: crossSimilarities[3] ?? 0 },
+        { left: 1, right: 4, similarity: crossSimilarities[4] ?? 0 },
+        { left: 1, right: 5, similarity: crossSimilarities[5] ?? 0 },
+        { left: 2, right: 3, similarity: crossSimilarities[6] ?? 0 },
+        { left: 2, right: 4, similarity: crossSimilarities[7] ?? 0 },
+        { left: 2, right: 5, similarity: crossSimilarities[8] ?? 0 },
+      ],
+    );
 
-    expect(clusterFaceObservations(observations, {
-      clusterCutSimilarity: 0.19,
-      minEdgeDensity: 0,
-    }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+    expect(oldAverageLinkageScore).toBeGreaterThanOrEqual(DEFAULT_FACE_CLUSTER_CUT_SIMILARITY);
+    expect(strongFraction).toBeLessThan(FACE_CLUSTER_MIN_STRONG_FRACTION);
+    expect(clusterPreparedFaceObservations(prepared, { minStrongFraction: 0 }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+      ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3'],
+    ]);
+    expect(clusterPreparedFaceObservations(prepared).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+      ['a-1', 'a-2', 'a-3'],
+      ['b-1', 'b-2', 'b-3'],
+    ]);
+  });
+
+  it('keeps tight groups separate when one bridge observation touches both', () => {
+    const prepared = preparedFromEdges(
+      ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'bridge'],
+      [
+        { left: 0, right: 1, similarity: 0.9 },
+        { left: 0, right: 2, similarity: 0.9 },
+        { left: 1, right: 2, similarity: 0.9 },
+        { left: 3, right: 4, similarity: 0.9 },
+        { left: 3, right: 5, similarity: 0.9 },
+        { left: 4, right: 5, similarity: 0.9 },
+        { left: 0, right: 3, similarity: 0.55 },
+        { left: 0, right: 4, similarity: 0.55 },
+        { left: 0, right: 5, similarity: 0.55 },
+        { left: 1, right: 3, similarity: 0.55 },
+        { left: 1, right: 4, similarity: 0.55 },
+        { left: 1, right: 5, similarity: 0.55 },
+        { left: 2, right: 3, similarity: 0.55 },
+        { left: 2, right: 4, similarity: 0.55 },
+        { left: 2, right: 5, similarity: 0.55 },
+        { left: 0, right: 6, similarity: 0.82 },
+        { left: 1, right: 6, similarity: 0.55 },
+        { left: 2, right: 6, similarity: 0.55 },
+        { left: 3, right: 6, similarity: 0.8 },
+        { left: 4, right: 6, similarity: 0.55 },
+        { left: 5, right: 6, similarity: 0.55 },
+      ],
+    );
+
+    expect(clusterPreparedFaceObservations(prepared, { minStrongFraction: 0 }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
       ['a-1', 'a-2', 'a-3', 'b-1', 'b-2', 'b-3', 'bridge'],
     ]);
-    expect(clusterFaceObservations(observations, {
-      clusterCutSimilarity: 0.19,
-    }).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+    expect(clusterPreparedFaceObservations(prepared).clusters.map((cluster) => cluster.memberObsIds)).toEqual([
       ['a-1', 'a-2', 'a-3', 'bridge'],
       ['b-1', 'b-2', 'b-3'],
     ]);
@@ -522,7 +585,7 @@ describe('research thresholds are pinned', () => {
       autoMergeSimilarity: 0.55,
       autoMergeMinPairs: 2,
     });
-    expect(FACE_CLUSTER_MIN_EDGE_DENSITY).toBe(0.3);
+    expect(FACE_CLUSTER_MIN_STRONG_FRACTION).toBe(0.3);
     expect(FACE_IDENTITY_MIN_SCORE).toBe(0.75);
     expect(FACE_EMBEDDING_DIM).toBe(128);
   });

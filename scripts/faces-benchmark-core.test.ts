@@ -12,7 +12,7 @@ import {
   benchmarkObservationSchema,
   benchmarkReportTable,
   buildFixtureCorpus,
-  defaultDensitySweep,
+  defaultStrongFractionSweep,
   labelledPairSchema,
   matchReferenceToNative,
   referencePartitionRecordSchema,
@@ -77,15 +77,14 @@ describe('faces benchmark metrics', () => {
     expect(report.selectedThreshold).toBe(0.79);
   });
 
-  it('sweeps edge density as a calibration axis', () => {
+  it('sweeps strong-edge fraction as a calibration axis', () => {
     const records: ReferencePartitionRecord[] = [
-      { observationId: 'a1', clusterId: 'identity-a', obsId: 'a1', embedding: [1, 0], quality: 1 },
-      { observationId: 'a2', clusterId: 'identity-a', obsId: 'a2', embedding: [1, 0], quality: 1 },
-      { observationId: 'a3', clusterId: 'identity-a', obsId: 'a3', embedding: [1, 0], quality: 1 },
-      { observationId: 'bridge', clusterId: 'identity-a', obsId: 'bridge', embedding: [0.7745966692414834, 0.6324555320336759], quality: 1 },
-      { observationId: 'b1', clusterId: 'identity-b', obsId: 'b1', embedding: [0.2, 0.9797958971132712], quality: 1 },
-      { observationId: 'b2', clusterId: 'identity-b', obsId: 'b2', embedding: [0.2, 0.9797958971132712], quality: 1 },
-      { observationId: 'b3', clusterId: 'identity-b', obsId: 'b3', embedding: [0.2, 0.9797958971132712], quality: 1 },
+      { observationId: 'a1', clusterId: 'identity-a', obsId: 'a1', embedding: [-0.211653048227015, 0, 0, -0.29869725381262, -0.353840341363464, -0.860685744371777], quality: 1 },
+      { observationId: 'a2', clusterId: 'identity-a', obsId: 'a2', embedding: [0.091745961566269, -0.175407478168169, 0.263120156207546, 0.153479116941251, -0.408145413469612, -0.837522632925782], quality: 1 },
+      { observationId: 'a3', clusterId: 'identity-a', obsId: 'a3', embedding: [0.0917459615662707, 0.175407478168169, -0.263120156207546, 0.15347911694125, -0.408145413469612, -0.837522632925782], quality: 1 },
+      { observationId: 'b1', clusterId: 'identity-b', obsId: 'b1', embedding: [0.211653048227016, 0, 0, -0.298697253812618, 0.353840341363464, -0.860685744371777], quality: 1 },
+      { observationId: 'b2', clusterId: 'identity-b', obsId: 'b2', embedding: [-0.0917459615662701, -0.263120156207545, -0.17540747816817, 0.153479116941249, 0.408145413469612, -0.837522632925782], quality: 1 },
+      { observationId: 'b3', clusterId: 'identity-b', obsId: 'b3', embedding: [-0.0917459615662711, 0.263120156207545, 0.175407478168169, 0.15347911694125, 0.408145413469612, -0.837522632925782], quality: 1 },
     ];
     const pairs: LabelledPair[] = [
       { left: 'a1', right: 'a2', verdict: 'same' },
@@ -93,14 +92,14 @@ describe('faces benchmark metrics', () => {
       { left: 'a1', right: 'b1', verdict: 'different' },
     ];
 
-    const report = runBenchmark(buildFixtureCorpus(records, pairs), [0.19], [0, 0.3]);
+    const report = runBenchmark(buildFixtureCorpus(records, pairs), [0.56], [0, 0.3]);
 
-    expect(defaultDensitySweep()).toContain(0.3);
-    expect(report.thresholds.map((row) => [row.threshold, row.minEdgeDensity, row.differentPairsMerged])).toEqual([
-      [0.19, 0, 1],
-      [0.19, 0.3, 0],
+    expect(defaultStrongFractionSweep()).toContain(0.3);
+    expect(report.thresholds.map((row) => [row.threshold, row.minStrongFraction, row.differentPairsMerged])).toEqual([
+      [0.56, 0, 1],
+      [0.56, 0.3, 0],
     ]);
-    expect(benchmarkReportTable(report)).toContain('density');
+    expect(benchmarkReportTable(report)).toContain('strongFraction');
   });
 
   it('matches external reference ids to native photo observations by fingerprint and bbox IoU', () => {
