@@ -35,6 +35,7 @@ export interface BackupIndicator {
 export interface BackupStatusView extends BackupIndicator {
   enabled: boolean;
   provider: BackupProvider;
+  googleOAuthAvailable: boolean;
   connected: boolean;
   accountEmail: string | null;
   serviceAccountFingerprint: string | null;
@@ -60,6 +61,7 @@ export interface BackupStatusDeps {
   jobs: Pick<JobsPort, 'list'>;
   secrets: SecretsStore;
   supportedSchemaVersions: BackupSchemaVersions;
+  googleOAuthAvailable: boolean;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
   fingerprintKey(key: Buffer): string;
 }
@@ -120,6 +122,7 @@ export const readBackupStatus = async (
     ...indicator,
     enabled: settings.value.enabled,
     provider: settings.value.provider,
+    googleOAuthAvailable: deps.googleOAuthAvailable,
     connected: settings.value.accountEmail.length > 0 || settings.value.serviceAccountFingerprint.length > 0,
     accountEmail: emptyToNull(settings.value.accountEmail),
     serviceAccountFingerprint: emptyToNull(settings.value.serviceAccountFingerprint),

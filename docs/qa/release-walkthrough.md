@@ -140,6 +140,10 @@ bar is an Analysis-mode surface, so the indicator does not exist while Library i
 on screen — and requires the indicator to render in a state other than `failed`.
 Both screenshots are part of the reviewed set.
 
+The step remains valid for builds without `AVC_GOOGLE_OAUTH_CLIENT_ID`: those
+builds hide the Google-account destination, and the walkthrough already drives
+the service-account path against fake Drive.
+
 Three details of that step are load-bearing and are pinned by
 `scripts/release-walkthrough.test.mjs`, which reads the driver's own source:
 

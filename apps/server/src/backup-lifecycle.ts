@@ -78,6 +78,7 @@ export interface BackupLifecycleOptions {
   jobs: JobsPort;
   fileSave: FileSavePort;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
+  googleOAuthAvailable: boolean;
   now?: (() => Date) | undefined;
   owner?: BackupOwner | undefined;
   isOwnerAlive?: BackupOwnerLiveness | undefined;
@@ -231,6 +232,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       jobs: options.jobs,
       secrets: options.secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+      googleOAuthAvailable: options.googleOAuthAvailable,
       destination: options.destination,
       fingerprintKey: backupKeyFingerprint,
     }, input),

@@ -206,6 +206,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
       fingerprintKey: backupKeyFingerprint,
       secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+      googleOAuthAvailable: true,
       destination: () => Promise.resolve(ok(backupDestination)),
     }, input),
     connectBackup: (request: BackupConnectRequest, signal: AbortSignal) =>

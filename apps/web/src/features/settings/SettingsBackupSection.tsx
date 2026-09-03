@@ -205,6 +205,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
         includeOptional={status?.includeOptional ?? false}
         keepLast={status?.keepLast ?? 7}
         keepWeekly={status?.keepWeekly ?? 8}
+        googleOAuthAvailable={status?.googleOAuthAvailable ?? false}
         onClose={() => setStepperOpen(false)}
         onEnabled={() => setStepperOpen(false)}
       />
