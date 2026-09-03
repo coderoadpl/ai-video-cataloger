@@ -2,18 +2,25 @@ import { Buffer } from 'node:buffer';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { URL } from 'node:url';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { FOLDER_MIME_TYPE } from './fake-drive-server.mjs';
 import {
   analyzeOutcome,
+  assertStepName,
+  backupArchiveOutcome,
+  backupIndicatorOutcome,
   blockingSkips,
   BROKEN_PHOTO_MTIME,
   BROKEN_PHOTO_NAME,
   checkOllamaAnalyzer,
   clearLibrarySearch,
   collectionPhotoChipOutcome,
+  fakeDriveArchives,
   localAnalyzerConfig,
+  peopleOutcome,
   withoutBackupConfig,
   parseAnalyzerFlag,
   parseMediaChipCount,
@@ -23,7 +30,17 @@ import {
   TOLERATED_SKIPS,
   treeSelectAnalyzeOutcome,
   TREE_PHOTO_PATH,
+  WALKTHROUGH_STEPS,
 } from './release-walkthrough.mjs';
+
+const driverSource = readFileSync(new URL('./release-walkthrough.mjs', import.meta.url), 'utf8');
+
+const stepSource = (name, nextName) => {
+  const start = driverSource.indexOf(`await record('${name}', async () => {`);
+  const end = driverSource.indexOf(`await record('${nextName}'`, start);
+  if (start === -1 || end <= start) throw new Error(`no ${name} step ahead of ${nextName} in the driver`);
+  return driverSource.slice(start, end);
+};
 
 const JPEG_WITH_EOI = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]);
 
@@ -401,5 +418,129 @@ describe('withoutBackupConfig', () => {
     });
 
     expect(cleared).toEqual({ ui_language: 'pl', analyzer_backend: 'local' });
+  });
+});
+
+describe('WALKTHROUGH_STEPS', () => {
+  it('captures Osoby after the analysis steps and before Settings', () => {
+    expect(WALKTHROUGH_STEPS.indexOf('people')).toBeGreaterThan(WALKTHROUGH_STEPS.indexOf('photos-tree-analyze'));
+    expect(WALKTHROUGH_STEPS.indexOf('people')).toBeLessThan(WALKTHROUGH_STEPS.indexOf('settings'));
+  });
+
+  it('keeps the backup pair between Settings and the wizard', () => {
+    expect(WALKTHROUGH_STEPS.indexOf('backup')).toBeGreaterThan(WALKTHROUGH_STEPS.indexOf('settings'));
+    expect(WALKTHROUGH_STEPS.indexOf('backup-indicator')).toBe(WALKTHROUGH_STEPS.indexOf('backup') + 1);
+    expect(WALKTHROUGH_STEPS.indexOf('wizard')).toBe(WALKTHROUGH_STEPS.length - 1);
+  });
+
+  it('accepts the declared order and rejects a step recorded out of it', () => {
+    expect(assertStepName(0, WALKTHROUGH_STEPS[0])).toBeUndefined();
+    expect(() => assertStepName(0, 'backup')).toThrow(/step order/i);
+    expect(() => assertStepName(WALKTHROUGH_STEPS.length, 'extra')).toThrow(/step order/i);
+  });
+});
+
+describe('the backup step drives the real enablement controls', () => {
+  const backupStep = stepSource('backup', 'backup-indicator');
+
+  it('never calls check() on a control whose checked state the server owns', () => {
+    expect(backupStep).not.toMatch(/\.check\(\)/);
+  });
+
+  it('clicks the enable switch input, the way test/e2e/backup-settings.spec.ts does', () => {
+    expect(backupStep).toContain("getByTestId('backup-enabled-switch').locator('input').click()");
+  });
+
+  it('clicks the provider radio input rather than the label wrapper', () => {
+    expect(backupStep).toContain("getByTestId('backup-provider-service-account').locator('input').click()");
+  });
+
+  it('proves the connect by the recovery-key step, not by the alert the step swap unmounts', () => {
+    expect(backupStep).toContain('backup-export-recovery-key');
+    expect(backupStep).not.toContain('backup-connection-report');
+  });
+});
+
+describe('fakeDriveArchives', () => {
+  it('counts uploaded archives, not the folder created at connect nor the connection probe', () => {
+    const files = new Map([
+      ['folder', { mimeType: FOLDER_MIME_TYPE, appProperties: {} }],
+      ['probe', { mimeType: 'application/octet-stream', appProperties: { kind: 'probe' } }],
+      ['archive', { mimeType: 'application/octet-stream', appProperties: { tier: 'critical' } }],
+    ]);
+
+    expect(fakeDriveArchives(files).map((file) => file.appProperties.tier)).toEqual(['critical']);
+  });
+});
+
+describe('backupArchiveOutcome', () => {
+  it('reports failed when the enablement claimed success but no archive reached the fake Drive', () => {
+    expect(backupArchiveOutcome(0).status).toBe('failed');
+  });
+
+  it('reports ok and counts the archives once at least one landed', () => {
+    expect(backupArchiveOutcome(2)).toEqual({ status: 'ok', note: '2 archive(s) in the fake Drive after the first backup' });
+  });
+});
+
+describe('backupIndicatorOutcome', () => {
+  it('reports failed when the indicator itself reports a failed backup', () => {
+    expect(backupIndicatorOutcome('failed').status).toBe('failed');
+  });
+
+  it('reports failed when the indicator carries no state to read', () => {
+    expect(backupIndicatorOutcome(null).status).toBe('failed');
+  });
+
+  it('reports ok and names the state for a healthy indicator', () => {
+    expect(backupIndicatorOutcome('idle')).toEqual({ status: 'ok', note: 'the bottom bar carries the backup indicator (idle)' });
+  });
+});
+
+describe('peopleOutcome', () => {
+  it('reports failed when the Osoby heading never rendered', () => {
+    expect(peopleOutcome({ headingVisible: false, chipLabels: null, emptyState: null }).status).toBe('failed');
+  });
+
+  it('reports ok with the Polish media chips when the fixture yielded face groupings', () => {
+    const outcome = peopleOutcome({
+      headingVisible: true,
+      chipLabels: ['Wszystko (3)', 'Filmy (2)', 'Zdjęcia (1)'],
+      emptyState: null,
+    });
+
+    expect(outcome.status).toBe('ok');
+    expect(outcome.note).toContain('Wszystko (3) / Filmy (2) / Zdjęcia (1)');
+  });
+
+  it('reports failed when a chip lost its Polish label', () => {
+    const outcome = peopleOutcome({
+      headingVisible: true,
+      chipLabels: ['Wszystko (3)', 'Videos (2)', 'Zdjęcia (1)'],
+      emptyState: null,
+    });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('Filmy');
+  });
+
+  it('reports ok for the honest empty state a fixture with no faces produces', () => {
+    const outcome = peopleOutcome({
+      headingVisible: true,
+      chipLabels: null,
+      emptyState: { testId: 'people-empty-state', text: 'Brak grup twarzy' },
+    });
+
+    expect(outcome).toEqual({ status: 'ok', note: 'Osoby renders the people-empty-state empty state: Brak grup twarzy' });
+  });
+
+  it('reports failed when Osoby renders neither the chips nor an empty state', () => {
+    expect(peopleOutcome({ headingVisible: true, chipLabels: null, emptyState: null }).status).toBe('failed');
+  });
+
+  it('reports failed for an empty state that rendered a bare panel', () => {
+    const outcome = peopleOutcome({ headingVisible: true, chipLabels: null, emptyState: { testId: 'people-empty-state', text: '' } });
+
+    expect(outcome.status).toBe('failed');
   });
 });
