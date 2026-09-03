@@ -672,6 +672,33 @@ Source: `electron/renderer/src/hooks/use-terminal-prefs.ts`.
 - `ai-video-cataloger:terminal-size`: number string.
 - JSON visibility is not persisted.
 
+### Post-parity note — library hide and move-to-trash (W88)
+
+Hide and move-to-trash are post-parity capabilities: the old app had neither,
+so nothing in this inventory describes behaviour they change. Recorded here
+because the section above is the parity ground truth for the on-disk and
+database layout, and the reader must be able to tell an addition from a drift.
+
+- **No new database file and no new on-disk directory.** The feature adds two
+  nullable columns — `files.hidden_at` in `catalog.db` (schema **V17**) and
+  `photos.hidden_at` in `photos.db` (schema **v7**) — each with an index.
+  Existing rows read `NULL` and an upgraded installation looks unchanged.
+- **`catalog.ndjson` gains one field.** The per-folder snapshot's record
+  payload carries `hiddenAt`, so `CATALOG_SNAPSHOT_SCHEMA_VERSION` goes 12 →
+  13. Nothing else about the snapshot's location, name or line grammar
+  changes.
+- **Trash deletes only artifacts this inventory already lists** — the
+  per-folder `.ai-video-cataloger/` trees, the name-based
+  `frames/`/`transcripts/`/`summaries/` projection, the home-scope face crops
+  and photo artifacts — plus the corresponding rows in the two databases. It
+  introduces no new artifact kind and no new location.
+- **The user's media file is moved to the macOS Trash**, never unlinked; the
+  legacy per-folder `catalog.db` is left alone, matching `index forget`.
+
+Design: [docs/architecture.md](../docs/architecture.md), "Library — hide and
+move-to-trash"; [ADR-0020](../docs/decisions/0020-library-hide-and-trash.md);
+[tasks/prd-library-hide-and-trash.md](prd-library-hide-and-trash.md).
+
 ## 6. Bundled / Managed Runtimes
 
 ### ffmpeg / ffprobe
