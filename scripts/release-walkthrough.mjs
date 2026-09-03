@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 
 import { _electron as electron } from '@playwright/test';
@@ -343,6 +344,15 @@ const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
   }
 };
 
+const disappeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
+  try {
+    await locator.first().waitFor({ state: 'hidden', timeout });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const done = (note = '') => ({ status: 'ok', note });
 const skipped = (note) => ({ status: 'skipped', note });
 const failed = (note) => ({ status: 'failed', note });
@@ -385,6 +395,40 @@ export const collectionPhotoChipOutcome = (photoChipCount) => {
   return failed('Kolekcja Zdjęcia chip still reports 0 after a single-photo analyze completed (W55 payoff unproven)');
 };
 
+// The fake Drive also holds the backup folder created at connect and, until the destination
+// cleans it up, the connection-test probe object; only an uploaded archive carries a manifest tier.
+export const fakeDriveArchives = (files) =>
+  [...files.values()].filter((file) => file.mimeType !== FOLDER_MIME_TYPE && typeof file.appProperties.tier === 'string');
+
+export const backupArchiveOutcome = (archiveCount) =>
+  archiveCount === 0
+    ? failed('the backup job reported success but the fake Drive holds no archive')
+    : done(`${String(archiveCount)} archive(s) in the fake Drive after the first backup`);
+
+export const backupIndicatorOutcome = (state) => {
+  if (state === null) return failed('the bottom-bar backup indicator carries no data-state to read');
+  if (state === 'failed') return failed('the bottom-bar backup indicator reports a failed backup');
+  return done(`the bottom bar carries the backup indicator (${state})`);
+};
+
+export const PEOPLE_MEDIA_OPTIONS = ['all', 'video', 'photo'];
+export const PEOPLE_MEDIA_CHIP_LABELS = ['Wszystko', 'Filmy', 'Zdjęcia'];
+export const PEOPLE_EMPTY_STATES = ['people-empty-state', 'people-disabled-state', 'people-no-models-state'];
+
+// A fixture set with no detectable face is a legitimate release run: the empty state is the honest
+// capture, and only a surface that renders neither the chips nor an empty state is a failure.
+export const peopleOutcome = ({ headingVisible, chipLabels, emptyState }) => {
+  if (!headingVisible) return failed('Biblioteka > Osoby did not render its "Osoby" heading');
+  if (chipLabels !== null) {
+    const missing = PEOPLE_MEDIA_CHIP_LABELS.filter((label, index) => !(chipLabels[index] ?? '').startsWith(label));
+    if (missing.length > 0) return failed(`the Osoby media chips lost their Polish labels: ${missing.join(', ')}`);
+    return done(`Osoby lists face groupings behind the ${chipLabels.join(' / ')} chips`);
+  }
+  if (emptyState === null) return failed('Osoby rendered neither the media chips nor an empty state');
+  if (emptyState.text.length === 0) return failed(`the Osoby ${emptyState.testId} empty state rendered a bare panel`);
+  return done(`Osoby renders the ${emptyState.testId} empty state: ${emptyState.text}`);
+};
+
 export const searchTermFromAnalyzedFilename = (filename) => {
   const basename = path.basename(filename, path.extname(filename));
   const tokens = basename.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !/^\d+$/.test(token));
@@ -406,6 +450,38 @@ export const TOLERATED_SKIPS = new Set(['first-run-wizard', 'library-preview']);
 
 export const blockingSkips = (results) =>
   results.filter((result) => result.status === 'skipped' && !TOLERATED_SKIPS.has(result.name));
+
+export const WALKTHROUGH_STEPS = [
+  'launch',
+  'first-run-wizard',
+  'mode-switch',
+  'mode-analysis',
+  'open-folder',
+  'tree-expand',
+  'select-video',
+  'analyze',
+  'search',
+  'library-preview',
+  'photos-sidebar',
+  'analysis-photos',
+  'photos-tree',
+  'photos-tree-analyze',
+  'collection-photo-analyzed',
+  'collection-photo-viewer',
+  'people',
+  'settings',
+  'backup',
+  'backup-indicator',
+  'wizard',
+];
+
+// The screenshot filenames and the reviewer checklist in docs/qa/release-walkthrough.md are keyed
+// to this order, so a step added, dropped or moved without updating the list stops the run.
+export const assertStepName = (index, name) => {
+  const expected = WALKTHROUGH_STEPS[index];
+  if (expected === name) return undefined;
+  throw new Error(`step order drift: WALKTHROUGH_STEPS[${String(index)}] is ${expected ?? 'no further step'}, the run recorded ${name}`);
+};
 
 /* eslint-disable no-undef -- runs inside the driven page via Playwright's waitForFunction, not this Node process */
 const noPendingTransitionsOrSpinners = () =>
@@ -444,6 +520,7 @@ const settle = async (page) => {
 const createRecorder = (page, outDir) => {
   const results = [];
   const record = async (name, body) => {
+    assertStepName(results.length, name);
     const startedAt = Date.now();
     const screenshot = `${String(results.length + 1).padStart(2, '0')}-${name}.png`;
     let outcome;
@@ -474,6 +551,39 @@ const stubOpenDialog = async (app, folderPath) => {
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, folderPath);
+};
+
+const FAKE_DRIVE_POLL_MS = 500;
+
+const fakeDriveArchiveCount = async (fakeDrive, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  let count = fakeDriveArchives(fakeDrive.files).length;
+  while (count === 0 && Date.now() < deadline) {
+    await delay(FAKE_DRIVE_POLL_MS);
+    count = fakeDriveArchives(fakeDrive.files).length;
+  }
+  return count;
+};
+
+const stepperErrorNote = async (page, fallback) => {
+  const stepperError = page.getByTestId('backup-stepper-error');
+  if (!(await appeared(stepperError, SETTLE_TIMEOUT_MS))) return fallback;
+  const message = ((await stepperError.first().textContent()) ?? '').trim();
+  return message.length === 0 ? fallback : `${fallback}: ${message}`;
+};
+
+const peopleMediaChipLabels = async (page) =>
+  Promise.all(PEOPLE_MEDIA_OPTIONS.map(async (option) =>
+    ((await page.getByTestId(`people-media-${option}`).first().textContent()) ?? '').trim()));
+
+const visiblePeopleEmptyState = async (page) => {
+  for (const testId of PEOPLE_EMPTY_STATES) {
+    const state = page.getByTestId(testId);
+    if (await appeared(state, SETTLE_TIMEOUT_MS)) {
+      return { testId, text: ((await state.first().textContent()) ?? '').trim() };
+    }
+  }
+  return null;
 };
 
 const stubSaveDialog = async (app, filePath) => {
@@ -750,6 +860,23 @@ const drive = async (plan) => {
     return done('Kolekcja photo tile opened the shared viewer');
   });
 
+  await record('people', async () => {
+    const viewerClose = page.getByTestId('library-media-viewer-close');
+    if (await appeared(viewerClose, SETTLE_TIMEOUT_MS)) await viewerClose.click();
+    const modeLibrary = page.getByTestId('mode-library');
+    if (!(await appeared(modeLibrary, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    await modeLibrary.click();
+    const subnavPeople = page.getByTestId('subnav-people');
+    if (!(await appeared(subnavPeople, SETTLE_TIMEOUT_MS))) return skipped('no Osoby subnav in this build');
+    await subnavPeople.click();
+    const headingVisible = await appeared(page.getByRole('heading', { name: 'Osoby', exact: true }), VISIBLE_TIMEOUT_MS);
+    const chipLabels = (await appeared(page.getByTestId('people-media-filter'), SETTLE_TIMEOUT_MS))
+      ? await peopleMediaChipLabels(page)
+      : null;
+    const emptyState = chipLabels === null ? await visiblePeopleEmptyState(page) : null;
+    return peopleOutcome({ headingVisible, chipLabels, emptyState });
+  });
+
   await record('settings', async () => {
     const viewerClose = page.getByTestId('library-media-viewer-close');
     if (await appeared(viewerClose, SETTLE_TIMEOUT_MS)) await viewerClose.click();
@@ -766,34 +893,58 @@ const drive = async (plan) => {
     await section.scrollIntoViewIfNeeded();
     await stubSaveDialog(app, recoveryKeyPath);
 
-    await page.getByTestId('backup-enabled-switch').locator('input').check();
+    // The Switch is controlled by the server-side status and its onChange only opens the stepper,
+    // so check() would reject the click for leaving the input's state untouched.
+    await page.getByTestId('backup-enabled-switch').locator('input').click();
     await page.getByTestId('backup-stepper').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
-    await page.getByTestId('backup-provider-service-account').click();
+    await page.getByTestId('backup-provider-service-account').locator('input').click();
     await page.getByTestId('backup-stepper-next').click();
     await page.getByTestId('backup-shared-drive-id').fill(FAKE_DRIVE_ID);
     await page.getByTestId('backup-key-json').fill(serviceAccountKey);
     await page.getByTestId('backup-connect').click();
-    await page.getByTestId('backup-connection-report').waitFor({ state: 'visible', timeout: BACKUP_TIMEOUT_MS });
 
-    await page.getByTestId('backup-export-recovery-key').click();
+    // A successful connect advances the stepper, which unmounts the connect step and its success
+    // alert with it, so the recovery-key step's own control is the only durable proof of it.
+    const exportRecoveryKey = page.getByTestId('backup-export-recovery-key');
+    if (!(await appeared(exportRecoveryKey, BACKUP_TIMEOUT_MS))) {
+      return failed(await stepperErrorNote(page, 'the stepper never reached the recovery-key step after connect'));
+    }
+    await exportRecoveryKey.click();
     await page.getByTestId('backup-recovery-key-report').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
-    await page.getByTestId('backup-recovery-key-saved').locator('input').check();
+    await page.getByTestId('backup-recovery-key-saved').locator('input').click();
     await page.getByTestId('backup-finish').click();
-    await page.getByTestId('backup-stepper').waitFor({ state: 'hidden', timeout: BACKUP_TIMEOUT_MS });
-    await page.getByTestId('backup-list').waitFor({ state: 'visible', timeout: BACKUP_TIMEOUT_MS });
+    if (!(await disappeared(page.getByTestId('backup-stepper'), BACKUP_TIMEOUT_MS))) {
+      return failed(await stepperErrorNote(page, 'the stepper stayed open after Finish'));
+    }
 
-    const archives = [...fakeDrive.files.values()].filter((file) => file.mimeType !== FOLDER_MIME_TYPE);
-    return archives.length === 0
-      ? failed('the backup job reported success but the fake Drive holds no archive')
-      : done(`${String(archives.length)} archive(s) in the fake Drive after the first backup`);
+    // Enabling only enqueues the first backup (core/server/usecases/backup-enablement.ts), and the
+    // section's archive query answers once, while that job is still uploading; reopening Settings
+    // re-enables it against the finished destination. Waiting on the fake Drive first keeps the
+    // reopen from racing the upload.
+    const archiveCount = await fakeDriveArchiveCount(fakeDrive, BACKUP_TIMEOUT_MS);
+    await page.getByTestId('settings-cancel').click();
+    await page.getByTestId('open-settings-button').click();
+    await page.getByTestId('settings-modal').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    await page.getByTestId('settings-backup').scrollIntoViewIfNeeded();
+    const list = page.getByTestId('backup-list');
+    if (!(await appeared(list, BACKUP_TIMEOUT_MS))) {
+      return failed('Settings > Kopia zapasowa still lists no archive after the first backup finished');
+    }
+    await list.scrollIntoViewIfNeeded();
+
+    return backupArchiveOutcome(archiveCount);
   });
 
   await record('backup-indicator', async () => {
     const closeSettings = page.getByTestId('settings-cancel');
     if (await appeared(closeSettings, SETTLE_TIMEOUT_MS)) await closeSettings.click();
+    // The bottom bar is an Analysis-mode surface (AppLayout's terminalHidden), so the indicator
+    // does not exist while Library is on screen.
+    const modeAnalysis = page.getByTestId('mode-analysis');
+    if (await appeared(modeAnalysis, SETTLE_TIMEOUT_MS)) await modeAnalysis.click();
     const indicator = page.getByTestId('backup-indicator');
     if (!(await appeared(indicator, BACKUP_TIMEOUT_MS))) return failed('no backup indicator in the bottom bar after enablement');
-    return done('the bottom bar carries the backup indicator');
+    return backupIndicatorOutcome(await indicator.first().getAttribute('data-state'));
   });
 
   await record('wizard', async () => {

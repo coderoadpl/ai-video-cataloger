@@ -131,12 +131,42 @@ The walkthrough starts it on a random loopback port before launching the app,
 generates a throwaway service-account key whose `token_uri` points at it, and the
 `backup` step drives the real Settings > Kopia zapasowa flow: the enable switch,
 the stepper's service-account provider, the Shared Drive id and key JSON, the
-connection test, the mandatory recovery-key export (the native save dialog is
+connect, the mandatory recovery-key export (the native save dialog is
 stubbed in the Electron main process, the in-app button is clicked for real), the
 confirmation checkbox and Finish. The step is `ok` only when the archive list
-renders **and** the fake Drive actually holds an object; the following
-`backup-indicator` step closes Settings and requires the bottom-bar indicator.
+renders **and** the fake Drive actually holds an archive; the following
+`backup-indicator` step closes Settings, switches back to Analysis — the bottom
+bar is an Analysis-mode surface, so the indicator does not exist while Library is
+on screen — and requires the indicator to render in a state other than `failed`.
 Both screenshots are part of the reviewed set.
+
+Three details of that step are load-bearing and are pinned by
+`scripts/release-walkthrough.test.mjs`, which reads the driver's own source:
+
+- The enable switch is **clicked**, never `check()`ed. Its `checked` state comes
+  from the server-side backup status and its `onChange` only opens the stepper,
+  so Playwright's `check()` fails the step with "Clicking the checkbox did not
+  change its state" — the same reason `test/e2e/backup-settings.spec.ts` clicks
+  the input. The provider radio is clicked on its `input` for the same reason.
+- A successful connect advances the stepper to the recovery-key step, which
+  unmounts the connect step **and its success alert with it**, so the step waits
+  for the recovery-key export control rather than for
+  `backup-connection-report`. When either wait fails, the step reports the
+  stepper's own error alert as its note. The stepper's "Test connection" button
+  lives on the connect step, which the successful connect leaves, and the
+  destination is only configured by that connect, so the walkthrough does not
+  drive it.
+- The archive assertion counts the objects the fake Drive holds that carry a
+  manifest `tier` app-property. The folder created at connect and the transient
+  `connection-test.bin` probe are not archives, and counting them would let an
+  enablement that uploaded nothing pass.
+- Finishing the stepper only **enqueues** the first backup
+  (`core/server/usecases/backup-enablement.ts`), and the section's archive query
+  answers once, while that job is still uploading, so the list stays on its
+  "no backup yet" copy. The step therefore waits until the fake Drive actually
+  holds the archive, then closes and reopens Settings with the real controls,
+  which re-enables the query against the finished destination — that reopened
+  section is what the `backup` screenshot shows.
 
 Because the fake Drive is in-memory and re-ported every run, the runner clears
 every `backup_*` config key and the file-backed `secrets.json` in the driven home
@@ -251,8 +281,11 @@ The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
 `analyze`, `search`, `library-preview`, `photos-sidebar`,
 `analysis-photos`, `photos-tree`, `photos-tree-analyze`,
-`collection-photo-analyzed`, `collection-photo-viewer`,
+`collection-photo-analyzed`, `collection-photo-viewer`, `people`,
 `settings`, `backup`, `backup-indicator`, `wizard`.
+That list is also declared in the driver as `WALKTHROUGH_STEPS` and asserted on
+every recorded step, so a step added, dropped or reordered without updating this
+document's list and the reviewer checklist below stops the run.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
 workspace steps run in Analysis mode, while `search` and the collection photo
 steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the
@@ -266,6 +299,15 @@ strip only renders once `proxyState` is `done`, and the planted broken photo
 is always `failed`) and asserts the workspace detail (`photos-analysis-detail`)
 and the analyze strip render, and that the video list is never visible in the
 photos sidebar.
+
+`people` opens Biblioteka > Osoby and captures the unified people surface. It is
+`ok` in two shapes, and the note says which one the run produced: the media
+filter rendered with its Polish `Wszystko` / `Filmy` / `Zdjęcia` chips, or — when
+the fixture set yielded no face groupings — one of the honest empty states
+(`people-empty-state`, `people-disabled-state`, `people-no-models-state`) with
+its Polish copy. A face-less fixture is a legitimate release run; a surface that
+renders neither the chips nor an empty state, loses the `Osoby` heading, or shows
+a bare empty panel is a `failed` step, never a skip.
 
 **`photos-tree` / `photos-tree-analyze` / `collection-photo-analyzed` /
 `collection-photo-viewer` (W60/W63/W64).** These steps exercise the W57 folder tree
@@ -394,6 +436,12 @@ Read every screenshot against the sensitivities that have burned us before:
   Biblioteka → Kolekcja read `Zdjęcia (N)` with `N >= 1`, and does the
   timeline itself show a photo tile (not just an incremented chip with an
   empty grid)?
+- **Osoby** — in the `people` screenshot, does Biblioteka > Osoby render the
+  `Osoby` heading with its Polish subtitle, and either the
+  `Wszystko` / `Filmy` / `Zdjęcia` chips above a people grid whose cards are
+  evenly gapped with unclipped names and counts, or an empty state that names
+  the reason in Polish and offers the matching action? A bare panel, an English
+  fallback sentence or a `key.path` leak fails the release.
 - **Kopia zapasowa enabled (F14)** — in the `backup` screenshot, does Settings >
   Kopia zapasowa show the connected destination, the last-backup readout and a
   non-empty archive list in Polish, with no error alert; and in

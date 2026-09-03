@@ -53,6 +53,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `qa:walkthrough` now clicks the Settings > Kopia zapasowa enable switch and the provider radio instead of calling Playwright's `check()` on controls whose checked state the server owns, waits for the recovery-key step rather than the connect alert the stepper unmounts, counts only uploaded archives in the fake Drive, reads the backup indicator's state, and captures a new `people` step over Biblioteka > Osoby.
 - The smoke gate now boots the in-process app against an isolated temp home instead of the developer home.
 - A failed catalog or photo flush now keeps holding the home lock while dirty writes stay in memory, so another process cannot take the lock and have its committed writes overwritten by the retry.
 - A catalog or photo write whose immediate persist fails now reports success and carries the failure in `durabilityStatus()` instead of returning an error for a write that stays applied.
