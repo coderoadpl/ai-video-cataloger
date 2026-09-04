@@ -58,16 +58,25 @@ async function verifyStagedCli(sourceDir) {
     for (const asset of ['index.js', 'package.json', 'sql-wasm.wasm']) {
       await copyFile(path.join(sourceDir, asset), path.join(isolated, asset));
     }
-    for (const command of [['tags', 'list', '--json'], ['doctor', '--json'], ['search', 'x', '--json']]) {
-      const result = await runNode([path.join(isolated, 'index.js'), ...command], {
+    const PREREQUISITES_FAILED = 15;
+    const commands = [
+      { args: ['tags', 'list', '--json'], expectedCodes: [0] },
+      // doctor legitimately exits prerequisites_failed on a runner without ffmpeg/whisper/claude
+      // installed; the taxonomy code proves the packaged CLI parsed and ran the command instead of
+      // falling into the faces-benchmark entry guard.
+      { args: ['doctor', '--json'], expectedCodes: [0, PREREQUISITES_FAILED] },
+      { args: ['search', 'x', '--json'], expectedCodes: [0] },
+    ];
+    for (const command of commands) {
+      const result = await runNode([path.join(isolated, 'index.js'), ...command.args], {
         HOME: home,
         AVC_HOME_DIRECTORY: home,
         AVC_WORKING_DIRECTORY: folder,
         AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
       });
-      if (result.code !== 0 || unexpectedStderr(result.stderr).length > 0) {
+      if (!command.expectedCodes.includes(result.code) || unexpectedStderr(result.stderr).length > 0) {
         throw new Error(
-          `Packaged CLI verification failed: "${command.join(' ')}" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+          `Packaged CLI verification failed: "${command.args.join(' ')}" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
         );
       }
     }

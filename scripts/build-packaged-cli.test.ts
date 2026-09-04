@@ -64,15 +64,20 @@ describe('packaged CLI bundle', () => {
     }
   });
 
+  const PREREQUISITES_FAILED = 15;
+
   it.each([
-    ['doctor', ['doctor', '--json']],
-    ['search', ['search', 'x', '--json']],
-    ['tags list', ['tags', 'list', '--json']],
-    ['status', ['status', '--json']],
-  ])('runs %s with exit code 0 and no unexpected stderr', async (_label, args) => {
+    // doctor legitimately exits prerequisites_failed on a runner without ffmpeg/whisper/claude
+    // installed; either code proves the packaged CLI parsed and ran the command instead of falling
+    // into the faces-benchmark entry guard.
+    ['doctor', ['doctor', '--json'], [0, PREREQUISITES_FAILED]],
+    ['search', ['search', 'x', '--json'], [0]],
+    ['tags list', ['tags', 'list', '--json'], [0]],
+    ['status', ['status', '--json'], [0]],
+  ])('runs %s with an expected exit code and no unexpected stderr', async (_label, args, expectedCodes) => {
     const result = await spawnNode([path.join(stagedDir, 'index.js'), ...args], cliEnv(), folder);
 
     expect(unexpectedStderr(result.stderr)).toBe('');
-    expect(result.code).toBe(0);
+    expect(expectedCodes).toContain(result.code);
   }, 60_000);
 });
