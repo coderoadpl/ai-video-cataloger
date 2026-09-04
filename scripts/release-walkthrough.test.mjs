@@ -461,6 +461,31 @@ describe('the backup step drives the real enablement controls', () => {
   });
 });
 
+describe('the library-hide-restore step selects the hidden tile before select-all', () => {
+  const hideRestoreStep = stepSource('library-hide-restore', 'photos-sidebar');
+  const postFilterStep = hideRestoreStep.slice(hideRestoreStep.indexOf('await hiddenFilter.click()'));
+  const restoreSection = postFilterStep.slice(postFilterStep.indexOf('waitForFunction'));
+
+  it('Cmd/Meta-clicks a hidden tile before selecting all, the way restoreAllHidden in test/e2e/library-hide-trash.spec.ts does', () => {
+    const tileClickIndex = restoreSection.indexOf("modifiers: ['Meta']");
+    const selectAllIndex = restoreSection.indexOf("getByTestId('library-select-all').click()");
+    expect(tileClickIndex).toBeGreaterThan(-1);
+    expect(selectAllIndex).toBeGreaterThan(tileClickIndex);
+  });
+
+  it('clicks Przywróć after select-all', () => {
+    const selectAllIndex = restoreSection.indexOf("getByTestId('library-select-all').click()");
+    const restoreIndex = restoreSection.indexOf("getByTestId('library-unhide-selected').click()");
+    expect(restoreIndex).toBeGreaterThan(selectAllIndex);
+  });
+
+  it('re-verifies the restored tiles are visible again after Przywróć', () => {
+    const restoreIndex = restoreSection.indexOf("getByTestId('library-unhide-selected').click()");
+    const reverifyIndex = restoreSection.indexOf('libraryTileCountAtLeast', restoreIndex);
+    expect(reverifyIndex).toBeGreaterThan(restoreIndex);
+  });
+});
+
 describe('fakeDriveArchives', () => {
   it('counts uploaded archives, not the folder created at connect nor the connection probe', () => {
     const files = new Map([
