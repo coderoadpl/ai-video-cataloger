@@ -42,16 +42,25 @@ export interface LibraryPalette {
   actionBarBackground: string;
 }
 
+export interface PeoplePalette {
+  otherTileBackground: string;
+  otherTileHoverBackground: string;
+  otherTileBorder: string;
+  otherTileText: string;
+}
+
 declare module '@mui/material/styles' {
   interface Palette {
     status: StatusPalette;
     map: MapPalette;
     library: LibraryPalette;
+    people: PeoplePalette;
   }
   interface PaletteOptions {
     status?: StatusPalette;
     map?: MapPalette;
     library?: LibraryPalette;
+    people?: PeoplePalette;
   }
 }
 
@@ -95,6 +104,12 @@ const LIGHT = {
     selectionOverlay: 'rgba(0, 122, 255, 0.18)',
     actionBarBackground: '#ffffff',
   } satisfies LibraryPalette,
+  people: {
+    otherTileBackground: '#f0f7f4',
+    otherTileHoverBackground: '#e5f0eb',
+    otherTileBorder: '#7aa492',
+    otherTileText: '#2f5d4a',
+  } satisfies PeoplePalette,
 };
 
 const DARK = {
@@ -131,6 +146,12 @@ const DARK = {
     selectionOverlay: 'rgba(10, 132, 255, 0.24)',
     actionBarBackground: '#2c2c2e',
   } satisfies LibraryPalette,
+  people: {
+    otherTileBackground: '#25342f',
+    otherTileHoverBackground: '#2f423b',
+    otherTileBorder: '#6fa18e',
+    otherTileText: '#b7dbc9',
+  } satisfies PeoplePalette,
 };
 
 const PLACEHOLDER_HUE_BASE = 210;
@@ -163,6 +184,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       status: c.status,
       map: c.map,
       library: c.library,
+      people: c.people,
     },
     shape: { borderRadius: RADIUS },
     typography: {

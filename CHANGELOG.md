@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
+
 ## [0.6.29] - 2026-09-04
 
 ### Added

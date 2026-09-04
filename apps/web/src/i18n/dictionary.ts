@@ -498,6 +498,12 @@ export interface Dictionary {
     reclusterNamesBody: string;
     sortFrequent: string;
     sortOrder: string;
+    minObservationThreshold: (count: number) => string;
+    minObservationThresholdAria: string;
+    otherPeopleTile: (people: number, observations: number) => string;
+    otherPeopleOpen: string;
+    otherPeopleScope: string;
+    backToMainPeople: string;
     reclusterPeopleBefore: string;
     reclusterPeopleAfter: string;
     reclusterReassigned: string;
@@ -1561,6 +1567,13 @@ export const en: Dictionary = {
     reclusterNamesBody: 'Photos and videos stay untouched, but assigned names are permanently removed when you rebuild.',
     sortFrequent: 'Most frequent',
     sortOrder: 'Order',
+    minObservationThreshold: (count) => `Show people with at least ${String(count)} ${count === 1 ? 'observation' : 'observations'}`,
+    minObservationThresholdAria: 'Minimum observations',
+    otherPeopleTile: (people, observations) =>
+      `Other — ${String(people)} ${people === 1 ? 'person' : 'people'} · ${String(observations)} ${observations === 1 ? 'observation' : 'observations'}`,
+    otherPeopleOpen: 'Show folded people',
+    otherPeopleScope: 'Other people',
+    backToMainPeople: 'Back to main people',
     reclusterPeopleBefore: 'People before',
     reclusterPeopleAfter: 'People after',
     reclusterReassigned: 'Reassigned observations',
@@ -2690,6 +2703,13 @@ export const pl: Dictionary = {
     reclusterNamesBody: 'Zdjęcia i filmy pozostaną bez zmian, ale przypisane imiona zostaną trwale usunięte podczas przebudowy.',
     sortFrequent: 'Najczęstsze',
     sortOrder: 'Kolejność',
+    minObservationThreshold: (count) => `Pokaż osoby z co najmniej ${String(count)} ${plPlural(count, 'wystąpieniem', 'wystąpieniami', 'wystąpieniami')}`,
+    minObservationThresholdAria: 'Minimalna liczba wystąpień',
+    otherPeopleTile: (people, observations) =>
+      `Inne — ${String(people)} ${plPlural(people, 'osoba', 'osoby', 'osób')} · ${String(observations)} ${plPlural(observations, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
+    otherPeopleOpen: 'Pokaż zwinięte osoby',
+    otherPeopleScope: 'Inne osoby',
+    backToMainPeople: 'Wróć do głównych',
     reclusterPeopleBefore: 'Osoby przed',
     reclusterPeopleAfter: 'Osoby po',
     reclusterReassigned: 'Przypisane ponownie',
