@@ -917,9 +917,9 @@ describe('PeopleView media chips', () => {
       artifactsReady: true,
       observations: 14,
       people: [
-        person({ personId: 'p-main', observationCount: 10 }),
-        person({ personId: 'p-rare-one', observationCount: 1 }),
-        person({ personId: 'p-rare-two', observationCount: 3 }),
+        person({ personId: 'p-main', fallbackIndex: 0, observationCount: 10 }),
+        person({ personId: 'p-rare-one', fallbackIndex: 1, observationCount: 1 }),
+        person({ personId: 'p-rare-two', fallbackIndex: 2, observationCount: 3 }),
       ],
     });
 
