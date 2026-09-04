@@ -19,6 +19,7 @@ import {
   Menu,
   MenuItem,
   Snackbar,
+  Slider,
   TextField,
   Typography,
   ToggleButton,
@@ -93,13 +94,33 @@ const displayName = (dictionary: Dictionary, person: FacePerson, index: number):
   person.displayName ?? dictionary.people.personName(index);
 
 const PEOPLE_SORT_KEY = 'avc.people.sort';
+const PEOPLE_MIN_OBSERVATIONS_KEY = 'avc.people.minObservations';
+const PEOPLE_MIN_OBSERVATION_OPTIONS = [1, 2, 3, 5, 10, 20, 50] as const;
+type PeopleMinObservations = (typeof PEOPLE_MIN_OBSERVATION_OPTIONS)[number];
 
 const isPeopleSort = (value: string | null): value is PeopleSort => value === 'frequent' || value === 'order';
+const isPeopleMinObservations = (value: number): value is PeopleMinObservations =>
+  PEOPLE_MIN_OBSERVATION_OPTIONS.some((option) => option === value);
 
 const readPeopleSort = (): PeopleSort => {
   const raw = readStorageItem('local', PEOPLE_SORT_KEY);
   return isPeopleSort(raw) ? raw : 'frequent';
 };
+
+const readPeopleMinObservations = (): PeopleMinObservations => {
+  const parsed = Number(readStorageItem('local', PEOPLE_MIN_OBSERVATIONS_KEY));
+  return Number.isInteger(parsed) && isPeopleMinObservations(parsed) ? parsed : 10;
+};
+
+const peopleMinObservationSliderMarks = PEOPLE_MIN_OBSERVATION_OPTIONS.map((value, index) => ({ value: index, label: String(value) }));
+
+const peopleMinObservationIndex = (value: PeopleMinObservations): number => PEOPLE_MIN_OBSERVATION_OPTIONS.indexOf(value);
+
+const peopleMinObservationAtIndex = (index: number): PeopleMinObservations | null =>
+  PEOPLE_MIN_OBSERVATION_OPTIONS[index] ?? null;
+
+const peopleObservationTotal = (people: readonly FacePerson[]): number =>
+  people.reduce((total, person) => total + person.observationCount, 0);
 
 export const PeopleView = ({
   active,
@@ -122,6 +143,8 @@ export const PeopleView = ({
   const [reclusterOpen, setReclusterOpen] = useState(false);
   const [media, setMedia] = useState<PeopleMedia>('all');
   const [sort, setSortState] = useState<PeopleSort>(() => readPeopleSort());
+  const [minObservations, setMinObservationsState] = useState<PeopleMinObservations>(() => readPeopleMinObservations());
+  const [foldedOpen, setFoldedOpen] = useState(false);
   const [openPerson, setOpenPerson] = useState<{ personId: string; label: string } | null>(null);
   const [libraryAction, setLibraryAction] = useState<PersonLibraryAction | null>(null);
   const [trashChecked, setTrashChecked] = useState(false);
@@ -132,6 +155,11 @@ export const PeopleView = ({
     setSortState(next);
     writeStorageItem('local', PEOPLE_SORT_KEY, next);
   };
+  const setMinObservations = (next: PeopleMinObservations) => {
+    setMinObservationsState(next);
+    setFoldedOpen(false);
+    writeStorageItem('local', PEOPLE_MIN_OBSERVATIONS_KEY, String(next));
+  };
 
   const indexed = useMemo(
     () => new Map(people.people.map((person, index) => [person.personId, { person, index }])),
@@ -139,6 +167,16 @@ export const PeopleView = ({
   );
   const mediaCounts = useMemo(() => peopleMediaCounts(people.people), [people.people]);
   const visiblePeople = useMemo(() => sortPeople(peopleForMedium(people.people, media), sort, media), [people.people, media, sort]);
+  const foldedPeople = useMemo(
+    () => visiblePeople.filter((person) => person.displayName === null && person.observationCount < minObservations),
+    [minObservations, visiblePeople],
+  );
+  const primaryPeople = useMemo(
+    () => visiblePeople.filter((person) => person.displayName !== null || person.observationCount >= minObservations),
+    [minObservations, visiblePeople],
+  );
+  const gridPeople = foldedOpen ? foldedPeople : primaryPeople;
+  const foldedObservationCount = peopleObservationTotal(foldedPeople);
   const openPersonEntry = openPerson === null ? null : indexed.get(openPerson.personId) ?? null;
   const reclusterConfirmLabel = people.reclusterDryRunReport !== null && people.reclusterDryRunReport.namesDropped.length > 0
     ? dictionary.people.reclusterConfirmWithNames(people.reclusterDryRunReport.namesDropped.length)
@@ -236,12 +274,15 @@ export const PeopleView = ({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', p: 3, gap: 2.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="h1">{dictionary.people.title}</Typography>
-          <Typography variant="caption">{dictionary.people.subtitle}</Typography>
+          <Typography variant="caption" data-testid={foldedOpen ? 'people-scope' : undefined}>
+            {foldedOpen ? dictionary.people.otherPeopleScope : dictionary.people.subtitle}
+          </Typography>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <ThresholdControl value={minObservations} onChange={setMinObservations} />
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -311,10 +352,25 @@ export const PeopleView = ({
         />
       ) : (
         <>
+          {foldedOpen ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setFoldedOpen(false)}
+                data-testid="people-back-main"
+              >
+                {dictionary.people.backToMainPeople}
+              </Button>
+            </Box>
+          ) : null}
           <MediaFilterToggle
             value={media}
             counts={mediaCounts}
-            onChange={setMedia}
+            onChange={(next) => {
+              setMedia(next);
+              setFoldedOpen(false);
+            }}
             groupTestId="people-media-filter"
             optionTestIdPrefix="people-media"
           />
@@ -326,7 +382,7 @@ export const PeopleView = ({
             }}
             data-testid="people-grid"
           >
-            {visiblePeople.map((person) => {
+            {gridPeople.map((person) => {
               const index = indexed.get(person.personId)?.index ?? 0;
               const name = displayName(dictionary, person, index);
               return (
@@ -363,6 +419,13 @@ export const PeopleView = ({
                 />
               );
             })}
+            {foldedOpen || foldedPeople.length === 0 ? null : (
+              <OtherPeopleTile
+                peopleCount={foldedPeople.length}
+                observationCount={foldedObservationCount}
+                onClick={() => setFoldedOpen(true)}
+              />
+            )}
           </Box>
           <Divider />
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="people-danger-area">
@@ -635,6 +698,102 @@ const LoadingState = () => {
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
       <CircularProgress size={20} />
       <Typography variant="body2">{dictionary.people.loadingPeople}</Typography>
+    </Box>
+  );
+};
+
+const ThresholdControl = ({
+  value,
+  onChange,
+}: {
+  value: PeopleMinObservations;
+  onChange: (value: PeopleMinObservations) => void;
+}) => {
+  const dictionary = useDictionary();
+
+  return (
+    <Box
+      data-testid="people-threshold-control"
+      sx={{
+        width: { xs: '100%', sm: 220 },
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.25,
+      }}
+    >
+      <Typography variant="caption">
+        {dictionary.people.minObservationThreshold(value)}
+      </Typography>
+      <Slider
+        size="small"
+        min={0}
+        max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
+        step={1}
+        marks={peopleMinObservationSliderMarks}
+        value={peopleMinObservationIndex(value)}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(current) => {
+          const threshold = peopleMinObservationAtIndex(current);
+          return threshold === null ? '' : String(threshold);
+        }}
+        getAriaValueText={(current) => {
+          const threshold = peopleMinObservationAtIndex(current);
+          return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
+        }}
+        aria-label={dictionary.people.minObservationThresholdAria}
+        onChange={(_event, next) => {
+          if (typeof next !== 'number' || !Number.isInteger(next)) return;
+          const threshold = peopleMinObservationAtIndex(next);
+          if (threshold !== null) onChange(threshold);
+        }}
+        data-testid="people-threshold-slider"
+      />
+    </Box>
+  );
+};
+
+const OtherPeopleTile = ({
+  peopleCount,
+  observationCount,
+  onClick,
+}: {
+  peopleCount: number;
+  observationCount: number;
+  onClick: () => void;
+}) => {
+  const dictionary = useDictionary();
+
+  return (
+    <Box
+      component="button"
+      type="button"
+      data-testid="people-other-tile"
+      onClick={onClick}
+      sx={(theme) => ({
+        minHeight: 210,
+        border: `1px dashed ${theme.palette.people.otherTileBorder}`,
+        borderRadius: `${String(theme.shape.borderRadius)}px`,
+        bgcolor: theme.palette.people.otherTileBackground,
+        color: theme.palette.people.otherTileText,
+        cursor: 'pointer',
+        p: 1.5,
+        textAlign: 'left',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        gap: 0.75,
+        font: 'inherit',
+        '&:hover': {
+          bgcolor: theme.palette.people.otherTileHoverBackground,
+        },
+      })}
+    >
+      <Typography variant="h2" color="inherit">
+        {dictionary.people.otherPeopleTile(peopleCount, observationCount)}
+      </Typography>
+      <Typography variant="caption" sx={(theme) => ({ color: theme.palette.people.otherTileText })}>
+        {dictionary.people.otherPeopleOpen}
+      </Typography>
     </Box>
   );
 };

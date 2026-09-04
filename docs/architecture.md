@@ -1518,6 +1518,12 @@ frames, but the Osoby card and person-media panel also need distinct file counts
 medium so a person seen in many frames of one clip still reads as one video. Media chips
 count people, not observations or files.
 
+Osoby folds unnamed people whose total observation count is below the user's persisted
+minimum-observation threshold into one visually distinct `Inne` tile at the end of the
+grid; named people are always promoted into the main grid, and opening `Inne` only changes
+the Osoby grid scope, leaving the shared people query, Library people facets and search
+filters untouched.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive

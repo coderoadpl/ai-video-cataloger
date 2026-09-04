@@ -340,7 +340,7 @@ describe('PeopleView', () => {
           fileCounts: { video: 2, photo: 0 },
           exemplarCropPath: '/home/.ai-video-cataloger/faces/p1/exemplar-001.jpg',
         }),
-        person({ personId: 'p2', observationCount: 1 }),
+        person({ personId: 'p2', observationCount: 10 }),
       ],
     });
 
@@ -362,8 +362,8 @@ describe('PeopleView', () => {
       artifactsReady: true,
       observations: 2,
       people: [
-        person({ personId: 'p1', displayName: 'Alex', observationCount: 2, exemplarCropPath: null }),
-        person({ personId: 'p2', observationCount: 1, exemplarCropPath: null }),
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 12, exemplarCropPath: null }),
+        person({ personId: 'p2', observationCount: 10, exemplarCropPath: null }),
       ],
     });
 
@@ -503,7 +503,7 @@ describe('PeopleView', () => {
       observations: 3,
       people: [
         person({ personId: 'p1', displayName: 'Alex', observationCount: 2 }),
-        person({ personId: 'p2', observationCount: 1 }),
+        person({ personId: 'p2', observationCount: 10 }),
       ],
     });
 
@@ -534,7 +534,7 @@ describe('PeopleView', () => {
       observations: 3,
       people: [
         person({ personId: 'p1', displayName: 'Alex', observationCount: 2 }),
-        person({ personId: 'p2', observationCount: 1 }),
+        person({ personId: 'p2', observationCount: 10 }),
       ],
     });
     server.use(
@@ -729,6 +729,8 @@ describe('PeopleView', () => {
 });
 
 describe('PeopleView media chips', () => {
+  beforeEach(() => window.localStorage.clear());
+
   const mixedPeople = [
     person({ personId: 'p-both', displayName: 'Both', observationCount: 5, videoCount: 2, photoCount: 3, fileCounts: { video: 1, photo: 2 } }),
     person({ personId: 'p-video', displayName: 'VideoOnly', observationCount: 4, videoCount: 4, photoCount: 0, fileCounts: { video: 2, photo: 0 } }),
@@ -805,9 +807,9 @@ describe('PeopleView media chips', () => {
       artifactsReady: true,
       observations: 12,
       people: [
-        person({ personId: 'p-first', observationCount: 1, videoCount: 1, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
-        person({ personId: 'p-second', observationCount: 3, videoCount: 3, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
-        person({ personId: 'p-third', observationCount: 6, videoCount: 6, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-first', observationCount: 10, videoCount: 10, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
+        person({ personId: 'p-second', observationCount: 30, videoCount: 30, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-third', observationCount: 60, videoCount: 60, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
       ],
     });
 
@@ -831,5 +833,135 @@ describe('PeopleView media chips', () => {
     await waitFor(() => expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
       .toEqual(['p-both', 'p-video', 'p-photo']));
     expect(window.localStorage.getItem('avc.people.sort')).toBe('order');
+  });
+
+  it('folds rare unnamed people below the default threshold into one tile', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 19,
+      people: [
+        person({ personId: 'p-main', observationCount: 10, videoCount: 10, photoCount: 0, fileCounts: { video: 2, photo: 0 } }),
+        person({ personId: 'p-rare-one', observationCount: 1 }),
+        person({ personId: 'p-rare-two', observationCount: 8 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getByTestId('people-threshold-control').textContent).toContain('Show people with at least 10 observations');
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-main']);
+    expect(screen.getByTestId('people-other-tile').textContent).toContain('Other — 2 people · 9 observations');
+    expect(screen.queryByText('Person 2')).toBeNull();
+    expect(screen.queryByText('Person 3')).toBeNull();
+  });
+
+  it('persists the rare-people threshold value', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 8,
+      people: [
+        person({ personId: 'p-one', observationCount: 1 }),
+        person({ personId: 'p-two', observationCount: 2 }),
+        person({ personId: 'p-three', observationCount: 5 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.change(screen.getByTestId('people-threshold-slider').querySelector('input') ?? screen.getByTestId('people-threshold-slider'), {
+      target: { value: 1 },
+    });
+
+    await waitFor(() => expect(window.localStorage.getItem('avc.people.minObservations')).toBe('2'));
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-three', 'p-two']);
+    expect(screen.getByTestId('people-other-tile').textContent).toContain('Other — 1 person · 1 observation');
+  });
+
+  it('keeps named people visible even when they are below the threshold', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 11,
+      people: [
+        person({ personId: 'p-named', displayName: 'Alex', observationCount: 1 }),
+        person({ personId: 'p-rare', observationCount: 2 }),
+        person({ personId: 'p-main', observationCount: 10 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getByText('Alex')).toBeDefined();
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-main', 'p-named']);
+    expect(screen.getByTestId('people-other-tile').textContent).toContain('Other — 1 person · 2 observations');
+  });
+
+  it('expands folded people in the same grid and returns to the main people scope', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 14,
+      people: [
+        person({ personId: 'p-main', observationCount: 10 }),
+        person({ personId: 'p-rare-one', observationCount: 1 }),
+        person({ personId: 'p-rare-two', observationCount: 3 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-other-tile'));
+
+    await waitFor(() => expect(screen.getByTestId('people-scope').textContent).toContain('Other people'));
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-rare-two', 'p-rare-one']);
+    expect(screen.getByText('Person 2')).toBeDefined();
+    expect(screen.getByText('Person 3')).toBeDefined();
+    expect(screen.queryByTestId('people-other-tile')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('people-back-main'));
+
+    await waitFor(() => expect(screen.queryByTestId('people-back-main')).toBeNull());
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-main']);
+    expect(screen.getByTestId('people-other-tile')).toBeDefined();
+  });
+
+  it('keeps sorting interactions while the folded tile stays at the end', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 31,
+      people: [
+        person({ personId: 'p-first', observationCount: 12, videoCount: 12, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
+        person({ personId: 'p-second', observationCount: 11, videoCount: 11, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-rare', observationCount: 8, videoCount: 8, photoCount: 0, fileCounts: { video: 2, photo: 0 } }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-second', 'p-first']);
+    expect(screen.getByTestId('people-grid').lastElementChild?.getAttribute('data-testid')).toBe('people-other-tile');
+
+    fireEvent.click(screen.getByTestId('people-sort-order'));
+
+    await waitFor(() => expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-first', 'p-second']));
+    expect(screen.getByTestId('people-grid').lastElementChild?.getAttribute('data-testid')).toBe('people-other-tile');
   });
 });
