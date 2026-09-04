@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
-import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -49,23 +49,27 @@ await copyFile(sqlJsWasmSource, path.join(stageDir, 'sql-wasm.wasm'));
 await verifyStagedCli(stageDir);
 
 async function verifyStagedCli(sourceDir) {
-  const isolated = await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-'));
-  const home = await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-home-'));
-  const folder = await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-folder-'));
+  // realpath: a symlinked temp root makes import.meta.url and process.argv[1] disagree,
+  // which silently disarms every module-level entry guard the bundle carries.
+  const isolated = await realpath(await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-')));
+  const home = await realpath(await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-home-')));
+  const folder = await realpath(await mkdtemp(path.join(tmpdir(), 'avc-pkg-cli-folder-')));
   try {
     for (const asset of ['index.js', 'package.json', 'sql-wasm.wasm']) {
       await copyFile(path.join(sourceDir, asset), path.join(isolated, asset));
     }
-    const result = await runNode([path.join(isolated, 'index.js'), 'tags', 'list', '--json'], {
-      HOME: home,
-      AVC_HOME_DIRECTORY: home,
-      AVC_WORKING_DIRECTORY: folder,
-      AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
-    });
-    if (result.code !== 0) {
-      throw new Error(
-        `Packaged CLI verification failed: "tags list" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
-      );
+    for (const command of [['tags', 'list', '--json'], ['doctor', '--json'], ['search', 'x', '--json']]) {
+      const result = await runNode([path.join(isolated, 'index.js'), ...command], {
+        HOME: home,
+        AVC_HOME_DIRECTORY: home,
+        AVC_WORKING_DIRECTORY: folder,
+        AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
+      });
+      if (result.code !== 0 || unexpectedStderr(result.stderr).length > 0) {
+        throw new Error(
+          `Packaged CLI verification failed: "${command.join(' ')}" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+        );
+      }
     }
     console.log('package:stage: isolated staged CLI DB-touching verification passed');
   } finally {
@@ -73,6 +77,13 @@ async function verifyStagedCli(sourceDir) {
     await rm(home, { recursive: true, force: true });
     await rm(folder, { recursive: true, force: true });
   }
+}
+
+function unexpectedStderr(stderr) {
+  return stderr
+    .split('\n')
+    .filter((line) => line.trim().length > 0 && !line.startsWith('[backup] Keychain disabled:'))
+    .join('\n');
 }
 
 function runNode(args, env) {

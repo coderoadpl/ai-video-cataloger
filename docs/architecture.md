@@ -1705,7 +1705,18 @@ literal path materialized), `lock-lint` under pnpm frozen-lockfile semantics,
 boot the real in-process app, drive doctor/scan/config/status through the CLI
 in an isolated temp HOME + temp folder, assert envelope shapes and taxonomy
 exit codes. Both green = done; every new lint rule proves itself with a
-violating probe before it counts. `pnpm run workflow-lint` holds the CI
+violating probe before it counts.
+
+`scripts/` is a dev-tooling directory, never a source layer: the depcruise rule
+`no-scripts-in-shipped-code` forbids `core/**`, `adapters/**` and `apps/**` from
+importing it. A script is an entry file, and an entry file's module-level
+`import.meta.url === process.argv[1]` guard becomes always-true once esbuild
+folds it into the single-file packaged CLI, so the script's `main()` runs as a
+side effect of every command. Logic a shipped layer needs lives in `core` or in
+the owning app; `scripts/build-packaged-cli.mjs` verifies the staged bundle from
+a realpath-resolved directory (a symlinked temp root disarms exactly that guard)
+and fails on a non-zero exit or on unexpected stderr, and
+`scripts/build-packaged-cli.test.ts` re-asserts it inside `check`. `pnpm run workflow-lint` holds the CI
 workflow guards to this repository's slug, keeps every job name a literal the
 ruleset can match, and refuses a `self-hosted` runner label
 ([docs/ci.md](ci.md), [ADR-0017](decisions/0017-hosted-ci-runners.md)).

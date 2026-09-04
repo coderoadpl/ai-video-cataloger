@@ -4,10 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import {
-  photoFingerprintFromSha256,
-} from '@core/domain/index.js';
-
+import { photoFingerprintFromSha256 } from './photo.js';
 import {
   benchmarkObservationSchema,
   benchmarkReportTable,
@@ -20,7 +17,7 @@ import {
   type LabelledPair,
   type NativeObservation,
   type ReferencePartitionRecord,
-} from './faces-benchmark-core.js';
+} from './faces-benchmark.js';
 
 const fixturePath = (name: string): string =>
   fileURLToPath(new URL(`__fixtures__/faces-benchmark/${name}`, import.meta.url));

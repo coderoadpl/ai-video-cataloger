@@ -30,6 +30,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Photo detail metadata rows now keep long Polish path labels on one line while letting path values wrap.
 - Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path.
 
+### Fixed
+
+- The packaged CLI no longer runs the face-benchmark script's entry point as a side effect of every command, which made commands print `Unexpected argument: <command>` on stderr and exit 1 even after completing successfully (affects the 0.6.28 CLI).
+- Ctrl-C and SIGTERM stop a running CLI command again: the catalog's exit flush released signal ownership before the handler read it, so the first termination signal was absorbed and the run continued to completion.
+- The parity e2e suite now provisions the whisper model for its isolated homes from a persistent scratch cache instead of failing local-transcription scenarios with `failed to initialize whisper context`.
+
 ### Security
 
 - Desktop dependency floor moved to Electron 39.8.10.

@@ -21,8 +21,8 @@ const ownedSignals = new Set<TerminationSignal>();
 const onBeforeExit = (): void => runExitFlushes();
 const onExit = (): void => runExitFlushes();
 const onSignal = (signal: TerminationSignal): void => {
-  runExitFlushes();
   const owned = ownedSignals.has(signal);
+  runExitFlushes();
   removeProcessHooks();
   if (owned && process.listenerCount(signal) === 0) process.kill(process.pid, signal);
 };

@@ -1,11 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { CLI_DIST, ELECTRON_MAIN, RENDERER_HTML } from './helpers.js';
+import {
+  CLI_DIST,
+  E2E_WHISPER_MODELS,
+  ELECTRON_MAIN,
+  RENDERER_HTML,
+  cachedWhisperModelPath,
+  scratchDirectory,
+} from './helpers.js';
 import { selectedSamples } from './samples.js';
 
 const runtimeStateSchema = z.object({ port: z.number().int().positive() });
@@ -84,6 +91,31 @@ async function verifyLocalAnalyzer(model: string): Promise<void> {
   }
 }
 
+function ensureCachedWhisperModel(model: string): void {
+  const cached = cachedWhisperModelPath(model);
+  if (existsSync(cached)) return;
+  const stagingHome = join(scratchDirectory(), 'whisper-model-staging');
+  const downloaded = join(stagingHome, '.ai-video-cataloger', 'models', 'whisper', `ggml-${model}.bin`);
+  rmSync(stagingHome, { recursive: true, force: true });
+  mkdirSync(stagingHome, { recursive: true });
+  const download = spawnSync(process.execPath, [CLI_DIST, 'models', 'download', model, '--json'], {
+    env: { ...process.env, HOME: stagingHome, AVC_HOME_DIRECTORY: stagingHome },
+    timeout: 1_800_000,
+    encoding: 'utf-8',
+  });
+  if (download.status !== 0 || !existsSync(downloaded)) {
+    rmSync(stagingHome, { recursive: true, force: true });
+    fail(
+      `Could not populate the persistent whisper model cache at ${cached}.\n` +
+        `exit code: ${String(download.status)}\noutput: ${`${download.stdout ?? ''}${download.stderr ?? ''}`.slice(-800)}`,
+    );
+  }
+  mkdirSync(dirname(cached), { recursive: true });
+  renameSync(downloaded, cached);
+  rmSync(stagingHome, { recursive: true, force: true });
+  console.log(`[preflight] populated the persistent whisper model cache for ${model}`);
+}
+
 export default async function preflight(): Promise<void> {
   verifyHomeIsolation();
   const argv = process.argv.join(' ');
@@ -109,6 +141,9 @@ export default async function preflight(): Promise<void> {
       `Selected samples (${samples.filter((sample) => sample.whisper === 'local').map((sample) => sample.id).join(', ')}) ` +
         'require local whisper. Install it or set E2E_SAMPLES to samples that use whisper=skip.',
     );
+  }
+  if (needsWhisper) {
+    for (const model of E2E_WHISPER_MODELS) ensureCachedWhisperModel(model);
   }
 
   const needsSay = samples.some((sample) => sample.source.kind === 'synthetic');
