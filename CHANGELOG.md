@@ -20,6 +20,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Kolekcja has an Ukryte filter with single-tile and bulk restore actions for hidden media.
 - Osoby person cards can hide or move all files for a person to Trash, with shared-file skip options in the confirmation flow.
 - The release walkthrough now includes a Kolekcja hide/restore step.
+- `pnpm run test:e2e:prerelease` now runs the mandatory pre-DMG e2e suites sequentially before packaging.
 - Library hide/unhide and move-to-Trash operations are available through contract routes and CLI commands, including dry-run trash plans and NDJSON progress events.
 - Search accepts `--hidden exclude|only|include`, and library search, collection, map, facet, and people queries exclude hidden media by default.
 - The Osoby facet's people counts exclude hidden videos without dropping photo observations, which have no `hidden` state of their own.
@@ -27,6 +28,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Changed
 
 - Osoby now shows distinct video/photo file counts on person cards and person media panels, sorts people by file frequency by default, and uses plain-language rebuild copy with the dry-run name-loss count in the final confirmation.
+- E2e face-model fixtures now come from a shared, verified scratch-cache helper instead of ad hoc model copies.
 - Photo detail metadata rows now keep long Polish path labels on one line while letting path values wrap.
 - Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path.
 

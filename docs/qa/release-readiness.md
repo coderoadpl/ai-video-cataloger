@@ -25,7 +25,10 @@ every wave); no two differing builds may ever share a version string
 | Step | Command | Pass condition |
 |---|---|---|
 | Parity e2e | `pnpm run test:e2e:parity` | the CLI and GUI projects agree on the parity scenarios |
+| Mandatory pre-DMG e2e | `pnpm run test:e2e:prerelease` | every included e2e suite green before `pnpm run electron:package` |
 | Real-provider matrix | `pnpm run test:e2e:matrix` | every leg green. Run it from a **normal, unsandboxed shell** (`hdiutil` fails under an agent sandbox) and in a low-load window |
+
+Under the flake doctrine, a red suite is a P1 bug, never rerun-to-green.
 
 The matrix's photo legs are `photos-real-decode` (scan → real `sips` proxy and
 thumb decode → status → search; never skippable on darwin),

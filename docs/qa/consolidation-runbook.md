@@ -125,16 +125,16 @@ reusing the existing commands:
 
 ```bash
 # Grid thumbnails for any photo missing one
-pnpm run cli -- photos grid-thumbs
+pnpm run cli photos grid-thumbs
 
 # GPS backfill + place resolution, video and photos, once a Timeline export
 # and the GeoNames dataset are available
-pnpm run cli -- gps backfill <timeline.json>
-pnpm run cli -- photos gps backfill <timeline.json>
+pnpm run cli gps backfill <timeline.json>
+pnpm run cli photos gps backfill <timeline.json>
 
 # Face clustering, if the source catalog had pending observations
-pnpm run cli -- faces recluster
-pnpm run cli -- faces exemplars
+pnpm run cli faces recluster
+pnpm run cli faces exemplars
 ```
 
 `promote-home` prints this same list, tailored to what the promoted catalog's
