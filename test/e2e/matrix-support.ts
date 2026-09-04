@@ -1,6 +1,7 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
+
+import { scratchDirectory } from './helpers.js';
 
 export interface MatrixSummaryRow {
   cell: string;
@@ -33,10 +34,7 @@ export const systemOllamaModelMissingReason = async (
 };
 
 export const matrixHome = (environment: NodeJS.ProcessEnv): string =>
-  environment.E2E_MATRIX_HOME ?? join(
-    environment.AVC_SCRATCH_DIR ?? join(homedir(), '.ai-video-cataloger-scratch'),
-    'avc-e2e-matrix-home',
-  );
+  environment.E2E_MATRIX_HOME ?? join(scratchDirectory(environment), 'avc-e2e-matrix-home');
 
 export const matrixAllowsSkip = (value: string | undefined): boolean =>
   value === '1' || value === 'true';

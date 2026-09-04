@@ -16,25 +16,75 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
-- Kolekcja now supports multi-select with Cmd-click, Shift-click, select-all for the current filter, hide/restore actions, and move-to-Trash confirmation.
-- Kolekcja has an Ukryte filter with single-tile and bulk restore actions for hidden media.
-- Osoby person cards can hide or move all files for a person to Trash, with shared-file skip options in the confirmation flow.
 - Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
-- The release walkthrough now includes a Kolekcja hide/restore step.
-- Library hide/unhide and move-to-Trash operations are available through contract routes and CLI commands, including dry-run trash plans and NDJSON progress events.
-- Search accepts `--hidden exclude|only|include`, and library search, collection, map, facet, and people queries exclude hidden media by default.
-- The Osoby facet's people counts exclude hidden videos without dropping photo observations, which have no `hidden` state of their own.
+
+## [0.6.29] - 2026-09-04
+
+### Added
+
+- Kolekcja now supports multi-select with Cmd-click, Shift-click, select-all for the current filter, hide/restore actions, and move-to-Trash confirmation
+  ([`aea1eb8`](https://github.com/coderoadpl/ai-video-cataloger/commit/aea1eb8007ee2caead7e0b29732bee46b2beb9c0)).
+- Kolekcja has an Ukryte filter with single-tile and bulk restore actions for hidden media
+  ([`aea1eb8`](https://github.com/coderoadpl/ai-video-cataloger/commit/aea1eb8007ee2caead7e0b29732bee46b2beb9c0)).
+- Osoby person cards can hide or move all files for a person to Trash, with shared-file skip options in the confirmation flow
+  ([`aea1eb8`](https://github.com/coderoadpl/ai-video-cataloger/commit/aea1eb8007ee2caead7e0b29732bee46b2beb9c0)).
+- The release walkthrough now includes a Kolekcja hide/restore step
+  ([`aea1eb8`](https://github.com/coderoadpl/ai-video-cataloger/commit/aea1eb8007ee2caead7e0b29732bee46b2beb9c0)).
+- `pnpm run test:e2e:prerelease` now runs the mandatory pre-DMG e2e suites sequentially before packaging
+  ([`08403bb`](https://github.com/coderoadpl/ai-video-cataloger/commit/08403bbfa4ccf26ebea01da9ac9cd15ac4c9e5d4)).
+- Library hide/unhide and move-to-Trash operations are available through contract routes and CLI commands, including dry-run trash plans and NDJSON progress events
+  ([`b06ccaa`](https://github.com/coderoadpl/ai-video-cataloger/commit/b06ccaa629bf23624024839c4d740f2e7a65838a)).
+- Search accepts `--hidden exclude|only|include`, and library search, collection, map, facet, and people queries exclude hidden media by default
+  ([`b06ccaa`](https://github.com/coderoadpl/ai-video-cataloger/commit/b06ccaa629bf23624024839c4d740f2e7a65838a)).
+- The Osoby facet's people counts exclude hidden videos without dropping photo observations, which have no `hidden` state of their own
+  ([`b06ccaa`](https://github.com/coderoadpl/ai-video-cataloger/commit/b06ccaa629bf23624024839c4d740f2e7a65838a)).
 
 ### Changed
 
-- Osoby now shows distinct video/photo file counts on person cards and person media panels, sorts people by file frequency by default, and uses plain-language rebuild copy with the dry-run name-loss count in the final confirmation.
-- Photo detail metadata rows now keep long Polish path labels on one line while letting path values wrap.
-- Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path.
+- Osoby now shows distinct video/photo file counts on person cards and person media panels, sorts people by file frequency by default, and uses plain-language rebuild copy with the dry-run name-loss count in the final confirmation
+  ([`dfb0d0e`](https://github.com/coderoadpl/ai-video-cataloger/commit/dfb0d0e8846699cbb92b22783fb9dcc2118999f6)).
+- E2e face-model fixtures now come from a shared, verified scratch-cache helper instead of ad hoc model copies
+  ([`08403bb`](https://github.com/coderoadpl/ai-video-cataloger/commit/08403bbfa4ccf26ebea01da9ac9cd15ac4c9e5d4)).
+- Photo detail metadata rows now keep long Polish path labels on one line while letting path values wrap
+  ([`dfb0d0e`](https://github.com/coderoadpl/ai-video-cataloger/commit/dfb0d0e8846699cbb92b22783fb9dcc2118999f6)).
+- Builds without a configured Google OAuth client now hide the Google-account backup destination during new setup, leaving service-account setup as the default path
+  ([`a4767c9`](https://github.com/coderoadpl/ai-video-cataloger/commit/a4767c9aa2ffafe3842d8e2c9f7ef4b7dbcb61dc)).
+
+### Fixed
+
+- The packaged CLI no longer runs the face-benchmark script's entry point as a side effect of every command, which made commands print `Unexpected argument: <command>` on stderr and exit 1 even after completing successfully (affects the 0.6.28 CLI)
+  ([`733044f`](https://github.com/coderoadpl/ai-video-cataloger/commit/733044ff7fbb2388be594f2931be28319a7e23aa)).
+- Ctrl-C and SIGTERM stop a running CLI command again: the catalog's exit flush released signal ownership before the handler read it, so the first termination signal was absorbed and the run continued to completion
+  ([`733044f`](https://github.com/coderoadpl/ai-video-cataloger/commit/733044ff7fbb2388be594f2931be28319a7e23aa)).
+- The parity e2e suite now provisions the whisper model for its isolated homes from a persistent scratch cache instead of failing local-transcription scenarios with `failed to initialize whisper context`
+  ([`733044f`](https://github.com/coderoadpl/ai-video-cataloger/commit/733044ff7fbb2388be594f2931be28319a7e23aa)).
+- Move-to-Trash now moves each sighting before deleting its records, flushes catalog and photo stores before deleting app artifacts, reports incomplete batches as `library_trash_incomplete`, and keeps failed files and not-yet-attempted files record-intact
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- Move-to-Trash now freezes confirmed targets from the preview, distinguishes offline roots from read-only roots, conflicts with backup/restore/processing catalog writers, and keeps sidecar snapshots from resurrecting changed video rows
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- `library trash --dry-run` now always stays non-destructive even with `--yes`, and dry-run plans include the hidden, visible and shared-person counts accepted by the route contract
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- People facets now exclude hidden photos, unnamed people use stable numbering across Osoby and Kolekcja facets, and person Trash previews show shared-file counts before the default shared-file skip is applied
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- Kolekcja invalidates analysis/tree consumers after Trash attempts, preserves selection on Trash failure, and supports basic listbox keyboard selection
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- Trash dialogs and CLI output now show hidden/offline/incomplete counts more honestly, and Polish Trash copy uses "Kosz macOS" word order
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- A refused move to Trash now reports the reason the system gave instead of a single generic message
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- Person cards and the person panel describe face detections in photos as occurrences instead of frames
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- Google-account backup setup is now shown only when both OAuth client id and client secret are configured
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
+- The rollback notes now state that a stock 0.6.28 build rejects catalog V17 and photos v7 databases rather than opening them with hidden items visible
+  ([`5d405df`](https://github.com/coderoadpl/ai-video-cataloger/commit/5d405dfeb34c63827bfa6fb4dadd88f6d650c960)).
 
 ### Security
 
-- Desktop dependency floor moved to Electron 39.8.10.
-- Landing dependency floor moved to Next 15.5.24.
+- Desktop dependency floor moved to Electron 39.8.10
+  ([`ef2b178`](https://github.com/coderoadpl/ai-video-cataloger/commit/ef2b178e7ab89172c8b420bb514ec503f5d21188)).
+- Landing dependency floor moved to Next 15.5.24
+  ([`ef2b178`](https://github.com/coderoadpl/ai-video-cataloger/commit/ef2b178e7ab89172c8b420bb514ec503f5d21188)).
 
 ## [0.6.28] - 2026-09-03
 

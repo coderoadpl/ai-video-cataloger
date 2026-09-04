@@ -1,4 +1,4 @@
-import type { ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -11,11 +11,12 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -85,11 +86,37 @@ export interface CliResult {
   stderr: string;
 }
 
+export const E2E_WHISPER_MODELS = ['base'] as const;
+
+export function scratchDirectory(environment: NodeJS.ProcessEnv = process.env): string {
+  return environment.AVC_SCRATCH_DIR ?? join(homedir(), '.ai-video-cataloger-scratch');
+}
+
+export function cachedWhisperModelPath(
+  model: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  return join(scratchDirectory(environment), 'whisper-models', `ggml-${model}.bin`);
+}
+
 export function isolatedHome(workdir: string): string {
   const home = join(workdir, '.avc-home');
   const appDir = join(home, '.ai-video-cataloger');
   mkdirSync(join(appDir, 'models'), { recursive: true });
+  stageCachedWhisperModels(appDir);
   return home;
+}
+
+function stageCachedWhisperModels(appDir: string): void {
+  for (const model of E2E_WHISPER_MODELS) {
+    const cached = cachedWhisperModelPath(model);
+    if (!existsSync(cached)) continue;
+    const whisperDir = join(appDir, 'models', 'whisper');
+    mkdirSync(whisperDir, { recursive: true });
+    const staged = join(whisperDir, `ggml-${model}.bin`);
+    rmSync(staged, { force: true });
+    symlinkSync(cached, staged);
+  }
 }
 
 export function cliEnv(workdir: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
@@ -351,6 +378,17 @@ export async function stubOpenDialog(app: ElectronApplication, folderPath: strin
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, folderPath);
+}
+
+export async function dismissSetupWizard(page: Page): Promise<void> {
+  const wizard = page.getByTestId('setup-wizard');
+  try {
+    await wizard.waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    return;
+  }
+  await page.getByTestId('wizard-configure-later').click();
+  await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
 }
 
 export function makeEmptyWorkdir(tag: string): string {

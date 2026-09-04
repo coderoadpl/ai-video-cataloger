@@ -793,6 +793,7 @@ const drive = async (plan) => {
       selectedCount,
       { timeout: VISIBLE_TIMEOUT_MS },
     );
+    await tiles.first().click({ modifiers: ['Meta'] });
     await page.getByTestId('library-select-all').click();
     await page.getByTestId('library-unhide-selected').click();
     await page.waitForFunction(

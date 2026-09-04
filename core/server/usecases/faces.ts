@@ -145,6 +145,7 @@ export interface FacesStatusOutput {
 }
 
 interface FacePersonView extends Person {
+  fallbackIndex: number;
   observationCount: number;
   videoCount: number;
   photoCount: number;
@@ -327,7 +328,7 @@ export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: Fac
   const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
   return ok({
     people: people.value
-      .map((person) => personView(person, visibleObservations, currentCatalogDir))
+      .map((person, index) => ({ ...personView(person, visibleObservations, currentCatalogDir), fallbackIndex: index }))
       .filter((person) => person.observationCount > 0),
   });
 };
@@ -1362,6 +1363,7 @@ const personView = (person: Person, observations: readonly FaceObservation[], cu
     .map((observation) => reanchorFaceCropPath(currentCatalogDir, observation.cropPath));
   return {
     ...person,
+    fallbackIndex: 0,
     observationCount: matching.length,
     videoCount: matching.filter((observation) => observation.media === 'video').length,
     photoCount: matching.filter((observation) => observation.media === 'photo').length,

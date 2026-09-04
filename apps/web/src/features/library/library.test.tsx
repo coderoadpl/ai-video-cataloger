@@ -1723,6 +1723,72 @@ describe('LibraryView', () => {
       await waitFor(() => expect(invalidate).toHaveBeenCalled());
     });
 
+    it('keeps the selection when Escape closes the open trash dialog', async () => {
+      stubLibraryVisibilityActions();
+      stubCollection([videoItem({ fingerprint: 'fp-escape' })]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+      fireEvent.click(await screen.findByTestId('library-tile'), { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-trash-selected'));
+      await screen.findByTestId('library-trash-count');
+      fireEvent.keyDown(window, { key: 'Escape' });
+
+      expect(screen.getByTestId('library-selection-count').textContent).toBe('1 file selected');
+    });
+
+    it('keeps the dialog, the selection and the moved/failed counts when the trash job ends incomplete', async () => {
+      stubLibraryVisibilityActions();
+      server.use(
+        http.get('/api/jobs/status', () => HttpResponse.json({
+          ok: true,
+          data: {
+            jobId: 'job-trash',
+            kind: 'library_trash',
+            status: 'failed',
+            progress: null,
+            progressEvents: [],
+            error: {
+              code: 'library_trash_incomplete',
+              message: 'Could not move the file to Trash',
+              details: {
+                summary: {
+                  kind: 'library_trash',
+                  filesTrashed: 1,
+                  videosTrashed: 1,
+                  photosTrashed: 0,
+                  filesFailed: 1,
+                  filesNotAttempted: 2,
+                  failedFingerprint: 'fp-incomplete',
+                  cancelled: false,
+                  analysesDeleted: 1,
+                  observationsDeleted: 0,
+                  peopleDeleted: 0,
+                  artifactPathsDeleted: 0,
+                  snapshotsRewritten: 1,
+                  roots: ['/fixtures/root'],
+                },
+              },
+            },
+            createdAt: '2026-01-02T10:00:00.000Z',
+            updatedAt: '2026-01-02T10:00:00.000Z',
+          },
+        })),
+      );
+      stubCollection([videoItem({ fingerprint: 'fp-incomplete' })]);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+      fireEvent.click(await screen.findByTestId('library-tile'), { metaKey: true });
+      fireEvent.click(screen.getByTestId('library-trash-selected'));
+      await screen.findByTestId('library-trash-count');
+      fireEvent.click(screen.getByTestId('library-trash-confirm-check'));
+      fireEvent.click(screen.getByTestId('library-trash-confirm'));
+
+      expect((await screen.findByTestId('library-mutation-error')).textContent)
+        .toContain('Moved: 1. Failed: 1. Not attempted: 2.');
+      expect(screen.getByTestId('library-trash-dialog')).toBeDefined();
+      expect(screen.getByTestId('library-selection-count').textContent).toBe('1 file selected');
+    });
+
     it('keeps the trash dialog open with read-only root copy when the confirm route races to target_read_only', async () => {
       stubLibraryVisibilityActions();
       server.use(

@@ -340,6 +340,11 @@ describe('restoreAdmissionError', () => {
     expect(blocked).toMatchObject({ code: 'restore_refused' });
   });
 
+  it('blocks on an in-flight library trash job', () => {
+    const blocked = restoreAdmissionError([baseRecord({ kind: 'library_trash' })]);
+    expect(blocked).toMatchObject({ code: 'restore_refused' });
+  });
+
   it('ignores queued/running jobs of unrelated kinds with no shared resource', () => {
     expect(restoreAdmissionError([baseRecord({ kind: 'variant_projection', status: 'queued' })])).toBeNull();
   });

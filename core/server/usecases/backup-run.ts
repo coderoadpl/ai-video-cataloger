@@ -51,6 +51,7 @@ export const BACKUP_CONFLICTING_JOB_KINDS: ReadonlySet<JobKind> = new Set([
   'thumbnails',
   'gps_backfill',
   'photo_gps_backfill',
+  'library_trash',
 ]);
 
 export interface BackupStatePort {

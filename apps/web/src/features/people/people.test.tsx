@@ -43,6 +43,7 @@ const person = (overrides: Partial<FacePerson> & { personId: string }): FacePers
   createdAt: '2026-01-01T00:00:00.000Z',
   centroid,
   exemplarCount: overrides.exemplarCount ?? 1,
+  fallbackIndex: overrides.fallbackIndex ?? 0,
   observationCount: overrides.observationCount ?? 1,
   videoCount: overrides.videoCount ?? overrides.observationCount ?? 1,
   photoCount: overrides.photoCount ?? 0,
@@ -340,7 +341,7 @@ describe('PeopleView', () => {
           fileCounts: { video: 2, photo: 0 },
           exemplarCropPath: '/home/.ai-video-cataloger/faces/p1/exemplar-001.jpg',
         }),
-        person({ personId: 'p2', observationCount: 10 }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 10 }),
       ],
     });
 
@@ -363,7 +364,7 @@ describe('PeopleView', () => {
       observations: 2,
       people: [
         person({ personId: 'p1', displayName: 'Alex', observationCount: 12, exemplarCropPath: null }),
-        person({ personId: 'p2', observationCount: 10, exemplarCropPath: null }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 10, exemplarCropPath: null }),
       ],
     });
 
@@ -503,7 +504,7 @@ describe('PeopleView', () => {
       observations: 3,
       people: [
         person({ personId: 'p1', displayName: 'Alex', observationCount: 2 }),
-        person({ personId: 'p2', observationCount: 10 }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 10 }),
       ],
     });
 
@@ -534,7 +535,7 @@ describe('PeopleView', () => {
       observations: 3,
       people: [
         person({ personId: 'p1', displayName: 'Alex', observationCount: 2 }),
-        person({ personId: 'p2', observationCount: 10 }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 10 }),
       ],
     });
     server.use(
@@ -807,9 +808,9 @@ describe('PeopleView media chips', () => {
       artifactsReady: true,
       observations: 12,
       people: [
-        person({ personId: 'p-first', observationCount: 10, videoCount: 10, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
-        person({ personId: 'p-second', observationCount: 30, videoCount: 30, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
-        person({ personId: 'p-third', observationCount: 60, videoCount: 60, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-first', fallbackIndex: 0, observationCount: 10, videoCount: 10, photoCount: 0, fileCounts: { video: 1, photo: 0 } }),
+        person({ personId: 'p-second', fallbackIndex: 1, observationCount: 30, videoCount: 30, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
+        person({ personId: 'p-third', fallbackIndex: 2, observationCount: 60, videoCount: 60, photoCount: 0, fileCounts: { video: 3, photo: 0 } }),
       ],
     });
 
@@ -820,7 +821,10 @@ describe('PeopleView media chips', () => {
     await screen.findByTestId('people-grid');
     expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
       .toEqual(['p-third', 'p-second', 'p-first']);
-    expect(screen.getByTestId('people-grid').textContent).toContain('Person 3');
+    expect(screen.getAllByTestId('people-card').map((card) => card.textContent?.includes('Person 3')))
+      .toEqual([true, false, false]);
+    expect(screen.getAllByTestId('people-card').map((card) => card.textContent?.includes('Person 1')))
+      .toEqual([false, false, true]);
     expect(screen.getByTestId('people-sort-frequency').getAttribute('aria-pressed')).toBe('true');
   });
 

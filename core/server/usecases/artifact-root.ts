@@ -24,6 +24,9 @@ export const readOnlyArtifactRootById = (fs: FileSystemPort, folderId: string): 
 export const readOnlyArtifactRoot = (fs: FileSystemPort, folder: string): ArtifactRoot =>
   readOnlyArtifactRootById(fs, derivedFolderId(fs.resolve(folder)));
 
+export const legacyReadOnlyArtifactRoot = (fs: FileSystemPort, folder: string): ArtifactRoot =>
+  readOnlyArtifactRootById(fs, legacyDerivedFolderId(fs.resolve(folder).normalize('NFD')));
+
 export const artifactRootFor = (fs: FileSystemPort, folder: string, writable: boolean): ArtifactRoot =>
   writable ? folderArtifactRoot(fs, folder) : readOnlyArtifactRoot(fs, folder);
 
@@ -56,7 +59,7 @@ export const discoverArtifactRoot = async (
   const mirrored = await fs.exists(mirror.path);
   if (!mirrored.ok) return mirrored;
   if (mirrored.value) return ok(mirror);
-  const legacyMirror = readOnlyArtifactRootById(fs, legacyDerivedFolderId(fs.resolve(folder).normalize('NFD')));
+  const legacyMirror = legacyReadOnlyArtifactRoot(fs, folder);
   const legacyMirrored = await fs.exists(legacyMirror.path);
   if (!legacyMirrored.ok) return legacyMirrored;
   return ok(legacyMirrored.value ? legacyMirror : folderArtifactRoot(fs, folder));

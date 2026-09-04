@@ -51,6 +51,15 @@ describe('error taxonomy mappings', () => {
     expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.target_read_only).toBe('TARGET_READ_ONLY');
   });
 
+  it('maps trash availability and incomplete failures to conflict statuses and dedicated CLI codes', () => {
+    expect(HTTP_STATUS_BY_ERROR_CODE.target_offline).toBe(409);
+    expect(EXIT_CODE_BY_ERROR_CODE.target_offline).toBe(58);
+    expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.target_offline).toBe('TARGET_OFFLINE');
+    expect(HTTP_STATUS_BY_ERROR_CODE.library_trash_incomplete).toBe(409);
+    expect(EXIT_CODE_BY_ERROR_CODE.library_trash_incomplete).toBe(59);
+    expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.library_trash_incomplete).toBe('LIBRARY_TRASH_INCOMPLETE');
+  });
+
   it('maps backup failures to the specified distinct exit codes', () => {
     expect([
       EXIT_CODE_BY_ERROR_CODE.backup_disabled,

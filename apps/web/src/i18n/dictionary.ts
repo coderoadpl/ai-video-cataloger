@@ -981,6 +981,7 @@ export interface Dictionary {
     restoreItem: string;
     trashDialogTitle: string;
     trashDialogCount: (total: number, videos: number, photos: number) => string;
+    trashDialogHiddenCount: (hidden: number) => string;
     trashDialogErases: string;
     trashDialogRoots: string;
     trashDialogRootCount: (count: number) => string;
@@ -988,10 +989,13 @@ export interface Dictionary {
     trashDialogConfirm: string;
     trashDialogReadOnlyTitle: string;
     trashDialogReadOnlyBody: string;
+    trashDialogOfflineTitle: string;
+    trashDialogOfflineBody: string;
     trashDialogLoading: string;
     trashDialogNoPreview: string;
     trashStarted: string;
     trashFailed: string;
+    trashIncompleteCounts: (trashed: number, failed: number, notAttempted: number) => string;
     hideFailed: string;
     restoreFailed: string;
     mediaAll: string;
@@ -1596,19 +1600,21 @@ export const en: Dictionary = {
     photoObservationCount: (count) => `${count} in photos`,
     videoFileCount: (count) => `${count} ${count === 1 ? 'video' : 'videos'}`,
     photoFileCount: (count) => `${count} ${count === 1 ? 'photo' : 'photos'}`,
-    frameObservationCount: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
+    frameObservationCount: (count) => `${count} ${count === 1 ? 'occurrence' : 'occurrences'}`,
     rename: 'Rename',
     delete: 'Delete',
     searchInLibrary: 'Search in Library',
     hidePersonFiles: 'Hide this person’s files',
     trashPersonFiles: 'Move this person’s files to Trash',
     personSelectionTitle: (name) => `Files for ${name}`,
-    personSelectionSummary: (total, shared) => `${String(total)} ${total === 1 ? 'file' : 'files'}, including ${String(shared)} that also ${shared === 1 ? 'contains' : 'contain'} other recognized people`,
+    personSelectionSummary: (total, shared) => shared === 0
+      ? `${String(total)} ${total === 1 ? 'file' : 'files'}`
+      : `${String(total)} ${total === 1 ? 'file' : 'files'}, including ${String(shared)} that also ${shared === 1 ? 'contains' : 'contain'} other recognized people`,
     skipSharedWithOtherPeople: 'Skip files with other people',
     hidePersonConfirm: 'Hide files',
     hiddenPersonFilesLog: (name) => `Hid files for ${name}`,
     hidePersonFilesFailedLog: 'Failed to hide files for this person',
-    trashPersonFilesLog: (name) => `Started moving files for ${name} to Trash`,
+    trashPersonFilesLog: (name) => `Moved files for ${name} to Trash`,
     trashPersonFilesFailedLog: 'Failed to move files for this person to Trash',
     personMediaSection: 'Photos and videos',
     personMediaEmpty: 'No photos or videos for this person yet.',
@@ -2096,6 +2102,7 @@ export const en: Dictionary = {
     restoreItem: 'Restore',
     trashDialogTitle: 'Move files to Trash',
     trashDialogCount: (total, videos, photos) => `${String(total)} ${total === 1 ? 'file' : 'files'}: ${String(videos)} ${videos === 1 ? 'video' : 'videos'}, ${String(photos)} ${photos === 1 ? 'photo' : 'photos'}`,
+    trashDialogHiddenCount: (hidden) => `Including ${String(hidden)} hidden ${hidden === 1 ? 'file' : 'files'}`,
     trashDialogErases: 'The files will be moved to the macOS Trash. Analyses, tags, faces, places, thumbnails and proxies for them will be erased from the app.',
     trashDialogRoots: 'Affected roots',
     trashDialogRootCount: (count) => `${String(count)} ${count === 1 ? 'sighting' : 'sightings'}`,
@@ -2103,10 +2110,14 @@ export const en: Dictionary = {
     trashDialogConfirm: 'Move to Trash',
     trashDialogReadOnlyTitle: 'Read-only root',
     trashDialogReadOnlyBody: 'Move to Trash is unavailable because at least one affected root is read-only.',
+    trashDialogOfflineTitle: 'Offline root',
+    trashDialogOfflineBody: 'Move to Trash is unavailable because at least one affected root is not connected.',
     trashDialogLoading: 'Preparing trash plan...',
     trashDialogNoPreview: 'The trash plan is not available.',
     trashStarted: 'Move to Trash started',
     trashFailed: 'Move to Trash failed',
+    trashIncompleteCounts: (trashed, failed, notAttempted) =>
+      `Moved: ${String(trashed)}. Failed: ${String(failed)}. Not attempted: ${String(notAttempted)}.`,
     hideFailed: 'Hide failed',
     restoreFailed: 'Restore failed',
     mediaAll: 'All',
@@ -2725,20 +2736,21 @@ export const pl: Dictionary = {
     photoObservationCount: (count) => `${count} w zdjęciach`,
     videoFileCount: (count) => `${count} ${plPlural(count, 'film', 'filmy', 'filmów')}`,
     photoFileCount: (count) => `${count} ${plPlural(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
-    frameObservationCount: (count) => `${count} ${plPlural(count, 'kadr', 'kadry', 'kadrów')}`,
+    frameObservationCount: (count) => `${count} ${plPlural(count, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
     searchInLibrary: 'Szukaj w Bibliotece',
     hidePersonFiles: 'Ukryj pliki tej osoby',
     trashPersonFiles: 'Przenieś do Kosza pliki tej osoby',
     personSelectionTitle: (name) => `Pliki osoby ${name}`,
-    personSelectionSummary: (total, shared) =>
-      `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}, z czego ${String(shared)} ${plPlural(shared, 'zawiera', 'zawierają', 'zawiera')} także inne rozpoznane osoby`,
+    personSelectionSummary: (total, shared) => shared === 0
+      ? `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}`
+      : `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}, w tym ${String(shared)} z innymi osobami`,
     skipSharedWithOtherPeople: 'Pomiń pliki z innymi osobami',
     hidePersonConfirm: 'Ukryj pliki',
     hiddenPersonFilesLog: (name) => `Ukryto pliki osoby ${name}`,
     hidePersonFilesFailedLog: 'Nie udało się ukryć plików tej osoby',
-    trashPersonFilesLog: (name) => `Rozpoczęto przenoszenie plików osoby ${name} do Kosza`,
+    trashPersonFilesLog: (name) => `Przeniesiono do Kosza pliki osoby ${name}`,
     trashPersonFilesFailedLog: 'Nie udało się przenieść plików tej osoby do Kosza',
     personMediaSection: 'Zdjęcia i filmy',
     personMediaEmpty: 'Brak zdjęć i filmów dla tej osoby.',
@@ -3231,17 +3243,22 @@ export const pl: Dictionary = {
     trashDialogTitle: 'Przenieś pliki do Kosza',
     trashDialogCount: (total, videos, photos) =>
       `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}: ${String(videos)} ${plPlural(videos, 'film', 'filmy', 'filmów')}, ${String(photos)} ${plPlural(photos, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
-    trashDialogErases: 'Pliki trafią do macOS Kosza. Analizy, tagi, twarze, miejsca, miniatury i proxy tych plików zostaną usunięte z aplikacji.',
+    trashDialogHiddenCount: (hidden) => `W tym ${String(hidden)} ${plPlural(hidden, 'ukryty plik', 'ukryte pliki', 'ukrytych plików')}`,
+    trashDialogErases: 'Pliki trafią do Kosza macOS. Analizy, tagi, twarze, miejsca, miniatury i proxy tych plików zostaną usunięte z aplikacji.',
     trashDialogRoots: 'Dotknięte foldery',
     trashDialogRootCount: (count) => `${String(count)} ${plPlural(count, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
-    trashDialogConfirmCheckbox: 'Rozumiem, że to usuwa pliki z aplikacji i przenosi je do macOS Kosza.',
+    trashDialogConfirmCheckbox: 'Rozumiem, że to usuwa pliki z aplikacji i przenosi je do Kosza macOS.',
     trashDialogConfirm: 'Przenieś do Kosza',
     trashDialogReadOnlyTitle: 'Folder tylko do odczytu',
     trashDialogReadOnlyBody: 'Przeniesienie do Kosza jest niedostępne, ponieważ co najmniej jeden dotknięty folder jest tylko do odczytu.',
+    trashDialogOfflineTitle: 'Folder offline',
+    trashDialogOfflineBody: 'Przeniesienie do Kosza jest niedostępne, ponieważ co najmniej jeden dotknięty folder nie jest podłączony.',
     trashDialogLoading: 'Przygotowywanie planu przeniesienia do Kosza...',
     trashDialogNoPreview: 'Plan przeniesienia do Kosza jest niedostępny.',
     trashStarted: 'Rozpoczęto przenoszenie do Kosza',
     trashFailed: 'Przeniesienie do Kosza nie powiodło się',
+    trashIncompleteCounts: (trashed, failed, notAttempted) =>
+      `Przeniesiono: ${String(trashed)}. Nieudane: ${String(failed)}. Nierozpoczęte: ${String(notAttempted)}.`,
     hideFailed: 'Ukrywanie nie powiodło się',
     restoreFailed: 'Przywracanie nie powiodło się',
     mediaAll: 'Wszystko',

@@ -28,6 +28,8 @@ export const ERROR_CODES = [
   'drive_root_empty',
   'drive_run_aborted',
   'target_read_only',
+  'target_offline',
+  'library_trash_incomplete',
   'thumbnail_error',
   'processing_error',
   'analysis_parse_failed',

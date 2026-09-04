@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { REAL_JPEG_BLUE_LARGE, REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { systemOllamaModelMissingReason } from './matrix-support.js';
 
 interface Session {
@@ -31,11 +31,7 @@ async function launch(workdir: string): Promise<Session> {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
-  const wizard = page.getByTestId('setup-wizard');
-  if (await wizard.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await page.getByTestId('wizard-configure-later').click();
-    await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
-  }
+  await dismissSetupWizard(page);
 
   return { app, page };
 }
@@ -77,9 +73,6 @@ test.describe('Current-folder photos analysis', () => {
       await photosToggle.click();
       await expect(photosToggle).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-      const scanButton = session.page.getByTestId('photos-scan-action');
-      await expect(scanButton).toBeVisible({ timeout: 20_000 });
-      await scanButton.click();
       await expect(session.page.getByTestId('photos-sidebar-unscanned')).toBeHidden({ timeout: 120_000 });
 
       const rows = session.page.getByTestId('photos-sidebar-row');

@@ -1,10 +1,10 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { isolatedHome } from './helpers.js';
+import { cachedWhisperModelPath, isolatedHome } from './helpers.js';
 
 const roots: string[] = [];
 
@@ -32,5 +32,29 @@ describe('e2e home isolation helpers', () => {
 
     expect(existsSync(models)).toBe(true);
     expect(lstatSync(models).isSymbolicLink()).toBe(false);
+  });
+
+  it('stages the scratch-cached whisper model into the isolated home', () => {
+    const scratch = tempRoot('avc-e2e-scratch-');
+    const workdir = tempRoot('avc-e2e-workdir-');
+    vi.stubEnv('AVC_SCRATCH_DIR', scratch);
+    const cached = cachedWhisperModelPath('base');
+    mkdirSync(join(scratch, 'whisper-models'), { recursive: true });
+    writeFileSync(cached, 'ggml-bytes');
+
+    const home = isolatedHome(workdir);
+
+    expect(cached).toBe(join(scratch, 'whisper-models', 'ggml-base.bin'));
+    expect(readFileSync(join(home, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'), 'utf8')).toBe('ggml-bytes');
+  });
+
+  it('leaves the isolated home without a whisper model when the scratch cache is empty', () => {
+    const scratch = tempRoot('avc-e2e-scratch-');
+    const workdir = tempRoot('avc-e2e-workdir-');
+    vi.stubEnv('AVC_SCRATCH_DIR', scratch);
+
+    const home = isolatedHome(workdir);
+
+    expect(existsSync(join(home, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'))).toBe(false);
   });
 });

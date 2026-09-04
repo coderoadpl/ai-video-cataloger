@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, Snackbar, TextField, Typography } from '@mui/material';
 import { ApiError, isTerminalJobStatus, invalidateLibraryVisibilityConsumers } from '@core/client/index.js';
+import { libraryTrashSummaryOfDetails } from '@core/contract/index.js';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
@@ -76,7 +77,7 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-const targetReadOnlyDetailsSchema = z.object({
+const targetRootDetailsSchema = z.object({
   roots: z.array(z.union([
     z.string(),
     z.object({
@@ -86,9 +87,9 @@ const targetReadOnlyDetailsSchema = z.object({
   ])),
 }).strict();
 
-const readOnlyRootNamesOf = (error: unknown): string[] => {
-  if (!(error instanceof ApiError) || error.appError.code !== 'target_read_only') return [];
-  const parsed = targetReadOnlyDetailsSchema.safeParse(error.appError.details);
+const rootNamesOf = (error: unknown, code: 'target_read_only' | 'target_offline'): string[] => {
+  if (!(error instanceof ApiError) || error.appError.code !== code) return [];
+  const parsed = targetRootDetailsSchema.safeParse(error.appError.details);
   if (!parsed.success) return [];
   return parsed.data.roots
     .map((root) => typeof root === 'string' ? root : root.displayName ?? root.currentPath ?? '')
@@ -142,6 +143,7 @@ export const LibraryView = ({
   const [trashScope, setTrashScope] = useState<LibrarySelectionScope | null>(null);
   const [trashChecked, setTrashChecked] = useState(false);
   const [trashReadOnlyRootNames, setTrashReadOnlyRootNames] = useState<string[]>([]);
+  const [trashOfflineRootNames, setTrashOfflineRootNames] = useState<string[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [activeTrashJobId, setActiveTrashJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -239,9 +241,7 @@ export const LibraryView = ({
   const selectionTotal = selectedFingerprintCount(selection, library.total);
   const selectedFingerprintLookup = useMemo(() => {
     if (selection.mode === 'all-in-filter') {
-      return new Set(library.items
-        .filter((item) => !selection.excluded.has(item.fingerprint))
-        .map((item) => item.fingerprint));
+      return new Set(library.items.map((item) => item.fingerprint));
     }
     return new Set(selectedFingerprints(selection));
   }, [library.items, selection]);
@@ -263,6 +263,7 @@ export const LibraryView = ({
     total: trashPreview.data.total,
     videoCount: trashPreview.data.videoCount,
     photoCount: trashPreview.data.photoCount,
+    hiddenCount: trashPreview.data.hiddenCount,
   };
   const resetKey = useMemo(
     () => selectionResetKey({ ...scopeInput, sort }),
@@ -287,6 +288,7 @@ export const LibraryView = ({
     setTrashScope(scope);
     setTrashChecked(false);
     setTrashReadOnlyRootNames([]);
+    setTrashOfflineRootNames([]);
     setMutationError(null);
   };
   const confirmTrash = (): void => {
@@ -304,19 +306,26 @@ export const LibraryView = ({
             onSnapshot: () => undefined,
           });
           if (final.status !== 'completed') {
-            throw new Error(final.error?.message ?? dictionary.library.trashFailed);
+            throw new ApiError(final.error ?? { code: 'internal', message: dictionary.library.trashFailed });
           }
         }
-        await invalidateLibraryVisibilityConsumers(queryClient);
         clearSelection();
         setTrashScope(null);
         setTrashChecked(false);
+        setTrashReadOnlyRootNames([]);
+        setTrashOfflineRootNames([]);
         setMutationError(null);
       } catch (error) {
-        const rootNames = readOnlyRootNamesOf(error);
-        if (rootNames.length > 0) setTrashReadOnlyRootNames(rootNames);
-        setMutationError(`${dictionary.library.trashFailed}: ${messageOf(error)}`);
+        const readOnlyRootNames = rootNamesOf(error, 'target_read_only');
+        const offlineRootNames = rootNamesOf(error, 'target_offline');
+        if (readOnlyRootNames.length > 0) setTrashReadOnlyRootNames(readOnlyRootNames);
+        if (offlineRootNames.length > 0) setTrashOfflineRootNames(offlineRootNames);
+        const summary = error instanceof ApiError ? libraryTrashSummaryOfDetails(error.appError.details) : null;
+        setMutationError(summary === null
+          ? `${dictionary.library.trashFailed}: ${messageOf(error)}`
+          : `${dictionary.library.trashFailed}: ${dictionary.library.trashIncompleteCounts(summary.filesTrashed, summary.filesFailed, summary.filesNotAttempted)}`);
       } finally {
+        await invalidateLibraryVisibilityConsumers(queryClient);
         setActiveTrashJobId(null);
       }
     })();
@@ -333,16 +342,18 @@ export const LibraryView = ({
     setTrashScope(null);
     setTrashChecked(false);
     setTrashReadOnlyRootNames([]);
+    setTrashOfflineRootNames([]);
   }, [resetKey]);
 
   useEffect(() => {
     if (!active) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || trashScope !== null || viewerItem !== null) return;
       if (event.key === 'Escape') dispatchSelection({ type: 'clear' });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [active]);
+  }, [active, trashScope, viewerItem]);
 
   if (!active) return null;
 
@@ -471,6 +482,7 @@ export const LibraryView = ({
             }
             dispatchSelection({ type: 'toggle', fingerprint: item.fingerprint });
           }}
+          onSelectAll={() => dispatchSelection({ type: 'selectAllInFilter' })}
           onOpenInAnalysis={openInAnalysis}
           selectedFingerprints={selectedFingerprintLookup}
           hiddenView={hiddenActive}
@@ -686,11 +698,13 @@ export const LibraryView = ({
         checked={trashChecked}
         confirming={trashMutation.isPending}
         readOnlyRootNames={trashReadOnlyRootNames}
+        offlineRootNames={trashOfflineRootNames}
         onCheckedChange={setTrashChecked}
         onClose={() => {
           setTrashScope(null);
           setTrashChecked(false);
           setTrashReadOnlyRootNames([]);
+          setTrashOfflineRootNames([]);
         }}
         onConfirm={confirmTrash}
       />

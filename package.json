@@ -1,6 +1,6 @@
 {
   "name": "ai-video-cataloger",
-  "version": "0.6.28",
+  "version": "0.6.29",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/coderoadpl/ai-video-cataloger.git"
@@ -44,6 +44,7 @@
     "test:e2e:library": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=library",
     "test:e2e:library-hide-trash": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=library-hide-trash",
     "test:e2e:map": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=map",
+    "test:e2e:prerelease": "pnpm run test:e2e:cli && pnpm run test:e2e:gui && pnpm run test:e2e:parity && pnpm run test:e2e:open-folder && pnpm run test:e2e:settings && pnpm run test:e2e:backup && pnpm run test:e2e:photos && pnpm run test:e2e:people && pnpm run test:e2e:people-media && pnpm run test:e2e:library && pnpm run test:e2e:library-hide-trash && pnpm run test:e2e:map",
     "electron:dev": "pnpm run electron:build:desktop && sh -c 'NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 vite --config apps/web/vite.config.ts --host 127.0.0.1 & vite_pid=$!; NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 electron .; status=$?; kill $vite_pid; exit $status'",
     "electron:package": "pnpm run electron:build && electron-builder --config electron-builder.config.js",
     "visual": "playwright test --config visual/playwright.visual.config.ts",

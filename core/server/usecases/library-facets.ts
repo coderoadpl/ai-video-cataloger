@@ -37,12 +37,36 @@ export const libraryFacets = async (
   if (!facets.ok) return facets;
   const hiddenPhotos = await deps.photos.countHidden();
   if (!hiddenPhotos.ok) return hiddenPhotos;
+  const hiddenPhotoFingerprints = await deps.photos.listHiddenFingerprints();
+  if (!hiddenPhotoFingerprints.ok) return hiddenPhotoFingerprints;
+  const hiddenVideoFingerprints = await deps.globalCatalog.listHiddenFingerprints();
+  if (!hiddenVideoFingerprints.ok) return hiddenVideoFingerprints;
+  const observations = await deps.globalCatalog.listFaceObservations();
+  if (!observations.ok) return observations;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
 
   const fallbackIndexByPersonId = new Map(people.value.map((person, index) => [person.personId, index]));
+  const hiddenFingerprints = new Set([...hiddenVideoFingerprints.value, ...hiddenPhotoFingerprints.value]);
+  const peopleById = new Map(people.value.map((person) => [person.personId, person]));
+  const fingerprintCountsByPersonId = new Map<string, Set<string>>();
+  for (const observation of observations.value) {
+    if (observation.personId === null || hiddenFingerprints.has(observation.fingerprint)) continue;
+    const current = fingerprintCountsByPersonId.get(observation.personId) ?? new Set<string>();
+    current.add(observation.fingerprint);
+    fingerprintCountsByPersonId.set(observation.personId, current);
+  }
   const facetPeople = sortPeopleFacet(
-    facets.value.people.map((person) => ({ ...person, fallbackIndex: fallbackIndexByPersonId.get(person.personId) ?? 0 })),
+    [...fingerprintCountsByPersonId.entries()]
+      .map(([personId, fingerprints]) => {
+        const person = peopleById.get(personId);
+        return {
+          personId,
+          displayName: person?.displayName ?? null,
+          count: fingerprints.size,
+          fallbackIndex: fallbackIndexByPersonId.get(personId) ?? 0,
+        };
+      }),
   );
 
   const folders: LibraryFacetsOutputFolder[] = [];

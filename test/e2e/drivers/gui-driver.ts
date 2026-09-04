@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
 import {
+  dismissSetupWizard,
   ELECTRON_MAIN,
   isolatedHome,
   readCatalog,
@@ -48,6 +49,7 @@ export class GuiDriver implements PipelineDriver {
     this.page = await this.app.firstWindow();
     await this.page.waitForLoadState('domcontentloaded');
     await this.page.waitForFunction(() => window.desktopBridge !== undefined);
+    await dismissSetupWizard(this.page);
     await this.enterAnalysisMode();
     await this.openFolder(workdir);
   }
