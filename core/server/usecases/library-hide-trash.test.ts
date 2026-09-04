@@ -184,7 +184,7 @@ describe('library hide and unhide', () => {
 });
 
 describe('library trash', () => {
-  it('rejects the whole selection when any affected root is not writable', async () => {
+  it('plans read-only roots and rejects the confirmed mutation before moving files', async () => {
     const setup = deps();
     setup.fs.addDirectory('/library/ok');
     setup.fs.addDirectory('/library/readonly');
@@ -196,18 +196,53 @@ describe('library trash', () => {
 
     const result = await libraryTrashPreflight(setup, { scope: { kind: 'fingerprints', fingerprints: ['fp-ok', 'fp-readonly'] } });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.code).toBe('target_read_only');
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        roots: expect.arrayContaining([expect.objectContaining({ displayName: 'readonly', writable: false, online: true })]),
+      },
+    });
+    const confirmed = await libraryTrash(setup, {
+      scope: { kind: 'fingerprints', fingerprints: ['fp-ok', 'fp-readonly'] },
+      confirm: true,
+      dryRun: false,
+    });
+    expect(confirmed).toMatchObject({ ok: false, error: { code: 'target_read_only' } });
     expect(setup.trash.moved).toEqual([]);
     expect(await setup.globalCatalog.getFile('fp-ok')).toMatchObject({ ok: true, value: { fingerprint: 'fp-ok' } });
   });
 
-  it('deletes records and owned artifacts before moving selected paths to Trash', async () => {
+  it('moves selected paths to Trash before deleting records and owned artifacts', async () => {
     const setup = deps();
+    const order: string[] = [];
     setup.fs.addDirectory('/library/videos');
     setup.fs.addFile('/library/videos/clip.mp4', { content: 'video' });
     setup.fs.addFile('/library/crop.jpg', { content: 'crop' });
+    const moveToTrash = setup.trash.moveToTrash.bind(setup.trash);
+    setup.trash.moveToTrash = (targetPath) => {
+      order.push('move');
+      return moveToTrash(targetPath);
+    };
+    const forgetEntry = setup.globalCatalog.forgetEntry.bind(setup.globalCatalog);
+    setup.globalCatalog.forgetEntry = (fingerprint) => {
+      order.push('records');
+      return forgetEntry(fingerprint);
+    };
+    const catalogFlush = setup.globalCatalog.flush.bind(setup.globalCatalog);
+    setup.globalCatalog.flush = () => {
+      order.push('catalog-flush');
+      return catalogFlush();
+    };
+    const photosFlush = setup.photos.flush.bind(setup.photos);
+    setup.photos.flush = () => {
+      order.push('photos-flush');
+      return photosFlush();
+    };
+    const deleteFile = setup.fs.deleteFile.bind(setup.fs);
+    setup.fs.deleteFile = (targetPath) => {
+      order.push(`artifact:${targetPath}`);
+      return deleteFile(targetPath);
+    };
     await setup.globalCatalog.upsertFolder(videoFolder('11111111-1111-4111-8111-111111111111', '/library/videos'));
     await setup.globalCatalog.upsertFile(videoFile('fp-video', '11111111-1111-4111-8111-111111111111', 'clip.mp4'));
     await setup.globalCatalog.upsertPerson(person('p-1'));
@@ -239,6 +274,8 @@ describe('library trash', () => {
     expect(await setup.globalCatalog.getFile('fp-video')).toMatchObject({ ok: true, value: null });
     expect(await setup.fs.exists('/library/crop.jpg')).toMatchObject({ ok: true, value: false });
     expect(setup.trash.moved).toEqual(['/library/videos/clip.mp4']);
+    expect(order.slice(0, 4)).toEqual(['move', 'records', 'catalog-flush', 'photos-flush']);
+    expect(order).toContain('artifact:/library/crop.jpg');
   });
 
   it('re-exports a writable video folder snapshot with only the entries actually trashed before cancellation', async () => {
@@ -321,9 +358,12 @@ describe('library trash', () => {
       scope: { kind: 'fingerprints', fingerprints },
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value).toMatchObject({
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({
+      code: 'library_trash_incomplete',
+      details: {
+        summary: {
       filesTrashed: 3,
       videosTrashed: 3,
       photosTrashed: 0,
@@ -331,6 +371,8 @@ describe('library trash', () => {
       filesNotAttempted: 6,
       failedFingerprint: 'fp-04',
       cancelled: false,
+        },
+      },
     });
     expect(setup.trash.moved).toEqual([
       '/library/videos/fp-01.mp4',
@@ -338,11 +380,141 @@ describe('library trash', () => {
       '/library/videos/fp-03.mp4',
       '/library/videos/fp-04.mp4',
     ]);
-    for (const fingerprint of fingerprints.slice(4)) {
+    for (const fingerprint of fingerprints.slice(3)) {
       const file = await setup.globalCatalog.getFile(fingerprint);
       expect(file.ok && file.value?.fingerprint).toBe(fingerprint);
       expect(await setup.fs.exists(`/library/videos/${fingerprint}.mp4`)).toMatchObject({ ok: true, value: true });
     }
+  });
+
+  it('trashes the previewed fingerprints when a confirmed filter changes before the job runs', async () => {
+    const setup = deps();
+    const folder = videoFolder('11111111-1111-4111-8111-111111111111', '/library/videos');
+    setup.fs.addDirectory(folder.currentPath);
+    await setup.globalCatalog.upsertFolder(folder);
+    await seedVideo(setup, folder, 'fp-previewed', 'clip-previewed.mp4');
+    const enqueue = setup.jobs.enqueue.bind(setup.jobs);
+    setup.jobs.enqueue = (input) => {
+      void seedVideo(setup, folder, 'fp-late', 'clip-late.mp4');
+      return enqueue(input);
+    };
+
+    const started = await libraryTrash(setup, {
+      scope: {
+        kind: 'filter',
+        filter: {
+          query: 'clip',
+          tags: [],
+          people: [],
+          hasGps: null,
+          media: 'all',
+          hideUnavailable: false,
+          hidden: 'exclude',
+        },
+      },
+      confirm: true,
+      dryRun: false,
+    });
+    expect(started).toMatchObject({ ok: true, value: { kind: 'job' } });
+
+    expect(setup.trash.moved).toEqual(['/library/videos/clip-previewed.mp4']);
+    expect(await setup.globalCatalog.getFile('fp-previewed')).toMatchObject({ ok: true, value: null });
+    expect(await setup.globalCatalog.getFile('fp-late')).toMatchObject({ ok: true, value: { fingerprint: 'fp-late' } });
+  });
+
+  it('holds the catalog, scan and processing resources of every affected root and path while it runs', async () => {
+    const setup = deps();
+    const folder = videoFolder('11111111-1111-4111-8111-111111111111', '/library/videos');
+    setup.fs.addDirectory(folder.currentPath);
+    await setup.globalCatalog.upsertFolder(folder);
+    await seedVideo(setup, folder, 'fp-video', 'clip.mp4');
+    const refusals: Array<{ kind: string; refused: boolean }> = [];
+    const moveToTrash = setup.trash.moveToTrash.bind(setup.trash);
+    setup.trash.moveToTrash = async (targetPath) => {
+      for (const [kind, resourceKey] of [
+        ['process', '/library/videos/clip.mp4'],
+        ['process_drive', '/library/videos'],
+        ['photo_scan', 'photo-scan:/library/videos'],
+        ['photo_process', 'photo-process:/library/videos'],
+      ] as const) {
+        const enqueued = await setup.jobs.enqueue({ kind, payload: {}, resourceKey, run: () => Promise.resolve(ok(null)) });
+        refusals.push({ kind, refused: !enqueued.ok && enqueued.error.code === 'conflict' });
+      }
+      return moveToTrash(targetPath);
+    };
+
+    const result = await runLibraryTrash(setup, { scope: { kind: 'fingerprints', fingerprints: ['fp-video'] } });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(refusals).toEqual([
+      { kind: 'process', refused: true },
+      { kind: 'process_drive', refused: true },
+      { kind: 'photo_scan', refused: true },
+      { kind: 'photo_process', refused: true },
+    ]);
+  });
+
+  it('reports offline roots distinctly from read-only roots', async () => {
+    const setup = deps();
+    await setup.globalCatalog.upsertFolder(videoFolder('11111111-1111-4111-8111-111111111111', '/library/offline'));
+    await setup.globalCatalog.upsertFile(videoFile('fp-offline', '11111111-1111-4111-8111-111111111111', 'offline.mp4'));
+
+    const result = await libraryTrash(setup, {
+      scope: { kind: 'fingerprints', fingerprints: ['fp-offline'] },
+      confirm: true,
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'target_offline' } });
+    expect(setup.trash.moved).toEqual([]);
+  });
+
+  it('keeps same-stem projected artifacts while another video in the folder still owns them', async () => {
+    const setup = deps();
+    const folder = videoFolder('11111111-1111-4111-8111-111111111111', '/library/videos');
+    setup.fs.addDirectory(folder.currentPath);
+    await setup.globalCatalog.upsertFolder(folder);
+    await seedVideo(setup, folder, 'fp-a', 'nested/clip.mp4');
+    await seedVideo(setup, folder, 'fp-b', 'nested/clip.mov');
+    setup.fs.addFile('/library/videos/.ai-video-cataloger/thumbnails/clip.jpg', { content: 'thumbnail' });
+    setup.fs.addFile('/library/videos/frames/clip/frame-001.jpg', { content: 'frame' });
+
+    const result = await runLibraryTrash(setup, {
+      scope: { kind: 'fingerprints', fingerprints: ['fp-a'] },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(await setup.fs.exists('/library/videos/.ai-video-cataloger/thumbnails/clip.jpg')).toMatchObject({ ok: true, value: true });
+    expect(await setup.fs.exists('/library/videos/frames/clip/frame-001.jpg')).toMatchObject({ ok: true, value: true });
+  });
+
+  it('deletes video artifacts from writable and read-only roots', async () => {
+    const setup = deps();
+    const folder = videoFolder('11111111-1111-4111-8111-111111111111', '/library/videos');
+    setup.fs.addDirectory(folder.currentPath);
+    await setup.globalCatalog.upsertFolder(folder);
+    await seedVideo(setup, folder, 'fp-video', 'clip.mp4');
+    const sidecarArtifact = '/library/videos/.ai-video-cataloger/artifacts/frames/fp-video/frame.jpg';
+    const mirroredArtifact = setup.fs.join(
+      setup.fs.homeDirectory(),
+      '.ai-video-cataloger',
+      'read-only-folders',
+      folder.folderId,
+      'artifacts',
+      'frames',
+      'fp-video',
+      'frame.jpg',
+    );
+    setup.fs.addFile(sidecarArtifact, { content: 'frame' });
+    setup.fs.addFile(mirroredArtifact, { content: 'frame' });
+
+    const result = await runLibraryTrash(setup, {
+      scope: { kind: 'fingerprints', fingerprints: ['fp-video'] },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(await setup.fs.exists(sidecarArtifact)).toMatchObject({ ok: true, value: false });
+    expect(await setup.fs.exists(mirroredArtifact)).toMatchObject({ ok: true, value: false });
   });
 
   it('leaves forgetEntry as a no-op for photo fingerprints while photo trash deletes photo face observations and photo rows', async () => {

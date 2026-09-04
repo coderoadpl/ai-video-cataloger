@@ -141,6 +141,9 @@ describe('route schemas', () => {
       total: 1,
       videoCount: 1,
       photoCount: 0,
+      hiddenCount: 0,
+      visibleCount: 1,
+      sharedWithOtherPeople: 0,
       roots: [{ folderId: 'path-aaaaaaaa', displayName: 'root', currentPath: '/library', fileCount: 1, writable: true, online: true }],
       artifactPaths: [],
     }).kind).toBe('plan');

@@ -22,7 +22,7 @@ describe('TrashConfirmationDialog', () => {
     renderWithProviders(
       <TrashConfirmationDialog
         open
-        counts={{ total: 3, videoCount: 2, photoCount: 1 }}
+        counts={{ total: 3, videoCount: 2, photoCount: 1, hiddenCount: 1 }}
         roots={[writableRoot]}
         loading={false}
         error={null}
@@ -35,6 +35,7 @@ describe('TrashConfirmationDialog', () => {
     );
 
     expect(screen.getByTestId('library-trash-count').textContent).toContain('3 files');
+    expect(screen.getByTestId('library-trash-hidden-count').textContent).toContain('Including 1 hidden file');
     expect(screen.getByTestId('library-trash-root').textContent).toContain('Sample root');
     expect(screen.getByTestId('library-trash-root').textContent).toContain('/fixtures/root');
   });
@@ -80,6 +81,27 @@ describe('TrashConfirmationDialog', () => {
     );
 
     expect(screen.getByTestId('library-trash-read-only').textContent).toContain('Sample root');
+    expect(screen.queryByTestId('library-trash-confirm')).toBeNull();
+  });
+
+  it('replaces the confirm button with an offline-root refusal', () => {
+    server.use(http.get('/api/config', () => HttpResponse.json(configResponse('en'))));
+    renderWithProviders(
+      <TrashConfirmationDialog
+        open
+        counts={{ total: 1, videoCount: 1, photoCount: 0 }}
+        roots={[{ ...writableRoot, online: false }]}
+        loading={false}
+        error={null}
+        checked={false}
+        confirming={false}
+        onCheckedChange={vi.fn()}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('library-trash-offline').textContent).toContain('Sample root');
     expect(screen.queryByTestId('library-trash-confirm')).toBeNull();
   });
 });

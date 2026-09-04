@@ -175,6 +175,14 @@ export const resolveGoogleOAuthClientId = (
   env: { AVC_GOOGLE_OAUTH_CLIENT_ID?: string | undefined } = process.env,
 ): string => config.googleOAuthClientId ?? env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '';
 
+export const resolveGoogleOAuthClientSecret = (
+  config: Pick<AppConfig, 'googleOAuthClientSecret'>,
+  env: { AVC_GOOGLE_OAUTH_CLIENT_SECRET?: string | undefined } = process.env,
+): string => config.googleOAuthClientSecret ?? env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '';
+
+export const googleOAuthAvailable = (clientId: string, clientSecret: string): boolean =>
+  clientId.trim().length > 0 && clientSecret.trim().length > 0;
+
 export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemoryDepsFactory): AppDeps => {
   const dbDriver = config.dbDriver ?? dbDriverFromEnv(process.env.DB_DRIVER);
   const workingDirectory = config.workingDirectory ?? process.cwd();
@@ -238,11 +246,12 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
   const trash = config.moveToTrash === undefined ? new FinderTrashPort() : { moveToTrash: config.moveToTrash };
   const backupSecrets = backupSecretsStore(secrets, resolvedHomeDirectory);
   const oauthClientId = resolveGoogleOAuthClientId(config);
+  const oauthClientSecret = resolveGoogleOAuthClientSecret(config);
   const backupDestination = () => createGoogleBackupDestination({
     config: configStore,
     secrets: backupSecrets,
     oauthClientId,
-    oauthClientSecret: config.googleOAuthClientSecret ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '',
+    oauthClientSecret,
     openExternal: config.openExternal ?? (() => Promise.reject(new Error('System browser integration is unavailable'))),
     driveBaseUrl: process.env.AVC_GOOGLE_DRIVE_BASE_URL,
     uploadBaseUrl: process.env.AVC_GOOGLE_UPLOAD_BASE_URL,
@@ -257,7 +266,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     secrets: backupSecrets,
     jobs,
     destination: backupDestination,
-    googleOAuthAvailable: oauthClientId.length > 0,
+    googleOAuthAvailable: googleOAuthAvailable(oauthClientId, oauthClientSecret),
     fileSave: { save: config.saveFile ?? (() => Promise.resolve(unavailableSaveDialog())) },
   });
   return {

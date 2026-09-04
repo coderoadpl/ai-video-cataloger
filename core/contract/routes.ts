@@ -2049,6 +2049,9 @@ export const libraryTrashPlanSchema = z.object({
   total: nonNegativeIntegerSchema,
   videoCount: nonNegativeIntegerSchema,
   photoCount: nonNegativeIntegerSchema,
+  hiddenCount: nonNegativeIntegerSchema,
+  visibleCount: nonNegativeIntegerSchema,
+  sharedWithOtherPeople: nonNegativeIntegerSchema,
   roots: z.array(librarySelectionRootSchema),
   artifactPaths: z.array(z.string()),
 }).strict();
@@ -2289,6 +2292,7 @@ export const facePersonSchema = z.object({
     video: z.number().int().nonnegative(),
     photo: z.number().int().nonnegative(),
   }).strict(),
+  fallbackIndex: z.number().int().nonnegative().default(0),
   exemplarCropPath: z.string().min(1).nullable(),
   exemplarCropPaths: z.array(z.string().min(1)),
 });

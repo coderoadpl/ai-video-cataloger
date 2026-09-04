@@ -238,6 +238,10 @@ describe('backup run pipeline', () => {
       ok: false,
       error: { code: 'conflict' },
     });
+    expect(await jobs.enqueue({ kind: 'library_trash', payload: {}, run: () => Promise.resolve(ok({})) })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
     uploadGate.resolve();
     await waitForJob(jobs, backup.value.jobId, (record) => record.status === 'completed');
   }, scaledTimeout(30_000));

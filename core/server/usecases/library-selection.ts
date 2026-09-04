@@ -73,15 +73,22 @@ export const librarySelectionPreview = async (
 ): Promise<Result<LibrarySelectionPreviewOutput, AppError>> => {
   const entries = await resolveLibrarySelection(deps, input.scope);
   if (!entries.ok) return entries;
-  const roots = await previewRoots(deps, entries.value);
+  return librarySelectionPreviewForEntries(deps, entries.value);
+};
+
+export const librarySelectionPreviewForEntries = async (
+  deps: LibrarySelectionDeps,
+  entries: readonly LibrarySelectionEntry[],
+): Promise<Result<LibrarySelectionPreviewOutput, AppError>> => {
+  const roots = await previewRoots(deps, entries);
   if (!roots.ok) return roots;
   return ok({
-    total: entries.value.length,
-    videoCount: entries.value.filter((entry) => entry.media === 'video').length,
-    photoCount: entries.value.filter((entry) => entry.media === 'photo').length,
-    hiddenCount: entries.value.filter((entry) => entry.hiddenAt !== null).length,
-    visibleCount: entries.value.filter((entry) => entry.hiddenAt === null).length,
-    sharedWithOtherPeople: entries.value.filter((entry) => entry.sharedWithOtherPeople).length,
+    total: entries.length,
+    videoCount: entries.filter((entry) => entry.media === 'video').length,
+    photoCount: entries.filter((entry) => entry.media === 'photo').length,
+    hiddenCount: entries.filter((entry) => entry.hiddenAt !== null).length,
+    visibleCount: entries.filter((entry) => entry.hiddenAt === null).length,
+    sharedWithOtherPeople: entries.filter((entry) => entry.sharedWithOtherPeople).length,
     roots: roots.value,
   });
 };
@@ -254,7 +261,7 @@ const previewRoots = async (
       }
       const online = await deps.fs.exists(sighting.rootPath);
       if (!online.ok) return online;
-      const writable = await deps.fs.isWritable(sighting.rootPath);
+      const writable = online.value ? await deps.fs.isWritable(sighting.rootPath) : ok(false);
       if (!writable.ok) return writable;
       rootMap.set(key, {
         folderId: sighting.folderId,
