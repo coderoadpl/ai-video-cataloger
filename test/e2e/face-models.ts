@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
 import { fileArtifactPath, HuggingFaceWhisperModelDownloader } from '../../adapters/whisper/index.js';
+import { scratchDirectory } from './helpers.js';
 import {
   appError,
   FILE_ARTIFACTS,
@@ -73,10 +73,7 @@ export const e2eFaceModelsCacheDirectory = (environment: NodeJS.ProcessEnv = pro
   if (!parsed.success) {
     return { ok: false, error: appError('validation', 'Invalid e2e face model scratch environment', parsed.error.flatten()) };
   }
-  return ok(join(
-    parsed.data.AVC_SCRATCH_DIR ?? join(homedir(), '.ai-video-cataloger-scratch'),
-    'face-models',
-  ));
+  return ok(join(scratchDirectory(parsed.data), 'face-models'));
 };
 
 export const ensureE2eFaceModels = async (
