@@ -114,6 +114,9 @@ specs testing the CLI surface itself are exempt. Reference:
   work batch and before a release; never add it to a normal gate. It must be
   run from a normal (unsandboxed) shell — `hdiutil create` fails with `Device
   not configured` under an agent Bash sandbox.
+- `pnpm run test:e2e:prerelease` = sequential mandatory pre-DMG e2e set
+  covering every on-demand e2e script except `test:e2e:matrix`; outside
+  `check`, `smoke`, and package build commands.
 - `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.

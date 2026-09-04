@@ -1,15 +1,15 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir, userInfo } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import initSqlJs from 'sql.js';
 import { z } from 'zod';
 
 import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/index.js';
-import { fileArtifactPath } from '../../adapters/whisper/index.js';
-import { derivedFolderId, FILE_ARTIFACTS, type AppError, type Result } from '../../core/domain/index.js';
+import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
-import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { ensureE2eFaceModels } from './face-models.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -87,16 +87,7 @@ const seedCatalog = async (workdir: string): Promise<SeededLibrary> => {
   writeFileSync(videoPath, Buffer.from([2]));
   writeFileSync(photoPath, REAL_JPEG_RED_LARGE);
 
-  for (const artifact of Object.values(FILE_ARTIFACTS)) {
-    const targetPath = fileArtifactPath(homeDirectory, artifact);
-    const realPath = fileArtifactPath(userInfo().homedir, artifact);
-    mkdirSync(dirname(targetPath), { recursive: true });
-    if (existsSync(realPath)) {
-      copyFileSync(realPath, targetPath);
-    } else {
-      writeArtifact(targetPath);
-    }
-  }
+  expectResult(await ensureE2eFaceModels({ homeDirectory }));
 
   const videoSidecarFrame = join(folderPath, '.ai-video-cataloger', 'artifacts', 'frames', videoSoloFingerprint, 'frame.jpg');
   const videoLooseFrame = join(folderPath, 'frames', 'solo-person', 'frame-001.jpg');
@@ -290,11 +281,7 @@ async function launch(workdir: string): Promise<Session> {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
-  const wizard = page.getByTestId('setup-wizard');
-  if (await wizard.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await page.getByTestId('wizard-configure-later').click();
-    await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
-  }
+  await dismissSetupWizard(page);
 
   return { app, page };
 }

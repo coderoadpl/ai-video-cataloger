@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { HuggingFaceWhisperModelDownloader } from '../../adapters/whisper/index.js';
 import { FILE_ARTIFACTS } from '../../core/domain/index.js';
-import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -31,11 +31,7 @@ async function launch(workdir: string): Promise<Session> {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
-  const wizard = page.getByTestId('setup-wizard');
-  if (await wizard.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await page.getByTestId('wizard-configure-later').click();
-    await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
-  }
+  await dismissSetupWizard(page);
 
   return { app, page };
 }
@@ -88,9 +84,6 @@ test.describe('People: enable faces, index, and rename a real grouping', () => {
       await photosToggle.click();
       await expect(photosToggle).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-      const scanButton = session.page.getByTestId('photos-scan-action');
-      await expect(scanButton).toBeVisible({ timeout: 20_000 });
-      await scanButton.click();
       await expect(session.page.getByTestId('photos-sidebar-unscanned')).toBeHidden({ timeout: 120_000 });
 
       await session.page.getByTestId('open-settings-button').click();

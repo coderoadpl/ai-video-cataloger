@@ -74,9 +74,11 @@ node dist/cli/index.js status
 
 During development:
 
+With pnpm 10, omit `--`: pnpm forwards it literally to commander, which rejects it.
+
 ```bash
-pnpm run cli -- doctor
-pnpm run cli -- process ./clip.mp4 --json
+pnpm run cli doctor
+pnpm run cli process ./clip.mp4 --json
 ```
 
 Core commands:
