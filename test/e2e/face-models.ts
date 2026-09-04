@@ -69,7 +69,7 @@ const nodeErrorSchema = z.object({
 }).passthrough();
 
 export const e2eFaceModelsCacheDirectory = (environment: NodeJS.ProcessEnv = process.env): Result<string, AppError> => {
-  const parsed = scratchEnvironmentSchema.safeParse(environment);
+  const parsed = scratchEnvironmentSchema.safeParse({ ...environment });
   if (!parsed.success) {
     return { ok: false, error: appError('validation', 'Invalid e2e face model scratch environment', parsed.error.flatten()) };
   }

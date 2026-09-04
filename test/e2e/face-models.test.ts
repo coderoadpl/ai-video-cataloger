@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 import { fileArtifactPath } from '../../adapters/whisper/index.js';
 import { appError, ok, type AppError, type FileArtifact, type FileArtifactId, type Result } from '../../core/domain/index.js';
-import { ensureE2eFaceModels, type FaceModelDownloader, type FaceModelsFs } from './face-models.js';
+import { e2eFaceModelsCacheDirectory, ensureE2eFaceModels, type FaceModelDownloader, type FaceModelsFs } from './face-models.js';
+import { scratchDirectory } from './helpers.js';
 
 class MemoryFaceModelsFs implements FaceModelsFs {
   readonly files = new Map<string, Buffer>();
@@ -118,6 +119,13 @@ const expectInstalled = async (fs: MemoryFaceModelsFs, artifact: FileArtifact, c
 };
 
 describe('e2e face model fixture cache', () => {
+  it('resolves the cache directory from the live process environment', () => {
+    const result = e2eFaceModelsCacheDirectory(process.env);
+
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toBe(join(scratchDirectory(process.env), 'face-models'));
+  });
+
   it('copies from a verified cache without downloading', async () => {
     const fs = new MemoryFaceModelsFs();
     const downloader = new FakeFaceModelDownloader(cacheHome, fs, payloads);
