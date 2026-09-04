@@ -7,7 +7,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, makeWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, makeWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { SAMPLES } from './samples.js';
 
 interface Session {
@@ -243,11 +243,7 @@ async function launch(workdir: string): Promise<Session> {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
-  const wizard = page.getByTestId('setup-wizard');
-  if (await wizard.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await page.getByTestId('wizard-configure-later').click();
-    await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
-  }
+  await dismissSetupWizard(page);
 
   return { app, page };
 }

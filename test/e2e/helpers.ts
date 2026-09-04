@@ -1,4 +1,4 @@
-import type { ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -378,6 +378,17 @@ export async function stubOpenDialog(app: ElectronApplication, folderPath: strin
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, folderPath);
+}
+
+export async function dismissSetupWizard(page: Page): Promise<void> {
+  const wizard = page.getByTestId('setup-wizard');
+  try {
+    await wizard.waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    return;
+  }
+  await page.getByTestId('wizard-configure-later').click();
+  await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
 }
 
 export function makeEmptyWorkdir(tag: string): string {
