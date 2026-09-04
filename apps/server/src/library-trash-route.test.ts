@@ -31,6 +31,72 @@ const waitForCompletedJob = async (
 };
 
 describe('POST /api/library/trash', () => {
+  it('returns a trash plan for dry-run requests through the app contract', async () => {
+    const deps = createInMemoryDeps({
+      version: '4.5.6',
+      workingDirectory: '/media/videos',
+      files: ['clip.mp4'],
+    });
+    const app = createApp(
+      { dbDriver: 'memory', workingDirectory: '/media/videos', homeDirectory: '/media/home', processName: 'gui' },
+      () => deps,
+    );
+    await deps.globalCatalog.upsertFolder({
+      folderId: '11111111-1111-4111-8111-111111111111',
+      currentPath: '/media/videos',
+      displayName: 'videos',
+      firstSeenAt: now,
+      lastSeenAt: now,
+    });
+    await deps.globalCatalog.upsertFile({
+      fingerprint: 'fp-trash-dry-run',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      fileName: 'clip.mp4',
+      size: 1024,
+      durationS: null,
+      width: null,
+      height: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: now,
+      analyzer: null,
+      model: null,
+      missingAt: null,
+      hiddenAt: null,
+      capturedAt: now,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
+    });
+
+    try {
+      const trashResponse = await app.honoApp.request(API_ROUTES.libraryTrash.path, {
+        method: API_ROUTES.libraryTrash.method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'fingerprints', fingerprints: ['fp-trash-dry-run'] },
+          confirm: true,
+          dryRun: true,
+        }),
+      });
+      expect(trashResponse.status).toBe(200);
+      const plan = API_ROUTES.libraryTrash.output.parse(await responsePayload(trashResponse));
+      expect(plan).toMatchObject({
+        kind: 'plan',
+        total: 1,
+        hiddenCount: 0,
+        visibleCount: 1,
+        sharedWithOtherPeople: 0,
+        artifactPaths: expect.any(Array),
+      });
+    } finally {
+      await app.dispose();
+    }
+  }, scaledTimeout(30_000));
+
   it('moves selected files through the configured TrashPort and removes them from search and collection', async () => {
     const trashedPaths: string[] = [];
     const deps = createInMemoryDeps({

@@ -389,7 +389,7 @@ test.describe('Library hide and trash', () => {
       await expect(personCard).toBeVisible({ timeout: 30_000 });
       await personCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
       await session.page.getByTestId('people-trash-files').click();
-      await expect(session.page.getByTestId('library-trash-person-summary')).toContainText(/2 files, including 0|2 pliki, z czego 0/, { timeout: 20_000 });
+      await expect(session.page.getByTestId('library-trash-person-summary')).toContainText(/3 files, including 1|3 pliki, w tym 1/, { timeout: 20_000 });
       await expect(session.page.getByTestId('people-library-skip-shared').locator('input[type="checkbox"]')).toBeChecked();
       await session.page.keyboard.press('Escape');
 

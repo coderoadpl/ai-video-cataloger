@@ -25,9 +25,12 @@ is erased: the catalog row, every analysis variant, tags, face observations
 (a person left with zero observations is deleted and the remaining people's
 centroids and exemplars are refreshed), GPS and place, thumbnails, proxies,
 photo artifacts, the per-folder sidecar artifacts and the folder's snapshot
-entry. It is **all-or-nothing per folder root**: the writability of every
-affected root is checked *before* the first file moves, and a read-only root
-refuses the whole operation with a clear message and zero changes.
+entry. It is **all-or-nothing before the batch starts**: the existence and
+writability of every affected root is checked *before* the first file moves,
+and an offline or read-only root refuses the whole operation with a clear
+message and zero changes. If the macOS Trash later refuses an individual file,
+the failed file keeps its records and artifacts, remaining files are not
+attempted, and the caller receives a failed job with partial counts.
 
 Both actions are driven from a real multi-select in Kolekcja (Cmd-click,
 Shift-click, "Zaznacz wszystko" over the whole current filter result, an
@@ -69,16 +72,17 @@ artifact root) and
    Electron composition, an equivalent Finder-backed move in the CLI, **never**
    `rm`. Every record disappears (see FR-40). All-or-nothing per folder root;
    writability of every affected root is checked **before** the first move; a
-   read-only root fails closed with a clear message and zero changes, reusing
-   the read-only detection the app already has. A strong confirmation states
-   the count and the roots and is gated by a checkbox.
+   offline or read-only root fails closed with a clear message and zero
+   changes, reusing the root probing the app already has. A strong
+   confirmation states the count and the roots and is gated by a checkbox.
 4. **Selection in Kolekcja:** Cmd-click / Shift-click; "Zaznacz wszystko"
    selects the **whole current filter result** (a server-side scope, not only
    the loaded tiles); an action bar shows the count and the two actions.
 5. **Person shortcuts:** a person card's ⋮ menu gets "Ukryj pliki tej osoby"
-   and "Przenieś do Kosza pliki tej osoby". The dialog states "N plików, z
-   czego M zawiera także inne rozpoznane osoby" and offers "pomiń pliki z
-   innymi osobami" — default **on** for trash, **off** for hide.
+   and "Przenieś do Kosza pliki tej osoby". The dialog states "N plików, w
+   tym M z innymi osobami" when shared files exist, omits that clause when
+   none exist, and offers "pomiń pliki z innymi osobami" — default **on** for
+   trash, **off** for hide.
 6. **CLI parity is mandatory:** `library hide`, `library unhide`,
    `library trash`, each accepting a fingerprint list, a filter or a person,
    with NDJSON events and taxonomy exit codes; `--dry-run` for trash.
@@ -92,16 +96,17 @@ artifact root) and
 - **G-2** A user deletes a file and everything the app derived from it in one
   confirmed action, and finds the file in the macOS Trash afterwards.
 - **G-3** A bulk trash over a catalog that spans external drives either
-  completes entirely or changes nothing — never a partial state the user has
-  to audit.
+  completes, refuses before moving anything, or fails loudly with exact partial
+  counts while leaving the failed and not-attempted entries intact.
 - **G-4** Hiding never fails because a folder is read-only, an SD card is
   write-protected, or a drive is unplugged.
 - **G-5** Selecting "Zaznacz wszystko" acts on the whole filter result at
   catalog scale, without the renderer fetching every page.
 - **G-6** Everything the GUI can do, the CLI can do, with NDJSON events and
   taxonomy exit codes.
-- **G-7** The feature adds no new error kind, HTTP status or exit code, and no
-  new database file or on-disk directory.
+- **G-7** The feature stays inside the closed taxonomy: any new error kind has
+  explicit HTTP and CLI mappings, and no new database file or on-disk directory
+  is introduced.
 - **G-8** A rescan (folder watcher, `scan`, `index rebuild`, `photos scan`)
   never resurrects a trashed file and never un-hides a hidden one.
 
@@ -251,8 +256,8 @@ weight, and US-A3's resolver needs the predicate the moment it resolves a
       exactly the visible set, exactly the hidden set and both, from
       `GlobalCatalogStore.search` in **each** of its two branches and from
       `PhotosStore.collectionPage` and `PhotosStore.searchPhotos`.
-- [ ] No new `ErrorCode`; `core/domain/domain-model.test.ts` stays green
-      unchanged.
+- [ ] The hidden-column migration story introduces no `ErrorCode`;
+      `core/domain/domain-model.test.ts` stays green unchanged.
 - [ ] Changelog: none (no user-visible behaviour yet: no route, no command and
       no surface reaches the new column, whose default predicate is
       `'exclude'` over a table in which nothing is hidden).
@@ -340,9 +345,10 @@ the GUI, the CLI, hide and trash all agree about what "the selection" is.
       that person. `skipSharedWithOtherPeople: true` drops every file that also
       carries an observation whose `person_id` is **non-null and different**
       from the scoped person; an unassigned observation (`person_id IS NULL`)
-      is not "another recognized person" and never causes a skip. The same
-      predicate defines the preview's `sharedWithOtherPeople` count and the
-      dialogs' "z czego M zawiera także inne rozpoznane osoby".
+      is not "another recognized person" and never causes a skip. The preview
+      computes `sharedWithOtherPeople` before that skip is applied, so the
+      dialog can state the total files, the shared files that will be skipped
+      by default for trash, and the files that will actually move.
 - [ ] `librarySelectionPreviewInputSchema`, `libraryHideInputSchema` and
       `libraryUnhideInputSchema` are each exactly
       `z.object({ scope: librarySelectionScopeSchema })`;
@@ -599,26 +605,29 @@ nothing at all.
 - [ ] **Pre-flight** resolves the scope, derives the affected roots as the
       union over **every sighting of every resolved entry** (US-A3) — the
       sighting's owning folder root **and** the parent directory of its file —
-      probes each with `FileSystemPort.isWritable`, and returns
-      `target_read_only` (409 / exit 46) naming the offending roots in
-      `details` when any fails — with zero writes, zero moves and zero row
-      changes.
+      probes each for existence and writability, and returns `target_offline`
+      (409 / exit 58) or `target_read_only` (409 / exit 46) naming the
+      offending roots in `details` when any fails — with zero writes, zero
+      moves and zero row changes.
 - [ ] The job body re-runs the same probe before the first move and aborts the
       whole run if the answer changed (a drive unmounted between confirm and
       start).
-- [ ] Per resolved fingerprint, in order: the database records of FR-40 inside
-      one transaction per store, then the artifact deletions of FR-41, then
-      `TrashPort.moveToTrash` once per **sighting** path (FR-44). A failure at
-      any step stops the run at that fingerprint and reports what has already
-      been processed; it never continues to the next one.
-- [ ] `catalog.ndjson` is re-exported for every affected writable folder on
-      **every** exit path — a clean batch, a batch that stopped on file 4 of 10,
-      and a cancelled batch — in a `finally`-shaped step, not only on success.
-      The already-processed files have had their rows deleted, so a snapshot
-      left un-rewritten keeps the `index forget` → `index rebuild` resurrection
-      path open for exactly the files the run *did* delete. RED test: cancel
-      after file 2 of 5, then assert the re-exported snapshot no longer names
-      the two trashed fingerprints and still names the other three.
+- [ ] Per resolved fingerprint, in order: `TrashPort.moveToTrash` once per
+      **sighting** path (FR-44); if every move succeeds, delete the database
+      records of FR-40 inside one transaction per store; flush `catalog.db` and
+      `photos.db`; then delete the artifacts of FR-41. A Trash failure stops at
+      that fingerprint, leaves its rows and artifacts intact, reports the
+      original `AppError` inside a `library_trash_incomplete` summary, and
+      never continues to the next one.
+- [ ] `catalog.ndjson` is re-exported for every affected writable folder whose
+      rows changed on **every** exit path — a clean batch, a batch that stopped
+      after earlier successes, and a cancelled batch — in a `finally`-shaped
+      step, not only on success. The already-processed files have had their
+      rows deleted, so a snapshot left un-rewritten keeps the `index forget` →
+      `index rebuild` resurrection path open for exactly the files the run
+      *did* delete. RED test: cancel after file 2 of 5, then assert the
+      re-exported snapshot no longer names the two trashed fingerprints and
+      still names the other three.
 - [ ] Record removal reuses the existing ports rather than hand-written SQL,
       and the two media use **different** calls, because the existing methods
       already differ:
@@ -648,15 +657,17 @@ nothing at all.
       observations is deleted, the rest get refreshed centroids and
       `exemplar_count`.
 - [ ] `--dry-run` / `dryRun: true` performs the resolution, the root
-      derivation and the writability probe, returns the plan described by
-      `libraryTrashPlanSchema` (US-A9) — counts, roots with their writability,
-      and the artifact paths that would be removed — writes nothing and never
-      enqueues a job. Asserted with an FS fake that fails every write and a
-      `TrashPort` fake that fails every call.
+      derivation and the root probe, returns the plan described by
+      `libraryTrashPlanSchema` (US-A9) — counts, hidden/visible/shared splits,
+      roots with their online/writable state, and the artifact paths that would
+      be removed — writes nothing and never enqueues a job. Asserted with an FS
+      fake that fails every write and a `TrashPort` fake that fails every call.
 - [ ] RED tests, one per checklist item in ADR-0020 D7, plus: an all-or-nothing
       test where root 2 of 3 is read-only and the assertion is that root 1's
       files are still on disk and still in the catalog; a test that a
-      `trashItem` failure on file 4 of 10 leaves files 5–10 untouched.
+      `trashItem` failure on file 4 of 10 leaves file 4's records intact and
+      files 5–10 untouched; a flush-order test proving both stores flush after
+      record deletion and before artifact deletion.
 - [ ] Changelog: none (the surface lands in US-A9).
 
 ---
@@ -669,7 +680,9 @@ observable job like every other long operation in this app.
 **Acceptance Criteria:**
 - [ ] `JobKind` gains `'library_trash'` (in `core/server/ports.ts` **and**
       `core/contract/routes.ts`'s job-kind enum); `resourceKey` is the literal
-      `'library-trash'`, so two trash runs never interleave.
+      `'library-trash'`, so two trash runs never interleave, and the run also
+      holds `catalog-write` plus `photo-scan:<root>` resources while mutating
+      records.
 - [ ] `jobProgressStepSchema` gains `library-trash-preflight`,
       `library-trash-file`, `library-trash-artifacts`,
       `library-trash-summary`.
@@ -681,7 +694,8 @@ observable job like every other long operation in this app.
       `docs/architecture-photos.md` §7).
 - [ ] The summary reports `filesTrashed`, `videosTrashed`, `photosTrashed`,
       `analysesDeleted`, `observationsDeleted`, `peopleDeleted`,
-      `artifactPathsDeleted`, `snapshotsRewritten`, `roots`.
+      `artifactPathsDeleted`, `snapshotsRewritten`, `filesFailed`,
+      `filesNotAttempted`, `roots`.
 - [ ] The run is cancellable through the existing `JobsPort.cancel`; the abort
       check sits between files, never mid-file.
 - [ ] RED tests: job-kind exhaustiveness; the union round-trip; a cancelled
@@ -707,7 +721,8 @@ preview it first, and to be refused without an explicit confirmation.
       ```
       libraryTrashPlanSchema = z.object({
         kind: z.literal('plan'),
-        total, videoCount, photoCount,
+        total, videoCount, photoCount, hiddenCount, visibleCount,
+        sharedWithOtherPeople,
         roots: z.array(z.object({
           folderId, displayName, currentPath, fileCount, writable, online,
         })),
@@ -724,20 +739,22 @@ preview it first, and to be refused without an explicit confirmation.
       member, whose `jobId` is the same value `jobAcceptedOutputSchema` would
       have carried. A zod test asserts each member parses its own sample and
       rejects the other's.
-- [ ] The route runs the pre-flight synchronously and returns
-      `target_read_only` before any job is enqueued; only a clean pre-flight
+- [ ] The route runs the pre-flight synchronously and returns `target_offline`
+      or `target_read_only` before any job is enqueued; only a clean pre-flight
       yields the `job` member.
 - [ ] `avc library trash` accepts the same three scope forms as
       `library hide`, plus `--dry-run` and `--yes`. Without `--yes` and
       without `--dry-run` it calls the route with `confirm: false,
       dryRun: true`, prints the returned plan — the count, the roots and their
       writability — and then exits with `confirmation_required` (18) without
-      changing anything. `--dry-run` prints the same plan and exits 0.
+      changing anything. `--dry-run`, including `--dry-run --yes`, prints the
+      same plan and exits 0 without moving files.
 - [ ] `--json` emits NDJSON with command name `library_trash`, the job's
       progress events, and the summary; human mode prints the plan and then a
       one-line summary.
-- [ ] Exit codes: success 0; missing confirmation 18; read-only root 46;
-      empty/ambiguous scope 2; unknown person 5; no trash mechanism 8.
+- [ ] Exit codes: success 0; empty/ambiguous scope 2; unknown person or
+      fingerprint 5; no trash mechanism 8; missing confirmation 18; read-only
+      root 46; offline root 58; incomplete trash run 59.
 - [ ] Smoke leg covers only the paths that change nothing.
       `scripts/smoke.ts` spawns the real CLI as a child process, so no fake
       `TrashPort` can be injected into it and a real `--yes` run there would
@@ -789,13 +806,13 @@ file to stay hidden, no matter how many times the folder watcher fires.
 - [ ] Holding the watcher is necessary but not sufficient. The debounced photo
       scan takes `resourceKey: 'photo-scan:<root>'`
       (`core/server/usecases/photos.ts`), which does **not** collide with the
-      trash job's `'library-trash'`, so a photo scan could start while the batch
-      is between files and re-insert a `photos` row for a file whose records are
-      already deleted but whose bytes are still on disk — an orphaned "Brak
-      pliku" row, which is resurrection under another name. Before its first
-      move the trash job therefore acquires `photo-scan:<root>` for **every**
-      affected root through `JobsPort.acquireResource(key, signal)` and holds
-      the returned releases until the batch ends.
+      trash job's `'library-trash'`, and backup/restore use their own admission
+      checks. Before its first move the trash job therefore acquires
+      `catalog-write` and `photo-scan:<root>` for **every** affected root
+      through `JobsPort.acquireResource(key, signal)` and holds the returned
+      releases until the batch ends. Backup, restore, video processing and
+      photo processing also treat `library_trash` as a conflicting catalog
+      writer, so none can replace or rewrite the stores mid-run.
 - [ ] The key is built the same way `enqueuePhotoScan` builds it
       (`core/server/usecases/photos.ts`): `photo-scan:${deps.fs.resolve(root)}`,
       from the **resolved** root. Passing the raw root through would produce a
@@ -949,16 +966,19 @@ before it does it, and to have to say so explicitly.
 - [ ] The destructive button is disabled until an explicit checkbox is
       ticked; the dialog follows the existing destructive-action pattern used
       by Osoby's purge/recluster confirmations.
-- [ ] If the preview reports any root with `writable: false`, the dialog shows
-      the read-only refusal instead of the confirm button, naming the roots,
-      and the destructive button is unreachable.
+- [ ] If the preview reports any offline root, the dialog shows the offline
+      refusal instead of the confirm button; if every root is online but any
+      root has `writable: false`, it shows the read-only refusal. Both name the
+      roots and keep the destructive button unreachable.
 - [ ] Confirming calls `actions.libraryTrash` with `confirm: true`, shows the
-      job's progress through the existing job-status surface, and on
-      completion invalidates the collection, facets, locations, people and
-      photos queries and clears the selection.
-- [ ] A `target_read_only` response from the route renders the same refusal
-      copy as the preview path (the race where the drive unmounted between
-      preview and confirm).
+      job's progress through the existing job-status surface, and on success
+      invalidates the collection, facets, locations, people, photos, scan and
+      catalog-tree queries and clears the selection. On failure it still
+      invalidates visibility consumers but keeps the selection and shows the
+      incomplete counts when present.
+- [ ] A `target_offline` or `target_read_only` response from the route renders
+      the same refusal copy as the preview path (the race where the drive
+      unmounted or became read-only between preview and confirm).
 - [ ] Renderer tests for: the counts and roots in the copy, the checkbox gate,
       the read-only refusal, and the post-success invalidation. The first three
       are props-driven and belong beside the component
@@ -979,9 +999,9 @@ appears in, from that person's card.
       Kosza pliki tej osoby", below the existing rename / forget / search
       items.
 - [ ] Both open a dialog fed by `librarySelectionPreview` with a `'person'`
-      scope, stating "N plików, z czego M zawiera także inne rozpoznane
-      osoby" (Polish plurals via `plPlural`; the English string states the
-      same facts).
+      scope, stating "N plików, w tym M z innymi osobami" when `M > 0` and
+      omitting the shared clause when `M === 0` (Polish plurals via
+      `plPlural`; the English string states the same facts).
 - [ ] Both dialogs offer "pomiń pliki z innymi osobami", checked by **default
       for trash** and unchecked by **default for hide**; toggling it re-runs
       the preview so the stated count always matches what will happen.
@@ -1167,7 +1187,8 @@ driven by real clicks.
   cannot express a fingerprint sighted from several folders, which FR-44
   requires trash to handle in full; the affected-root set is the union of
   `rootPath` over every sighting, and `hiddenAt` is what the preview's
-  `hiddenCount`/`visibleCount` are computed from.
+  `hiddenCount`/`visibleCount` are computed from. Confirmed trash enqueues the
+  previewed fingerprint list rather than the original filter or person scope.
 
 ### Trash
 
@@ -1180,25 +1201,32 @@ driven by real clicks.
   remain the mechanism for the app's own artifacts (FR-41).
 - **FR-32** Before the first move, every affected root — the owning folder
   root and the parent directory of every **sighting** of every selected
-  fingerprint (FR-26) — is probed with the non-mutating
-  `FileSystemPort.isWritable`.
-- **FR-33** If any root is not writable, the operation returns
-  `target_read_only` (HTTP 409, exit 46) naming the offending roots, and zero
-  files, rows and artifacts have changed.
+  fingerprint (FR-26) — is probed for existence and then with the
+  non-mutating `FileSystemPort.isWritable`.
+- **FR-33** If any root is offline, the operation returns `target_offline`
+  (HTTP 409, exit 58). If any online root is not writable, it returns
+  `target_read_only` (HTTP 409, exit 46). Both name the offending roots, and
+  zero files, rows and artifacts have changed.
 - **FR-34** The probe runs twice: synchronously before the job envelope is
   returned, and again at the top of the job body.
-- **FR-35** A failure mid-run stops at the failing file, reports what has
-  already been processed, and leaves every remaining file untouched.
+- **FR-35** A failure mid-run stops at the failing file, returns
+  `library_trash_incomplete` (HTTP 409, exit 59) with the partial summary,
+  leaves the failed file's records and artifacts intact, and leaves every
+  remaining file untouched.
 - **FR-36** Trash requires `confirm: true` (GUI checkbox, CLI `--yes`);
   otherwise `confirmation_required` (409 / exit 18) with zero changes.
 - **FR-37** `dryRun: true` / `--dry-run` returns `libraryTrashPlanSchema` —
-  counts, roots with their writability, artifact paths — writes nothing and
-  enqueues no job. `POST /api/library/trash`'s output is therefore
-  `libraryTrashOutputSchema`, a `kind`-discriminated union of that plan and a
-  `{ kind: 'job', jobId }` member, not `jobAcceptedOutputSchema`.
+  counts, `hiddenCount`, `visibleCount`, `sharedWithOtherPeople`, roots with
+  their online/writable state, artifact paths — writes nothing and enqueues no
+  job, even when `--yes` is also present. `POST /api/library/trash`'s output is
+  therefore `libraryTrashOutputSchema`, a `kind`-discriminated union of that
+  plan and a `{ kind: 'job', jobId }` member, not `jobAcceptedOutputSchema`.
 - **FR-38** Trash runs as a `library_trash` job with the literal
   `resourceKey: 'library-trash'`, cancellable through `JobsPort.cancel`, with
-  the abort check between files.
+  the abort check between files. The job acquires `catalog-write` and
+  `photo-scan:<root>` resource claims for the duration, and backup, restore,
+  video processing and photo processing admission treat `library_trash` as a
+  conflicting catalog writer.
 - **FR-39** `libraryTrashSummarySchema` carries a required literal
   `kind: 'library_trash'` and is ordered before the absorbing members of
   `jobResultSchema`'s untagged union.
@@ -1219,7 +1247,9 @@ driven by real clicks.
   `GlobalCatalogStore.deleteFaceObservationsForFile(fingerprint)` (same
   recomputation, same `cropPaths`) followed by `PhotosStore.deletePhoto`.
   `forgetEntry` is never used on a photo fingerprint: without a `files` row it
-  returns `deleted: false` and deletes nothing.
+  returns `deleted: false` and deletes nothing. Record deletion happens only
+  after every sighting of that fingerprint has moved to the Trash, and both
+  stores are flushed before artifact deletion starts.
 - **FR-41** Artifacts erased per trashed fingerprint —
   `~/.ai-video-cataloger/faces/obs/<fingerprint>/`;
   `~/.ai-video-cataloger/photo-artifacts/proxies/<fingerprint>.jpg`,
@@ -1234,10 +1264,14 @@ driven by real clicks.
   `frames/<base>/`, `transcripts/<base>.txt`, **`transcripts/<base>.json`**,
   `summaries/<base>.json`, `summaries/<base>.txt`,
   `summaries/<base>-debug.log`. `photo-artifacts/variants/<fingerprint>/` has
-  no writer in the current code and is deleted only if present.
+  no writer in the current code and is deleted only if present. Video cleanup
+  visits the writable sidecar, known folder-id mirror, current path-derived
+  mirror and supported legacy mirror, and skips the name-based projection when
+  another file in the same folder shares the same stem.
 - **FR-42** `catalog.ndjson` is re-exported for every affected writable folder
-  on every exit path — success, mid-run failure and cancellation — so a later
-  snapshot import cannot resurrect a record the run already deleted.
+  whose rows changed on every exit path — success, mid-run failure and
+  cancellation — so a later snapshot import cannot resurrect a record the run
+  already deleted.
 - **FR-43** Not touched by trash: the shared `tags` vocabulary and its
   aliases, `drive_runs`, the spend ledger, and the non-canonical legacy
   `{folder}/.ai-video-cataloger/catalog.db`.
@@ -1264,8 +1298,9 @@ driven by real clicks.
   roots, what is erased and where the files go, and gates its destructive
   button behind an explicit checkbox.
 - **FR-57** A person card's ⋮ menu carries "Ukryj pliki tej osoby" and
-  "Przenieś do Kosza pliki tej osoby"; both dialogs state "N plików, z czego M
-  zawiera także inne rozpoznane osoby" and offer "pomiń pliki z innymi
+  "Przenieś do Kosza pliki tej osoby"; both dialogs state the total and omit
+  the shared-files clause when it is zero, or state how many files include
+  other recognized people when it is nonzero. They offer "pomiń pliki z innymi
   osobami", defaulting on for trash and off for hide, re-previewing on toggle.
 - **FR-58** Every string ships in both `pl` and `en`; Polish plurals go
   through `plPlural`; no English string is constructed inside
@@ -1292,7 +1327,7 @@ driven by real clicks.
   `library-trash-file`, `library-trash-artifacts`, `library-trash-summary`.
 - **FR-64** Exit codes: 0 success; 2 empty/ambiguous scope; 5 unknown person
   or fingerprint; 8 no trash mechanism available; 18 missing confirmation; 46
-  a read-only root.
+  a read-only root; 58 an offline root; 59 an incomplete trash run.
 - **FR-65** `avc search` gains exactly one flag: `--hidden
   <exclude|only|include>` (default `exclude`). It does **not** gain `--media`.
   `avc search` calls `GET /api/search`, whose `searchInputSchema` has no
@@ -1307,7 +1342,8 @@ driven by real clicks.
 
 ### Taxonomy and boundaries
 
-- **FR-70** No new `ErrorCode`, HTTP status or CLI exit code is introduced.
+- **FR-70** New `ErrorCode` values extend the closed union only with explicit
+  HTTP and CLI mappings and exhaustive tests.
 - **FR-71** No new database file and no new on-disk directory is introduced.
 - **FR-72** The renderer reaches the feature only through bound actions and
   registered query keys; no inline query keys, no `fetch`, no `electron`
@@ -1373,15 +1409,15 @@ driven by real clicks.
   W71 fixed for `hideUnavailable`. Both `hidden_at` columns are indexed.
 - **Two databases, one operation.** A photo's identity rows live in
   `catalog.db` while the rest of it lives in `photos.db` (ADR-0016). A photo
-  trash therefore writes to both stores; the transaction boundary is per store
-  and the catalog-side write happens first, so a failure leaves an orphaned
-  `photos` row (visible, re-deletable) rather than an orphaned observation
-  pointing at nothing.
+  trash therefore writes to both stores; the transaction boundary is per store.
+  The file moves first, then the catalog/photo rows are deleted, then both
+  stores flush before app-owned artifacts are removed.
 - **`isWritable` is the sanctioned read-only probe.** `access(W_OK)`,
-  non-mutating, already used by `materialize --dry-run`. A real read-only
-  mount is not simulable — Node reports a rejected recursive `mkdir` on one as
-  `ENOENT` — which is why the read-only leg lives in the `ro-mount` matrix
-  against a real `hdiutil` image and not in a fake.
+  non-mutating, already used by `materialize --dry-run`, but ENOENT is first
+  interpreted through an existence probe so an unplugged root or stale sighting
+  is reported as offline rather than read-only. Passing the writability probe
+  does not prove the volume supports the macOS Trash; that remains an honest
+  per-file `library_trash_incomplete` failure if `trashItem` later refuses.
 - **`resourceKey: 'library-trash'` is global, not per root.** A trash can span
   roots, so a per-root key could not serialize two overlapping runs.
 - **One trash dialog, extracted downward.** Kolekcja and Osoby show the same

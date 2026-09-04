@@ -298,6 +298,9 @@ export const invalidateLibraryVisibilityConsumers = async (
   await Promise.all([
     client.invalidateQueries({ queryKey: collectionScopes.all() }),
     client.invalidateQueries({ queryKey: searchScopes.all() }),
+    client.invalidateQueries({ queryKey: scanScopes.all() }),
+    client.invalidateQueries({ queryKey: catalogTreeScopes.all() }),
+    client.invalidateQueries({ queryKey: catalogTreeFolderScopes.all() }),
     client.invalidateQueries({ queryKey: libraryFacetsScopes.all() }),
     client.invalidateQueries({ queryKey: catalogLocationsScopes.all() }),
     client.invalidateQueries({ queryKey: facesScopes.all() }),

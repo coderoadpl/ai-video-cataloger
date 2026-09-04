@@ -97,6 +97,73 @@ describe('libraryFacets people ordering', () => {
 });
 
 describe('libraryFacets', () => {
+  it('does not count people whose only observations are hidden photos', async () => {
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const photos = new InMemoryPhotosStore();
+    const fs = new InMemoryFileSystem();
+    await globalCatalog.upsertPerson(personRecord('p-photo-hidden', null));
+    await photos.upsertFolder({
+      folderId: 'path-aaaaaaaa',
+      currentPath: '/media/photos',
+      displayName: 'photos',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+      defaultConfigId: null,
+    });
+    await photos.upsertPhoto({
+      fingerprint: 'ph-hidden',
+      folderId: 'path-aaaaaaaa',
+      fileName: 'hidden.jpg',
+      currentPath: '/media/photos/hidden.jpg',
+      ext: 'jpg',
+      size: 100,
+      width: null,
+      height: null,
+      orientation: null,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: '2026-01-01T00:00:00.000Z',
+      exifReadAt: '2026-01-01T00:00:00.000Z',
+      proxyState: 'pending',
+      proxyWidth: null,
+      proxyHeight: null,
+      thumbState: 'pending',
+      missingAt: null,
+      hiddenAt: 1760000000000,
+      selectedConfigId: null,
+    });
+    await globalCatalog.upsertFaceObservation({
+      obsId: 'o-hidden-photo', fingerprint: 'ph-hidden', kind: 'face', frameTsS: null,
+      bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
+      personId: 'p-photo-hidden', cropPath: null, media: 'photo',
+    });
+
+    const result = await libraryFacets({ globalCatalog, fs, photos });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.people).toEqual([]);
+  });
+
   it('returns empty facets and zero counts for an empty catalog', async () => {
     const globalCatalog = new InMemoryGlobalCatalogStore();
     const fs = new InMemoryFileSystem();

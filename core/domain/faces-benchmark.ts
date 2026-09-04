@@ -6,10 +6,10 @@ import {
   boxIoU,
   clusterPreparedFaceObservations,
   prepareFaceClustering,
-  photoFingerprintFromSha256,
   type FaceClusterInput,
   type PreparedFaceClustering,
-} from '@core/domain/index.js';
+} from './faces.js';
+import { photoFingerprintFromSha256 } from './photo.js';
 
 export const pairVerdictSchema = z.enum(['same', 'different', 'unsure', 'not_face']);
 export type PairVerdict = z.output<typeof pairVerdictSchema>;

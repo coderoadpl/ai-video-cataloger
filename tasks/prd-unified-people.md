@@ -118,7 +118,7 @@ end with crops on disk.
   scripts are): sweeps the cut threshold and reports **purity, completeness,
   pairwise F1, cluster-count and wall-clock** per threshold.
   - *fixture mode* (default, deterministic): synthetic embeddings under
-    `scripts/__fixtures__/faces-benchmark/`, exercised by unit tests so the
+    `core/domain/__fixtures__/faces-benchmark/`, exercised by unit tests so the
     metric implementations themselves are gated by `check`.
   - *real-data mode* (`--corpus <dir> --catalog <path>`): reads a
     user-supplied reference partition (per-observation records with

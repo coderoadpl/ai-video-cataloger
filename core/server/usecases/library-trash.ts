@@ -1,13 +1,19 @@
 import { appError, ok, type AppError, type LibrarySelectionScope, type Result } from '@core/domain/index.js';
 
 import type { JobExecutionContext, JobsPort, TrashPort } from '../ports.js';
-import { discoverArtifactRoot } from './artifact-root.js';
+import {
+  discoverArtifactRoot,
+  folderArtifactRoot,
+  legacyReadOnlyArtifactRoot,
+  readOnlyArtifactRoot,
+  readOnlyArtifactRootById,
+} from './artifact-root.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { artifactPaths } from './shared.js';
 import { deleteLibraryTrashArtifacts } from './library-trash-artifacts.js';
 import {
-  librarySelectionPreview,
+  librarySelectionPreviewForEntries,
   resolveLibrarySelection,
   type LibrarySelectionDeps,
   type LibrarySelectionEntry,
@@ -45,32 +51,33 @@ export const libraryTrashPreflight = async (
   deps: LibraryTrashDeps,
   input: { scope: LibrarySelectionScope },
 ): Promise<Result<LibraryTrashPlan, AppError>> => {
-  const entries = await resolveLibrarySelection(deps, input.scope);
-  if (!entries.ok) return entries;
-  const writable = await ensureAffectedRootsWritable(deps, entries.value);
-  if (!writable.ok) return writable;
-  const preview = await librarySelectionPreview(deps, input);
-  if (!preview.ok) return preview;
-  const artifactPaths = await plannedArtifactPaths(deps, entries.value);
-  if (!artifactPaths.ok) return artifactPaths;
-  return ok({ kind: 'plan', ...preview.value, artifactPaths: artifactPaths.value });
+  const plan = await buildLibraryTrashPlan(deps, input.scope);
+  return plan.ok ? ok(plan.value.plan) : plan;
 };
 
 export const libraryTrash = async (
   deps: LibraryTrashDeps,
   input: { scope: LibrarySelectionScope; confirm: boolean; dryRun: boolean },
 ): Promise<Result<LibraryTrashPlan | { kind: 'job'; jobId: string }, AppError>> => {
-  const plan = await libraryTrashPreflight(deps, input);
-  if (!plan.ok) return plan;
-  if (input.dryRun) return plan;
+  const planned = await buildLibraryTrashPlan(deps, input.scope);
+  if (!planned.ok) return planned;
+  if (input.dryRun) return ok(planned.value.plan);
   if (!input.confirm) {
     return { ok: false, error: appError('confirmation_required', 'Moving library files to Trash requires confirmation') };
   }
+  const writable = await ensureAffectedRootsWritable(deps, planned.value.entries);
+  if (!writable.ok) return writable;
+  const frozenInput = {
+    scope: {
+      kind: 'fingerprints' as const,
+      fingerprints: planned.value.entries.map((entry) => entry.fingerprint),
+    },
+  };
   const enqueued = await deps.jobs.enqueue({
     kind: 'library_trash',
-    payload: input,
+    payload: frozenInput,
     resourceKey: 'library-trash',
-    run: (context) => runLibraryTrash(deps, input, context),
+    run: (context) => runLibraryTrashEntries(deps, planned.value.entries, context),
   });
   return enqueued.ok ? ok({ kind: 'job', jobId: enqueued.value.jobId }) : enqueued;
 };
@@ -82,11 +89,19 @@ export const runLibraryTrash = async (
 ): Promise<Result<LibraryTrashSummary, AppError>> => {
   const entries = await resolveLibrarySelection(deps, input.scope);
   if (!entries.ok) return entries;
-  const writable = await ensureAffectedRootsWritable(deps, entries.value);
+  return runLibraryTrashEntries(deps, entries.value, context);
+};
+
+const runLibraryTrashEntries = async (
+  deps: LibraryTrashDeps,
+  entries: readonly LibrarySelectionEntry[],
+  context?: JobExecutionContext,
+): Promise<Result<LibraryTrashSummary, AppError>> => {
+  const writable = await ensureAffectedRootsWritable(deps, entries);
   if (!writable.ok) return writable;
-  const releases = await acquirePhotoScanResources(deps, entries.value, context);
+  const releases = await acquireLibraryTrashResources(deps, entries, context);
   if (!releases.ok) return releases;
-  const roots = [...new Set(entries.value.flatMap((entry) => entry.sightings.map((sighting) => sighting.rootPath)))].sort();
+  const roots = [...new Set(entries.flatMap((entry) => entry.sightings.map((sighting) => sighting.rootPath)))].sort();
   const affectedVideoFolderIds = new Set<string>();
   let filesTrashed = 0;
   let videosTrashed = 0;
@@ -101,30 +116,29 @@ export const runLibraryTrash = async (
   let snapshotsRewritten = 0;
   let peopleBeforeCount: number | null = null;
   let stoppedError: AppError | null = null;
-  let returnPartialSummary = false;
   let snapshotError: AppError | null = null;
   try {
     const peopleBefore = await deps.globalCatalog.listPeople();
     if (!peopleBefore.ok) stoppedError = peopleBefore.error;
     else peopleBeforeCount = peopleBefore.value.length;
-    for (let index = 0; stoppedError === null && index < entries.value.length; index += 1) {
-      const entry = entries.value[index];
+    for (let index = 0; stoppedError === null && index < entries.length; index += 1) {
+      const entry = entries[index];
       if (entry === undefined) continue;
       if (context?.signal.aborted === true) {
         cancelled = true;
-        filesNotAttempted = entries.value.length - index;
+        filesNotAttempted = entries.length - index;
         stoppedError = appError('processing_error', 'Job cancelled');
         break;
       }
       const progress = await context?.reportProgress({
         step: 'library-trash-file',
         current: filesTrashed + 1,
-        total: entries.value.length,
+        total: entries.length,
         data: { fingerprint: entry.fingerprint, media: entry.media },
       });
       if (progress !== undefined && !progress.ok) {
         cancelled = isContextAborted(context);
-        filesNotAttempted = entries.value.length - index;
+        filesNotAttempted = entries.length - index;
         stoppedError = progress.error;
         break;
       }
@@ -133,7 +147,7 @@ export const runLibraryTrash = async (
         : await deps.photos.listPhotoVariants(entry.fingerprint);
       if (!variants.ok) {
         filesFailed = 1;
-        filesNotAttempted = entries.value.length - index - 1;
+        filesNotAttempted = entries.length - index - 1;
         failedFingerprint = entry.fingerprint;
         stoppedError = variants.error;
         break;
@@ -141,35 +155,57 @@ export const runLibraryTrash = async (
       const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: entry.fingerprint });
       if (!observations.ok) {
         filesFailed = 1;
-        filesNotAttempted = entries.value.length - index - 1;
+        filesNotAttempted = entries.length - index - 1;
         failedFingerprint = entry.fingerprint;
         stoppedError = observations.error;
         break;
+      }
+      const artifacts = await plannedArtifactPaths(deps, [entry]);
+      if (!artifacts.ok) {
+        filesFailed = 1;
+        filesNotAttempted = entries.length - index - 1;
+        failedFingerprint = entry.fingerprint;
+        stoppedError = artifacts.error;
+        break;
+      }
+      for (const sighting of entry.sightings) {
+        const moved = await deps.trash.moveToTrash(sighting.path);
+        if (!moved.ok) {
+          filesFailed = 1;
+          filesNotAttempted = entries.length - index - 1;
+          failedFingerprint = entry.fingerprint;
+          stoppedError = moved.error;
+          break;
+        }
+      }
+      if (stoppedError !== null) break;
+      if (entry.media === 'video') {
+        for (const sighting of entry.sightings) affectedVideoFolderIds.add(sighting.folderId);
       }
       const cropPaths = entry.media === 'video'
         ? await deleteVideoRecords(deps, entry.fingerprint)
         : await deletePhotoRecords(deps, entry.fingerprint);
       if (!cropPaths.ok) {
         filesFailed = 1;
-        filesNotAttempted = entries.value.length - index - 1;
+        filesNotAttempted = entries.length - index - 1;
         failedFingerprint = entry.fingerprint;
         stoppedError = cropPaths.error;
         break;
       }
-      analysesDeleted += variants.value.length;
-      observationsDeleted += observations.value.length;
-      const artifacts = await plannedArtifactPaths(deps, [entry]);
-      if (!artifacts.ok) {
+      const flushed = await flushTrashStores(deps);
+      if (!flushed.ok) {
         filesFailed = 1;
-        filesNotAttempted = entries.value.length - index - 1;
+        filesNotAttempted = entries.length - index - 1;
         failedFingerprint = entry.fingerprint;
-        stoppedError = artifacts.error;
+        stoppedError = flushed.error;
         break;
       }
+      analysesDeleted += variants.value.length;
+      observationsDeleted += observations.value.length;
       const deletedArtifacts = await deleteLibraryTrashArtifacts(deps.fs, [...cropPaths.value, ...artifacts.value]);
       if (!deletedArtifacts.ok) {
         filesFailed = 1;
-        filesNotAttempted = entries.value.length - index - 1;
+        filesNotAttempted = entries.length - index - 1;
         failedFingerprint = entry.fingerprint;
         stoppedError = deletedArtifacts.error;
         break;
@@ -178,33 +214,18 @@ export const runLibraryTrash = async (
       const artifactsProgress = await context?.reportProgress({
         step: 'library-trash-artifacts',
         current: filesTrashed + 1,
-        total: entries.value.length,
+        total: entries.length,
         data: { fingerprint: entry.fingerprint, pathsDeleted: deletedArtifacts.value },
       });
       if (artifactsProgress !== undefined && !artifactsProgress.ok) {
         cancelled = isContextAborted(context);
-        filesNotAttempted = entries.value.length - index;
+        filesNotAttempted = entries.length - index;
         stoppedError = artifactsProgress.error;
         break;
       }
-      for (const sighting of entry.sightings) {
-        const moved = await deps.trash.moveToTrash(sighting.path);
-        if (!moved.ok) {
-          filesFailed = 1;
-          filesNotAttempted = entries.value.length - index - 1;
-          failedFingerprint = entry.fingerprint;
-          stoppedError = moved.error;
-          returnPartialSummary = true;
-          break;
-        }
-      }
-      if (stoppedError !== null) break;
       filesTrashed += 1;
       if (entry.media === 'video') videosTrashed += 1;
       else photosTrashed += 1;
-      if (entry.media === 'video') {
-        for (const sighting of entry.sightings) affectedVideoFolderIds.add(sighting.folderId);
-      }
     }
   } finally {
     const rewritten = await rewriteAffectedVideoFolders(deps, affectedVideoFolderIds);
@@ -236,16 +257,20 @@ export const runLibraryTrash = async (
   if (snapshotError !== null && stoppedError === null) {
     return { ok: false, error: withLibraryTrashSummary(snapshotError, summary) };
   }
-  if (stoppedError === null || returnPartialSummary) {
+  if (stoppedError === null && filesFailed === 0 && filesNotAttempted === 0) {
     const done = await context?.reportProgress({ step: 'library-trash-summary', percentage: 100, data: { ...summary } });
     if (done !== undefined && !done.ok) return done;
     return ok(summary);
   }
-  return { ok: false, error: withLibraryTrashSummary(stoppedError, summary) };
+  const error = stoppedError ?? appError('library_trash_incomplete', 'Library trash did not finish');
+  return { ok: false, error: incompleteTrashError(error, summary) };
 };
 
 const withLibraryTrashSummary = (error: AppError, summary: LibraryTrashSummary): AppError =>
   appError(error.code, error.message, { cause: error, summary });
+
+const incompleteTrashError = (error: AppError, summary: LibraryTrashSummary): AppError =>
+  appError('library_trash_incomplete', error.message, { cause: error, summary });
 
 const isContextAborted = (context: JobExecutionContext | undefined): boolean =>
   context !== undefined && context.signal.aborted;
@@ -273,19 +298,34 @@ const deleteVideoRecords = async (
   deps: LibraryTrashDeps,
   fingerprint: string,
 ): Promise<Result<string[], AppError>> => {
-  const forgotten = await deps.globalCatalog.forgetEntry(fingerprint);
-  return forgotten.ok ? ok(forgotten.value.cropPaths) : forgotten;
+  return deps.globalCatalog.withBatch(async () => {
+    const forgotten = await deps.globalCatalog.forgetEntry(fingerprint);
+    return forgotten.ok ? ok(forgotten.value.cropPaths) : forgotten;
+  });
 };
 
 const deletePhotoRecords = async (
   deps: LibraryTrashDeps,
   fingerprint: string,
 ): Promise<Result<string[], AppError>> => {
-  const observations = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
+  const observations = await deps.globalCatalog.withBatch(() => deps.globalCatalog.deleteFaceObservationsForFile(fingerprint));
   if (!observations.ok) return observations;
-  const deleted = await deps.photos.deletePhoto(fingerprint);
+  const deleted = await deps.photos.withBatch(() => deps.photos.deletePhoto(fingerprint));
   if (!deleted.ok) return deleted;
   return ok(observations.value.cropPaths);
+};
+
+const buildLibraryTrashPlan = async (
+  deps: LibraryTrashDeps,
+  scope: LibrarySelectionScope,
+): Promise<Result<{ entries: LibrarySelectionEntry[]; plan: LibraryTrashPlan }, AppError>> => {
+  const entries = await resolveLibrarySelection(deps, scope);
+  if (!entries.ok) return entries;
+  const preview = await librarySelectionPreviewForEntries(deps, entries.value);
+  if (!preview.ok) return preview;
+  const artifactPaths = await plannedArtifactPaths(deps, entries.value);
+  if (!artifactPaths.ok) return artifactPaths;
+  return ok({ entries: entries.value, plan: { kind: 'plan', ...preview.value, artifactPaths: artifactPaths.value } });
 };
 
 const ensureAffectedRootsWritable = async (
@@ -294,11 +334,21 @@ const ensureAffectedRootsWritable = async (
 ): Promise<Result<void, AppError>> => {
   const roots = [...new Set(entries.flatMap((entry) =>
     entry.sightings.flatMap((sighting) => [sighting.rootPath, deps.fs.dirname(sighting.path)])))].sort();
+  const offline: string[] = [];
   const readOnly: string[] = [];
   for (const root of roots) {
+    const exists = await deps.fs.exists(root);
+    if (!exists.ok) return exists;
+    if (!exists.value) {
+      offline.push(root);
+      continue;
+    }
     const writable = await deps.fs.isWritable(root);
     if (!writable.ok) return writable;
     if (!writable.value) readOnly.push(root);
+  }
+  if (offline.length > 0) {
+    return { ok: false, error: appError('target_offline', 'One or more selected roots are offline', { roots: offline }) };
   }
   if (readOnly.length > 0) {
     return { ok: false, error: appError('target_read_only', 'One or more selected roots are read-only', { roots: readOnly }) };
@@ -321,34 +371,95 @@ const plannedArtifactPaths = async (
       paths.push(`${deps.fs.join(photoRoot, 'variants', entry.fingerprint)}/`);
       continue;
     }
-    const sighting = entry.sightings[0];
-    if (sighting === undefined) continue;
-    const root = await discoverArtifactRoot(deps.fs, sighting.rootPath, sighting.folderId);
-    if (!root.ok) return root;
-    const projected = artifactPaths(deps.fs, root.value, sighting.path, null);
-    paths.push(
-      `${deps.fs.join(root.value.catalogDirectory, 'artifacts', 'frames', entry.fingerprint)}/`,
-      `${deps.fs.join(root.value.catalogDirectory, 'artifacts', 'transcripts', entry.fingerprint)}/`,
-      `${deps.fs.join(root.value.catalogDirectory, 'variants', entry.fingerprint)}/`,
-      projected.thumbnailPath,
-      projected.gridThumbnailPath,
-      `${projected.framesDir}/`,
-      projected.transcriptPath,
-      projected.transcriptJsonPath,
-      projected.summaryPath,
-      projected.summaryJsonPath,
-      projected.debugLogPath,
-    );
+    for (const sighting of entry.sightings) {
+      const roots = await artifactRootsForSighting(deps, sighting.rootPath, sighting.folderId);
+      if (!roots.ok) return roots;
+      const sameStemSibling = await hasSameStemSibling(deps, entry, sighting);
+      if (!sameStemSibling.ok) return sameStemSibling;
+      for (const root of roots.value) {
+        paths.push(
+          `${deps.fs.join(root.catalogDirectory, 'artifacts', 'frames', entry.fingerprint)}/`,
+          `${deps.fs.join(root.catalogDirectory, 'artifacts', 'transcripts', entry.fingerprint)}/`,
+          `${deps.fs.join(root.catalogDirectory, 'variants', entry.fingerprint)}/`,
+        );
+        if (sameStemSibling.value) continue;
+        const projected = artifactPaths(deps.fs, root, sighting.path, null);
+        paths.push(
+          projected.thumbnailPath,
+          projected.gridThumbnailPath,
+          `${projected.framesDir}/`,
+          projected.transcriptPath,
+          projected.transcriptJsonPath,
+          projected.summaryPath,
+          projected.summaryJsonPath,
+          projected.debugLogPath,
+        );
+      }
+    }
   }
   return ok([...new Set(paths)].sort());
 };
 
-const acquirePhotoScanResources = async (
+const flushTrashStores = async (deps: LibraryTrashDeps): Promise<Result<void, AppError>> => {
+  const catalog = await deps.globalCatalog.flush();
+  if (!catalog.ok) return catalog;
+  return deps.photos.flush();
+};
+
+const artifactRootsForSighting = async (
+  deps: LibraryTrashDeps,
+  rootPath: string,
+  folderId: string,
+): Promise<Result<Array<{ path: string; catalogDirectory: string }>, AppError>> => {
+  const discovered = await discoverArtifactRoot(deps.fs, rootPath, folderId);
+  if (!discovered.ok) return discovered;
+  return ok(uniqueArtifactRoots([
+    folderArtifactRoot(deps.fs, rootPath),
+    readOnlyArtifactRootById(deps.fs, folderId),
+    readOnlyArtifactRoot(deps.fs, rootPath),
+    legacyReadOnlyArtifactRoot(deps.fs, rootPath),
+    discovered.value,
+  ]));
+};
+
+const uniqueArtifactRoots = (
+  roots: readonly { path: string; catalogDirectory: string }[],
+): Array<{ path: string; catalogDirectory: string }> => {
+  const seen = new Set<string>();
+  const unique: Array<{ path: string; catalogDirectory: string }> = [];
+  for (const root of roots) {
+    const key = `${root.path}\u0000${root.catalogDirectory}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(root);
+  }
+  return unique;
+};
+
+const hasSameStemSibling = async (
+  deps: LibraryTrashDeps,
+  entry: LibrarySelectionEntry,
+  sighting: { folderId: string; rootPath: string; path: string },
+): Promise<Result<boolean, AppError>> => {
+  if (entry.media !== 'video') return ok(false);
+  const records = await deps.globalCatalog.listFolderRecords(sighting.folderId);
+  if (!records.ok) return records;
+  const folder = deps.fs.dirname(sighting.path);
+  const stem = deps.fs.basenameWithoutExtension(sighting.path);
+  return ok(records.value.some((record) => {
+    if (record.file.fingerprint === entry.fingerprint) return false;
+    const siblingPath = deps.fs.join(sighting.rootPath, record.file.fileName);
+    return deps.fs.dirname(siblingPath) === folder && deps.fs.basenameWithoutExtension(siblingPath) === stem;
+  }));
+};
+
+const acquireLibraryTrashResources = async (
   deps: LibraryTrashDeps,
   entries: readonly LibrarySelectionEntry[],
   context?: JobExecutionContext,
 ): Promise<Result<Array<() => void>, AppError>> => {
   const roots = [...new Set(entries.flatMap((entry) => entry.sightings.map((sighting) => deps.fs.resolve(sighting.rootPath))))].sort();
+  const paths = [...new Set(entries.flatMap((entry) => entry.sightings.map((sighting) => deps.fs.resolve(sighting.path))))].sort();
   const releases: Array<() => void> = [];
   const progress = await context?.reportProgress({
     step: 'library-trash-preflight',
@@ -356,8 +467,13 @@ const acquirePhotoScanResources = async (
     data: { roots },
   });
   if (progress !== undefined && !progress.ok) return progress;
-  for (const root of roots) {
-    const acquired = await deps.jobs.acquireResource(`photo-scan:${root}`, context?.signal);
+  const keys = [...new Set([
+    'catalog-write',
+    ...roots.flatMap((root) => [root, `photo-scan:${root}`, `photo-process:${root}`]),
+    ...paths,
+  ])];
+  for (const key of keys) {
+    const acquired = await deps.jobs.acquireResource(key, context?.signal);
     if (!acquired.ok) {
       for (const release of releases) release();
       return acquired;

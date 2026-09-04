@@ -39,9 +39,9 @@ describe('dictionary', () => {
     expect(pl.people.photoFileCount(1)).toBe('1 zdjęcie');
     expect(pl.people.photoFileCount(3)).toBe('3 zdjęcia');
     expect(pl.people.photoFileCount(5)).toBe('5 zdjęć');
-    expect(pl.people.frameObservationCount(1)).toBe('1 kadr');
-    expect(pl.people.frameObservationCount(2)).toBe('2 kadry');
-    expect(pl.people.frameObservationCount(5)).toBe('5 kadrów');
+    expect(pl.people.frameObservationCount(1)).toBe('1 wystąpienie');
+    expect(pl.people.frameObservationCount(2)).toBe('2 wystąpienia');
+    expect(pl.people.frameObservationCount(5)).toBe('5 wystąpień');
     expect(pl.people.reclusterConfirmWithNames(1)).toBe('Przebuduj i usuń 1 imię');
     expect(pl.people.reclusterConfirmWithNames(2)).toBe('Przebuduj i usuń 2 imiona');
     expect(pl.people.reclusterConfirmWithNames(5)).toBe('Przebuduj i usuń 5 imion');
@@ -103,8 +103,8 @@ describe('dictionary', () => {
     expect(en.people.videoFileCount(2)).toBe('2 videos');
     expect(en.people.photoFileCount(1)).toBe('1 photo');
     expect(en.people.photoFileCount(2)).toBe('2 photos');
-    expect(en.people.frameObservationCount(1)).toBe('1 frame');
-    expect(en.people.frameObservationCount(2)).toBe('2 frames');
+    expect(en.people.frameObservationCount(1)).toBe('1 occurrence');
+    expect(en.people.frameObservationCount(2)).toBe('2 occurrences');
     expect(en.people.reclusterConfirmWithNames(1)).toBe('Rebuild and drop 1 name');
     expect(en.people.reclusterConfirmWithNames(2)).toBe('Rebuild and drop 2 names');
     expect(en.settingsModal.frameCountValue(1)).toBe('1 frame');
