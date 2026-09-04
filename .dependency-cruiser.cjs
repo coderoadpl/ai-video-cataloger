@@ -136,6 +136,14 @@ module.exports = {
       to: { path: 'node_modules/(react|react-dom|@mui/[^/]+|@tanstack/react-query|@tanstack/react-router)(/|$)' },
     },
     {
+      name: 'no-scripts-in-shipped-code',
+      severity: 'error',
+      comment:
+        'scripts/ holds dev entry files whose module-level entry guards become always-true inside the packaged single-file CLI bundle; shipped layers import from core or their own app instead.',
+      from: { path: '^(core|adapters|apps)' },
+      to: { path: '^scripts/' },
+    },
+    {
       name: 'electron-only-in-desktop',
       severity: 'error',
       comment: 'Only apps/desktop (composition root + preload) may import electron.',

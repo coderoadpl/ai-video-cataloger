@@ -24,6 +24,7 @@ import {
   WHISPER_MODEL_NAMES,
   apiCostSignal,
   analyzerProviderConfigSchema,
+  benchmarkReportTable,
   builtInAnalyzerProvider,
   estimateApiTokens,
   appError,
@@ -58,6 +59,7 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
+import { runFromOptions } from './faces-benchmark.js';
 import {
   photosForgetHuman,
   photosGpsBackfillHuman,
@@ -81,8 +83,6 @@ import {
   type SetupPrompter,
   type SetupTranscription,
 } from './setup.js';
-import { runFromOptions } from '../../../scripts/faces-benchmark.js';
-import { benchmarkReportTable } from '../../../scripts/faces-benchmark-core.js';
 
 interface JsonOption {
   json?: boolean | undefined;

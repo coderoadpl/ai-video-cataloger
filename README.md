@@ -464,6 +464,13 @@ pnpm run test:e2e:library-hide-trash
 
 `test:e2e:cli` only runs the CLI project. The GUI and parity projects build Electron and launch the desktop app.
 
+Every e2e scenario runs against an isolated home, so the local-whisper samples
+would otherwise find no model there. Preflight downloads the `base` ggml model
+once into a persistent scratch cache (`$AVC_SCRATCH_DIR`, defaulting to
+`~/.ai-video-cataloger-scratch`) under `whisper-models/`, and each isolated home
+links it in; the developer's real home is never read. Delete the cached file to
+force a re-download.
+
 Visual regression:
 
 ```bash

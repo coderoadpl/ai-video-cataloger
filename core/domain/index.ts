@@ -13,6 +13,7 @@ export * from './video.js';
 export * from './global-catalog.js';
 export * from './library-selection.js';
 export * from './faces.js';
+export * from './faces-benchmark.js';
 export * from './paths.js';
 export * from './photo.js';
 export * from './photo-libra-import.js';
