@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Box, Typography } from '@mui/material';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { Box, Checkbox, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
@@ -31,6 +31,7 @@ interface LibraryGridProps {
   sections: LibraryGridSection[];
   onOpen: (item: LibraryItem) => void;
   onSelect?: ((item: LibraryItem, event: MouseEvent) => void) | undefined;
+  onSelectAll?: (() => void) | undefined;
   onOpenInAnalysis: (item: LibraryItem) => void;
   selectedFingerprints?: ReadonlySet<string> | undefined;
   hiddenView?: boolean | undefined;
@@ -42,6 +43,7 @@ export const LibraryGrid = ({
   sections,
   onOpen,
   onSelect = () => undefined,
+  onSelectAll = () => undefined,
   onOpenInAnalysis,
   selectedFingerprints = EMPTY_SELECTION,
   hiddenView = false,
@@ -75,12 +77,22 @@ export const LibraryGrid = ({
     () => visibleRowRange(scrollTop, viewportHeight, rowHeight, HEADER_HEIGHT, rows),
     [rowHeight, rows, scrollTop, viewportHeight],
   );
+  const onGridKeyDown = (event: KeyboardEvent): void => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      onSelectAll();
+    }
+  };
 
   return (
     <Box
       ref={containerRef}
       data-testid="library-grid"
+      role="listbox"
+      aria-multiselectable="true"
+      tabIndex={0}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      onKeyDown={onGridKeyDown}
       sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ position: 'relative', height: range.totalHeight }}>
@@ -170,10 +182,12 @@ const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: Librar
   return (
     <Box
       data-testid="library-tile"
+      className="library-tile"
       data-fingerprint={item.fingerprint}
       data-media={item.media}
       role="option"
       aria-selected={selected}
+      tabIndex={-1}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
           onSelect(event);
@@ -232,6 +246,30 @@ const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: Librar
           <Typography variant="caption">{dictionary.library.missingBadge}</Typography>
         </Box>
       ) : null}
+      <Checkbox
+        checked={selected}
+        slotProps={{ input: { 'aria-label': name } }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect(event);
+        }}
+        sx={{
+          position: 'absolute',
+          top: 4,
+          left: 4,
+          zIndex: 2,
+          width: 32,
+          height: 32,
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'auto' : 'none',
+          transition: 'opacity 120ms ease',
+          '.MuiSvgIcon-root': { fontSize: 20 },
+          '&:hover': { bgcolor: 'background.paper' },
+          '.library-tile:hover &': { opacity: 1, pointerEvents: 'auto' },
+        }}
+      />
       {selected ? (
         <Box
           data-testid="library-tile-selected"

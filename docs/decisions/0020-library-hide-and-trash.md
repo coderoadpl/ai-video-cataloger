@@ -142,28 +142,28 @@ which the user never sees and whose recovery path is regeneration, not the
 Trash. The port rule holds: two real implementations, and the platform
 difference between them is real.
 
-**D6 — All-or-nothing per folder root, checked before the first move.** The
-selection is resolved to a list of fingerprints each carrying **every one of
-its sightings** (D10), then to the set of folder roots those sightings live
-under (the video `folders.current_path`, each photo sighting's owner folder,
-plus the parent directory of every sighted file). Every root is
-probed with the existing non-mutating `FileSystemPort.isWritable`
-(`access(W_OK)`, the same probe `materialize --dry-run` uses to report a
-still-read-only mount without touching it). If any root fails:
-
-- the call returns `target_read_only` (HTTP 409, exit code 46, no new error
-  kind) with the offending roots in `details`;
-- **zero** files have moved, **zero** rows have changed, **zero** artifacts
-  have been deleted.
+**D6 — All-or-nothing before a batch, fail-closed after partial progress.** A
+preview resolves the selection to a list of fingerprints each carrying **every
+one of its sightings** (D10), then to the set of folder roots those sightings
+live under (the video `folders.current_path`, each photo sighting's owner
+folder, plus the parent directory of every sighted file). Every root is probed
+for existence first and writability second. An offline root is reported as
+`target_offline` (HTTP 409, exit code 58); an online but unwritable root is
+reported as `target_read_only` (HTTP 409, exit code 46). In both cases the
+offending roots are carried in `details`, and **zero** files move, **zero** rows
+change, **zero** artifacts are deleted.
 
 The probe runs twice: once synchronously before the job is accepted, so the
 user gets the refusal in the dialog rather than as a failed background job,
 and once at the top of the job itself, so a drive unmounted between confirm
-and start aborts before the first move rather than halfway through. Partial
-progress is not a supported outcome: a run that fails mid-way after a
-successful pre-flight (a file vanished, `trashItem` refused) stops at that
-file, reports what has already been moved, and leaves the remainder
-untouched — it never "carries on with the rest".
+and start aborts before the first move rather than halfway through. A
+successful probe still cannot make `TrashPort` infallible: a file can vanish,
+the macOS Trash can refuse a volume, or a native adapter can fail per file. If
+that happens after earlier files moved, the job stops, leaves the failed file's
+records and artifacts intact, leaves every not-yet-attempted file untouched,
+and returns `library_trash_incomplete` with the partial summary (HTTP 409,
+exit code 59). The GUI keeps the dialog open and the CLI exits non-zero while
+printing the moved, failed and not-attempted counts.
 
 Why all-or-nothing per root rather than best-effort per file: a bulk delete's
 value is that the user does not have to check the result. A run that quietly
@@ -171,8 +171,12 @@ skips the eleven files on the unplugged drive teaches the user to re-check
 everything, which is worse than a refusal they can act on.
 
 **D7 — "Every record" is a closed checklist, not a phrase.** Trashing one
-fingerprint removes, in this order — databases first inside one transaction
-per store, artifacts after:
+fingerprint first moves every sighting of the media file to the macOS Trash.
+Only after every sighting move succeeds does the app delete the records below,
+flush `catalog.db` and `photos.db`, then remove the app-owned artifacts. A
+failed move leaves that fingerprint's records and artifacts intact, so a crash
+or a rejected Trash operation cannot leave a catalog with no row for a file
+that still sits in place.
 
 *`catalog.db` (a video, via the existing `GlobalCatalogStore.forgetEntry`):*
 
@@ -244,14 +248,20 @@ The mechanism already exists and is not re-implemented, but the two media call
       in `core/server/usecases/shared.ts` produces: `frames/<base>/`,
       `transcripts/<base>.txt`, `transcripts/<base>.json`,
       `summaries/<base>.txt`, `summaries/<base>.json`,
-      `summaries/<base>-debug.log`
+      `summaries/<base>-debug.log`; these name-based paths are skipped when
+      another `files` row in the same folder has the same stem
+
+Video artifact cleanup enumerates every possible owned root for each sighting:
+the writable sidecar, the known folder-id read-only mirror, the current
+path-derived read-only mirror and the supported legacy read-only mirror.
 
 *Per-folder sidecar state:*
 
 - [ ] `{folder}/.ai-video-cataloger/catalog.ndjson` is **re-exported** for
-      every affected writable folder, on every exit path — a clean batch, a
-      batch that stopped on a failure, and a cancelled batch — so the snapshot
-      never carries a record whose rows the run has already deleted
+      every affected writable folder whose rows changed, on every exit path —
+      a clean batch, a batch that stopped on a later failure, and a cancelled
+      batch — so the snapshot never carries a record whose rows the run has
+      already deleted
 
 Deliberately **not** touched: the shared `tags` vocabulary (a tag that loses
 its last file stays in the alias/vocabulary tables — tags are catalog-wide and
@@ -267,26 +277,19 @@ action.
 
 - *Resurrection* has two paths, not one. The first is the folder's
   `catalog.ndjson` snapshot, imported when a marked folder is unknown to the
-  local index (`docs/architecture.md` Delta 3); re-exporting it on every exit
-  path (D7) closes it. The second is a **concurrent rescan of a half-processed
-  batch**: the trash job deletes a file's rows before moving its bytes, so
-  between files there exist files whose records are gone and whose bytes are
-  still on disk, and a scan started in that window re-inserts them as orphaned
-  "Brak pliku" rows. Two things close it: `'library_trash'` joins
-  `RUN_JOB_KINDS` in `core/server/usecases/folder-watch.ts` (today
-  `process`, `process_drive`, `photo_process`), so the watcher holds refreshes
-  for the duration and emits once after the run settles; and, because the
-  debounced photo scan's `resourceKey` is `photo-scan:<root>` and does not
-  collide with `library-trash`, the trash job acquires `photo-scan:<root>` for
-  every affected root through `JobsPort.acquireResource` before its first move
-  and holds it for the whole batch — built from the resolved root, exactly as
-  `enqueuePhotoScan` builds it, or the two keys never match. The two APIs
-  behave differently on a busy key and the difference is the observable
-  outcome: `acquireResource` waits, while `enqueue` with a busy `resourceKey`
-  refuses immediately with `conflict` and queues nothing. So a photo scan
-  requested mid-trash is *refused*, not deferred, and the run it needs is the
-  watcher's single post-settle refresh. `scan` cannot resurrect a *completed*
-  file, because its bytes are no longer at its path.
+  local index (`docs/architecture.md` Delta 3); re-exporting it after every
+  changed writable folder (D7) closes it. The second is concurrent catalog
+  mutation while a destructive batch is in progress. Two things close it:
+  `'library_trash'` joins `RUN_JOB_KINDS` in
+  `core/server/usecases/folder-watch.ts`, so the watcher holds refreshes for
+  the duration and emits once after the run settles; and the trash job acquires
+  `catalog-write` plus `photo-scan:<root>` for every affected root through
+  `JobsPort.acquireResource` before its first move and holds them for the
+  whole batch. Backup, restore, video processing and photo processing treat
+  `library_trash` as a conflicting catalog writer, so a restore cannot dispose
+  the stores mid-run and a processor cannot reinsert a row while trash is
+  deleting it. `scan` cannot resurrect a *completed* file, because its bytes
+  are no longer at its path.
 - *Hide survival* means `hidden_at` is never cleared implicitly — and the
   guarantee is structural, not a rule each caller must remember. `scan`,
   `process`, `process-drive`, `materialize`, `photos scan`, `photos process`
@@ -300,15 +303,18 @@ action.
   `CATALOG_SNAPSHOT_SCHEMA_VERSION` goes **12 → 13** so `hiddenAt` survives the
   export → import round trip instead of being lost.
 
-**D9 — No new `ErrorCode`, no new HTTP status, no new exit code.** The
-taxonomy already carries every failure this feature has:
+**D9 — Trash keeps failures in the closed error taxonomy.** The taxonomy
+carries the expected refusals:
 `confirmation_required` (409 / 18) for a trash without confirmation,
-`target_read_only` (409 / 46) for the read-only refusal, `validation` (400 /
+`target_read_only` (409 / 46) for an online unwritable root,
+`target_offline` (409 / 58) for an unplugged or stale root, `validation` (400 /
 2) for an empty or malformed selection scope, `not_found` (404 / 5) for an
-unknown person or fingerprint, `unavailable` (503 / 8) for a composition with
-no trash mechanism. Feature specificity lives where it is free: NDJSON
-progress-step names and job-result fields, following the precedent
-`docs/architecture-photos.md` §7 set for photos.
+unknown person or fingerprint, and `unavailable` (503 / 8) for a composition
+with no trash mechanism. `library_trash_incomplete` (409 / 59) is the explicit
+partial-progress error: it carries the same `libraryTrashSummarySchema` in
+`details.summary` that a successful job returns, so HTTP clients, the renderer
+and the CLI can show moved, failed and not-attempted counts without treating a
+partial batch as success.
 
 **D10 — Selection scope is a server-side concept.** "Zaznacz wszystko" cannot
 mean "the tiles currently loaded": Kolekcja pages at 200 items and a filter
@@ -323,7 +329,10 @@ non-empty list of sightings (`folderId`, root path, file path), not a single
 folder and path: a fingerprint is one row and many sightings (ADR-0002,
 ADR-0016 §1), trash removes every one of them (D7), and the preview's
 hidden/visible split has to come from the same pass rather than a second
-query.
+query. A confirmed trash enqueues the previewed fingerprint list, not the
+original filter or person scope, so a watcher rescan or another writer cannot
+add newly matching files to the destructive target set after the user has
+confirmed the count.
 
 **D11 — Hide is synchronous; trash is a job.** Hide and unhide are one
 `UPDATE` per store inside one transaction, fast at catalog scale, and return
@@ -331,16 +340,19 @@ their result directly. Trash is unbounded I/O — one `trashItem` per file plus
 artifact-tree deletions — so it runs as a `library_trash` job with
 `resourceKey: 'library-trash'` (global, so two trash runs never interleave),
 cancellable through the existing `JobsPort.cancel`, with progress polled
-through the existing job routes. The read-only pre-flight (D6) stays
-synchronous, before the job envelope is returned.
+through the existing job routes. The offline/read-only pre-flight (D6) stays
+synchronous, before the job envelope is returned, and job admission treats
+`library_trash` as a catalog-writing conflict for backup, restore and
+processing work.
 
 **D12 — The confirmation is strong and states the blast radius.** The GUI
 dialog names the count, lists the affected folder roots, says the files go to
 the macOS Trash (and that the app's analyses, tags, faces and thumbnails for
 them are erased), and gates the destructive button behind an explicit
 checkbox. The CLI equivalent is `--yes`; without it the command prints the plan
-and exits `confirmation_required` (18), changing nothing. `--dry-run` reports
-the same plan — counts, roots, writability, the artifact paths that would be
+and exits `confirmation_required` (18), changing nothing. `--dry-run` always
+wins over `--yes`: it reports the same plan — counts, hidden/visible/shared
+splits, roots with online/writable state, and the artifact paths that would be
 removed — and writes nothing.
 
 That plan does not fit in a job envelope, so `POST /api/library/trash` returns
@@ -417,16 +429,21 @@ default follows the reversibility, not consistency between the two dialogs.
 
 ## Rollback
 
-- **Hide reverts cleanly.** Reverting the code leaves two unread nullable
-  columns; every hidden file becomes visible again, which is the honest
-  behaviour for a build that has no concept of hiding. Re-applying the code
-  restores the same hidden set, because the columns were never cleared.
+- **Hide data survives a forward-compatible rollback, but 0.6.28 is not
+  forward-compatible with these database versions.** The migrations are
+  additive columns, so a build that is allowed to open `catalog.db` V17 and
+  `photos.db` v7 can ignore them and show every hidden file as visible;
+  reapplying the feature restores the same hidden set because the columns were
+  never cleared. A stock 0.6.28-era build has future-version guards and refuses
+  those databases instead of opening them. Rolling back to that build requires
+  restoring pre-migration databases from backup or using a compatibility build
+  that intentionally lowers the supported metadata after dropping or ignoring
+  the additive columns.
 - **Trash does not revert.** The file is in the OS Trash (recoverable by the
   user, by hand, via Finder "Put Back") and the records are gone. This is why
-  D12 makes the confirmation strong and D6 makes partial runs impossible: the
+  D12 makes the confirmation strong, D6 keeps failed moves record-intact, and
+  `library_trash_incomplete` makes any partial batch visible to the caller: the
   rollback story is the user's, not the app's.
-- **The V17 / v7 migrations do not revert**, and do not need to: they add
-  nullable columns that an older build ignores.
 
 ## Consequences
 
@@ -444,8 +461,9 @@ default follows the reversibility, not consistency between the two dialogs.
   `core/contract`, because the domain's selection-filter schema needs it and
   `core/domain` may not import `core/contract`.
 - One new port (`TrashPort`), one new job kind (`library_trash`), four new
-  contract routes, four new NDJSON progress steps. No new error kind, HTTP
-  status or exit code (D9).
+  contract routes, four new NDJSON progress steps, and two trash-specific
+  error codes (`target_offline`, `library_trash_incomplete`) mapped through
+  HTTP and CLI taxonomy (D9).
 - `libraryFacets` gains a `photos: PhotosStore` dependency, because
   `counts.hidden` spans both media while `listLibraryFacets` reads only
   `catalog.db`.

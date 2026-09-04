@@ -14,6 +14,7 @@ import {
   facesIndexOutputSchema,
   facesReclusterOutputSchema,
   gpsBackfillSummarySchema,
+  libraryTrashSummaryOfDetails,
   libraryTrashSummarySchema,
   thumbnailsSummarySchema,
 } from '@core/contract/index.js';
@@ -332,6 +333,7 @@ const waitForJobAndEmit = async (
   jobId: string,
   completedHuman: (data: unknown) => string,
   raw = false,
+  failedHuman?: ((error: AppError) => string | null) | undefined,
 ): Promise<void> => {
   await waitForJob(jobId, {
     fetchJob: (id) => api.job({ jobId: id }),
@@ -340,7 +342,11 @@ const waitForJobAndEmit = async (
       if (raw) emitRaw(json, data, '');
       emitCompleted(json, data, completedHuman(data));
     },
-    onError: (error) => emitError(json, error),
+    onError: (error) => {
+      const human = failedHuman?.(error) ?? null;
+      if (!json && human !== null) process.stderr.write(`${human}\n`);
+      emitError(json, error, error.details);
+    },
   });
 };
 
@@ -1381,6 +1387,20 @@ addLibraryScopeOptions(library.command('trash').description('Move selected libra
       emitError(json, scope.error);
       return;
     }
+    if (options.dryRun === true) {
+      const planned = await api.libraryTrash({ scope: scope.value, confirm: false, dryRun: true });
+      if (!planned.ok) {
+        emitError(json, planned.error, planned.error.details);
+        return;
+      }
+      if (planned.value.kind !== 'plan') {
+        emitError(json, appError('internal', 'Trash dry-run did not return a plan'));
+        return;
+      }
+      emitRaw(json, planned.value, libraryTrashPlanHuman(planned.value));
+      emitCompleted(json, planned.value, libraryTrashPlanHuman(planned.value));
+      return;
+    }
     if (options.yes !== true) {
       const planned = await api.libraryTrash({ scope: scope.value, confirm: false, dryRun: true });
       if (!planned.ok) {
@@ -1392,10 +1412,6 @@ addLibraryScopeOptions(library.command('trash').description('Move selected libra
         return;
       }
       emitRaw(json, planned.value, libraryTrashPlanHuman(planned.value));
-      if (options.dryRun === true) {
-        emitCompleted(json, planned.value, libraryTrashPlanHuman(planned.value));
-        return;
-      }
       emitError(json, appError('confirmation_required', 'Run again with --yes to move files to Trash'));
       return;
     }
@@ -1408,7 +1424,7 @@ addLibraryScopeOptions(library.command('trash').description('Move selected libra
       emitCompleted(json, result.value, libraryTrashPlanHuman(result.value));
       return;
     }
-    await waitForJobAndEmit(json, result.value.jobId, libraryTrashSummaryHuman, true);
+    await waitForJobAndEmit(json, result.value.jobId, libraryTrashSummaryHuman, true, libraryTrashErrorHuman);
   });
 
 const variants = program.command('variants').description('Inspect and manage analysis variants');
@@ -2397,7 +2413,12 @@ const libraryTrashPlanHuman = (data: LibraryTrashPlan): string => {
 const libraryTrashSummaryHuman = (data: unknown): string => {
   const parsed = libraryTrashSummarySchema.safeParse(data);
   if (!parsed.success) return 'Library trash complete';
-  return `Moved ${parsed.data.filesTrashed} file(s) to Trash; deleted ${parsed.data.analysesDeleted} analysis record(s) and ${parsed.data.artifactPathsDeleted} artifact path(s)`;
+  return `Moved ${parsed.data.filesTrashed} file(s) to Trash; failed ${parsed.data.filesFailed}; not attempted ${parsed.data.filesNotAttempted}; deleted ${parsed.data.analysesDeleted} analysis record(s) and ${parsed.data.artifactPathsDeleted} artifact path(s)`;
+};
+
+const libraryTrashErrorHuman = (error: AppError): string | null => {
+  const summary = libraryTrashSummaryOfDetails(error.details);
+  return summary === null ? null : libraryTrashSummaryHuman(summary);
 };
 
 const variantNdjsonRow = (variant: VariantListItem) => ({

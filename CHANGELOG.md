@@ -35,6 +35,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The packaged CLI no longer runs the face-benchmark script's entry point as a side effect of every command, which made commands print `Unexpected argument: <command>` on stderr and exit 1 even after completing successfully (affects the 0.6.28 CLI).
 - Ctrl-C and SIGTERM stop a running CLI command again: the catalog's exit flush released signal ownership before the handler read it, so the first termination signal was absorbed and the run continued to completion.
 - The parity e2e suite now provisions the whisper model for its isolated homes from a persistent scratch cache instead of failing local-transcription scenarios with `failed to initialize whisper context`.
+- Move-to-Trash now moves each sighting before deleting its records, flushes catalog and photo stores before deleting app artifacts, reports incomplete batches as `library_trash_incomplete`, and keeps failed files and not-yet-attempted files record-intact.
+- Move-to-Trash now freezes confirmed targets from the preview, distinguishes offline roots from read-only roots, conflicts with backup/restore/processing catalog writers, and keeps sidecar snapshots from resurrecting changed video rows.
+- `library trash --dry-run` now always stays non-destructive even with `--yes`, and dry-run plans include the hidden, visible and shared-person counts accepted by the route contract.
+- People facets now exclude hidden photos, unnamed people use stable numbering across Osoby and Kolekcja facets, and person Trash previews show shared-file counts before the default shared-file skip is applied.
+- Kolekcja invalidates analysis/tree consumers after Trash attempts, preserves selection on Trash failure, and supports basic listbox keyboard selection.
+- Trash dialogs and CLI output now show hidden/offline/incomplete counts more honestly, and Polish Trash copy uses "Kosz macOS" word order.
+- A refused move to Trash now reports the reason the system gave instead of a single generic message.
+- Person cards and the person panel describe face detections in photos as occurrences instead of frames.
+- Google-account backup setup is now shown only when both OAuth client id and client secret are configured.
+- The rollback notes now state that a stock 0.6.28 build rejects catalog V17 and photos v7 databases rather than opening them with hidden items visible.
 
 ### Security
 

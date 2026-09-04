@@ -13,6 +13,7 @@ import {
   readinessQuery,
   scanQuery,
   deleteVariantMutation,
+  invalidateLibraryVisibilityConsumers,
   selectVariantMutation,
   variantsQuery,
   useWhisperModelMutation,
@@ -275,6 +276,25 @@ describe('query descriptors', () => {
       { url: '/api/variants?fingerprint=fp-1', method: 'GET' },
       { url: '/api/variants/select', method: 'POST' },
       { url: '/api/variants/delete', method: 'POST' },
+    ]);
+  });
+
+  it('invalidates scan and tree consumers after library visibility changes', async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    await invalidateLibraryVisibilityConsumers(queryClient);
+
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['libraryCollection'],
+      ['search'],
+      ['scan'],
+      ['catalog-tree'],
+      ['catalog-tree-folder'],
+      ['library', 'facets'],
+      ['catalog', 'locations'],
+      ['faces'],
+      ['photos'],
     ]);
   });
 

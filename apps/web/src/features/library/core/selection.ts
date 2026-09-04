@@ -8,7 +8,7 @@ import type { LibraryMedia } from './media.js';
 
 export type LibrarySelectionState =
   | { mode: 'items'; fingerprints: Set<string>; anchor: string | null }
-  | { mode: 'all-in-filter'; excluded: Set<string> };
+  | { mode: 'all-in-filter' };
 
 export type LibrarySelectionScope = z.output<typeof librarySelectionScopeSchema>;
 
@@ -16,8 +16,7 @@ export type LibrarySelectionAction =
   | { type: 'toggle'; fingerprint: string }
   | { type: 'extendTo'; fingerprint: string; order: readonly string[] }
   | { type: 'selectAllInFilter' }
-  | { type: 'clear' }
-  | { type: 'removeResolved'; fingerprints: readonly string[] };
+  | { type: 'clear' };
 
 export interface SelectionFilterProjection {
   filters: LibraryFilterState;
@@ -73,20 +72,9 @@ export const librarySelectionReducer = (
       return { mode: 'items', fingerprints: new Set(selectedRange(anchor, action.fingerprint, action.order)), anchor };
     }
     case 'selectAllInFilter':
-      return { mode: 'all-in-filter', excluded: new Set() };
+      return { mode: 'all-in-filter' };
     case 'clear':
       return emptyLibrarySelection();
-    case 'removeResolved': {
-      if (state.mode === 'all-in-filter') {
-        const excluded = new Set(state.excluded);
-        for (const fingerprint of action.fingerprints) excluded.add(fingerprint);
-        return { mode: 'all-in-filter', excluded };
-      }
-      const fingerprints = new Set(state.fingerprints);
-      for (const fingerprint of action.fingerprints) fingerprints.delete(fingerprint);
-      const anchor = state.anchor !== null && fingerprints.has(state.anchor) ? state.anchor : null;
-      return { mode: 'items', fingerprints, anchor };
-    }
     default:
       return state;
   }
@@ -96,7 +84,7 @@ export const selectedFingerprintCount = (
   state: LibrarySelectionState,
   filterTotal: number,
 ): number => state.mode === 'all-in-filter'
-  ? Math.max(0, filterTotal - state.excluded.size)
+  ? filterTotal
   : state.fingerprints.size;
 
 export const selectedFingerprints = (state: LibrarySelectionState): string[] =>

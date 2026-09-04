@@ -26,6 +26,7 @@ import {
 } from '@mui/material';
 
 import { ApiError, invalidateLibraryVisibilityConsumers, isTerminalJobStatus } from '@core/client/index.js';
+import { libraryTrashSummaryOfDetails } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { MoreVertIcon } from '../../components/ui/icons.js';
@@ -89,8 +90,8 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-const displayName = (dictionary: Dictionary, person: FacePerson, index: number): string =>
-  person.displayName ?? dictionary.people.personName(index);
+const displayName = (dictionary: Dictionary, person: FacePerson): string =>
+  person.displayName ?? dictionary.people.personName(person.fallbackIndex);
 
 const PEOPLE_SORT_KEY = 'avc.people.sort';
 
@@ -133,19 +134,19 @@ export const PeopleView = ({
     writeStorageItem('local', PEOPLE_SORT_KEY, next);
   };
 
-  const indexed = useMemo(
-    () => new Map(people.people.map((person, index) => [person.personId, { person, index }])),
+  const peopleById = useMemo(
+    () => new Map(people.people.map((person) => [person.personId, person])),
     [people.people],
   );
   const mediaCounts = useMemo(() => peopleMediaCounts(people.people), [people.people]);
   const visiblePeople = useMemo(() => sortPeople(peopleForMedium(people.people, media), sort, media), [people.people, media, sort]);
-  const openPersonEntry = openPerson === null ? null : indexed.get(openPerson.personId) ?? null;
+  const openPersonEntry = openPerson === null ? null : peopleById.get(openPerson.personId) ?? null;
   const reclusterConfirmLabel = people.reclusterDryRunReport !== null && people.reclusterDryRunReport.namesDropped.length > 0
     ? dictionary.people.reclusterConfirmWithNames(people.reclusterDryRunReport.namesDropped.length)
     : dictionary.people.reclusterConfirm;
   const selected = people.selectedPersonIds
-    .map((personId) => indexed.get(personId))
-    .filter((entry): entry is { person: FacePerson; index: number } => entry !== undefined);
+    .map((personId) => peopleById.get(personId))
+    .filter((person): person is FacePerson => person !== undefined);
   const mergeTarget = selected.length === 2 && selected[0] !== undefined && selected[1] !== undefined
     ? { to: selected[0], from: selected[1] }
     : null;
@@ -156,14 +157,18 @@ export const PeopleView = ({
       personId: libraryAction.personId,
       skipSharedWithOtherPeople: libraryAction.skipSharedWithOtherPeople,
     };
+  const libraryActionPreviewScope = libraryAction === null
+    ? libraryActionScope
+    : { kind: 'person' as const, personId: libraryAction.personId, skipSharedWithOtherPeople: false };
   const libraryActionPreview = useQuery({
-    ...actions.librarySelectionPreview({ scope: libraryActionScope }),
+    ...actions.librarySelectionPreview({ scope: libraryActionPreviewScope }),
     enabled: active && libraryAction !== null,
   });
   const libraryActionCounts: TrashConfirmationCounts | null = libraryActionPreview.data === undefined ? null : {
     total: libraryActionPreview.data.total,
     videoCount: libraryActionPreview.data.videoCount,
     photoCount: libraryActionPreview.data.photoCount,
+    hiddenCount: libraryActionPreview.data.hiddenCount,
     sharedWithOtherPeople: libraryActionPreview.data.sharedWithOtherPeople,
   };
   const libraryActionRoots: TrashConfirmationRoot[] = libraryActionPreview.data?.roots ?? [];
@@ -220,14 +225,18 @@ export const PeopleView = ({
             onSnapshot: () => undefined,
           });
           if (final.status !== 'completed') {
-            throw new Error(final.error?.message ?? dictionary.people.trashPersonFilesFailedLog);
+            throw new ApiError(final.error ?? { code: 'internal', message: dictionary.people.trashPersonFilesFailedLog });
           }
         }
         addLine(dictionary.people.trashPersonFilesLog(libraryAction.name), 'success');
-        await invalidateLibraryVisibilityConsumers(queryClient);
         closeLibraryAction();
       } catch (error) {
-        setLibraryActionError(`${dictionary.people.trashPersonFilesFailedLog}: ${messageOf(error)}`);
+        const summary = error instanceof ApiError ? libraryTrashSummaryOfDetails(error.appError.details) : null;
+        setLibraryActionError(summary === null
+          ? `${dictionary.people.trashPersonFilesFailedLog}: ${messageOf(error)}`
+          : `${dictionary.people.trashPersonFilesFailedLog}: ${dictionary.library.trashIncompleteCounts(summary.filesTrashed, summary.filesFailed, summary.filesNotAttempted)}`);
+      } finally {
+        await invalidateLibraryVisibilityConsumers(queryClient);
       }
     })();
   };
@@ -327,15 +336,14 @@ export const PeopleView = ({
             data-testid="people-grid"
           >
             {visiblePeople.map((person) => {
-              const index = indexed.get(person.personId)?.index ?? 0;
-              const name = displayName(dictionary, person, index);
+              const name = displayName(dictionary, person);
               return (
                 <PersonCard
                   key={person.personId}
                   person={person}
                   name={name}
                   media={media}
-                  fallbackGlyph={person.displayName === null ? String(index + 1) : name.charAt(0)}
+                  fallbackGlyph={person.displayName === null ? String(person.fallbackIndex + 1) : name.charAt(0)}
                   selected={people.selectedPersonIds.includes(person.personId)}
                   disabled={people.isBusy}
                   mutationsDisabled={mutationsBlocked}
@@ -438,15 +446,15 @@ export const PeopleView = ({
         body={mergeTarget === null
           ? ''
           : dictionary.people.mergeBody(
-            displayName(dictionary, mergeTarget.from.person, mergeTarget.from.index),
-            displayName(dictionary, mergeTarget.to.person, mergeTarget.to.index),
+            displayName(dictionary, mergeTarget.from),
+            displayName(dictionary, mergeTarget.to),
           )}
         confirmLabel={dictionary.people.merge}
         testId="people-merge-confirm"
         disabled={people.isBusy || mutationsBlocked}
         onClose={() => setMergeOpen(false)}
         onConfirm={() => {
-          if (mergeTarget !== null) people.merge(mergeTarget.from.person.personId, mergeTarget.to.person.personId);
+          if (mergeTarget !== null) people.merge(mergeTarget.from.personId, mergeTarget.to.personId);
           setMergeOpen(false);
         }}
       />
@@ -583,8 +591,8 @@ export const PeopleView = ({
           ...openPerson,
           media,
           ...(openPersonEntry === null ? {} : {
-            fileCountLabel: personFileCountLabel(dictionary.people, openPersonEntry.person, media),
-            observationCountLabel: dictionary.people.frameObservationCount(personCountForMedium(openPersonEntry.person, media)),
+            fileCountLabel: personFileCountLabel(dictionary.people, openPersonEntry, media),
+            observationCountLabel: dictionary.people.frameObservationCount(personCountForMedium(openPersonEntry, media)),
           }),
           onClose: () => setOpenPerson(null),
         })}
