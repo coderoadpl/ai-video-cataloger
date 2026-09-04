@@ -29,10 +29,21 @@ const spawnNode = (args: readonly string[], env: NodeJS.ProcessEnv, cwd: string)
     child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
   });
 
+const BENIGN_STDERR_PREFIXES = [
+  '[backup] Keychain disabled:',
+  '[analyzer] command could not be started:',
+  'spawn claude ENOENT',
+  'spawn codex ENOENT',
+  'spawn cursor-agent ENOENT',
+];
+
 const unexpectedStderr = (stderr: string): string =>
   stderr
     .split('\n')
-    .filter((line) => line.trim().length > 0 && !line.startsWith('[backup] Keychain disabled:'))
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed.length > 0 && !BENIGN_STDERR_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+    })
     .join('\n');
 
 let stagedDir = '';

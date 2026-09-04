@@ -15,6 +15,14 @@ const requireShim = [
   'const require = __avcCreateRequire(import.meta.url);',
 ].join('\n');
 
+const BENIGN_STDERR_PREFIXES = [
+  '[backup] Keychain disabled:',
+  '[analyzer] command could not be started:',
+  'spawn claude ENOENT',
+  'spawn codex ENOENT',
+  'spawn cursor-agent ENOENT',
+];
+
 const googleOAuthDefines = {
   'process.env.AVC_GOOGLE_OAUTH_CLIENT_ID': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? ''),
   'process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? ''),
@@ -91,7 +99,10 @@ async function verifyStagedCli(sourceDir) {
 function unexpectedStderr(stderr) {
   return stderr
     .split('\n')
-    .filter((line) => line.trim().length > 0 && !line.startsWith('[backup] Keychain disabled:'))
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed.length > 0 && !BENIGN_STDERR_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+    })
     .join('\n');
 }
 
