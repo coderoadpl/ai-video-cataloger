@@ -18,6 +18,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
 
+### Fixed
+
+- Packaged-CLI verification no longer fails when a `doctor` analyzer probe times out; that stderr line is now recognized as benign.
+
 ## [0.6.29] - 2026-09-04
 
 ### Added
