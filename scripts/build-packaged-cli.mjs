@@ -19,6 +19,7 @@ const BENIGN_STDERR_PREFIXES = [
   '[backup] Keychain disabled:',
   '[analyzer] command could not be started:',
   '[analyzer] command timed out:',
+  '[analyzer] command timed out after ',
   'spawn claude ENOENT',
   'spawn codex ENOENT',
   'spawn cursor-agent ENOENT',

@@ -70,6 +70,7 @@ describe('formatAnalyzerError', () => {
 
   it('maps a command timeout', () => {
     expect(formatAnalyzerError('Command timed out.', messages)).toBe(messages.analyzerTimedOut);
+    expect(formatAnalyzerError('Command timed out after 20000 ms.', messages)).toBe(messages.analyzerTimedOut);
   });
 
   it('maps an unreachable local runtime that still carries a URL and a raw cause', () => {

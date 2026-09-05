@@ -22,6 +22,7 @@ import {
   HarnessAnalyzerAdapter,
   OllamaAnalyzerAdapter,
   OpenAiCompatibleAnalyzerAdapter,
+  PROBE_TIMEOUT_MS,
   buildAnalyzerPrompt,
   buildHarnessArgs,
   childProcessAnalyzerCommandRunner,
@@ -356,8 +357,68 @@ describe('HarnessAnalyzerAdapter', () => {
     expect(runner.calls[0]).toMatchObject({
       command: 'custom-agent',
       args: ['--version'],
-      options: { env: { PATH: '/custom/bin' }, timeoutMs: 5000 },
+      options: { env: { PATH: '/custom/bin' }, timeoutMs: PROBE_TIMEOUT_MS },
     });
+  });
+
+  it('retries a timed out harness availability probe once and reports the retry success', async () => {
+    const runner = new FakeAnalyzerCommandRunner('');
+    runner.onRun = () => Promise.resolve(
+      runner.calls.length === 1
+        ? { ok: false, error: appError('processing_error', `Command timed out after ${String(PROBE_TIMEOUT_MS)} ms.`) }
+        : ok({ stdout: 'custom-agent 4.2.0\n', stderr: '' }),
+    );
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+
+    const result = await adapter.test(customHarnessProvider());
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        family: 'harness',
+        providerId: 'custom-agent',
+        available: true,
+        version: 'custom-agent 4.2.0',
+      },
+    });
+    expect(runner.calls).toHaveLength(2);
+    expect(runner.calls.map((call) => call.options.timeoutMs)).toEqual([PROBE_TIMEOUT_MS, PROBE_TIMEOUT_MS]);
+  });
+
+  it('reports unavailable with the timeout value after two timed out harness availability probes', async () => {
+    const runner = new FakeAnalyzerCommandRunner('');
+    runner.onRun = () => Promise.resolve({
+      ok: false,
+      error: appError('processing_error', `Command timed out after ${String(PROBE_TIMEOUT_MS)} ms.`),
+    });
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+
+    const result = await adapter.test(customHarnessProvider());
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        family: 'harness',
+        providerId: 'custom-agent',
+        available: false,
+        version: null,
+        message: `Command timed out after ${String(PROBE_TIMEOUT_MS)} ms.`,
+      },
+    });
+    expect(runner.calls).toHaveLength(2);
+  });
+
+  it('uses the probe timeout constant for every harness version probe', async () => {
+    for (const provider of [...builtInHarnessProviders(), customHarnessProvider()]) {
+      const runner = new FakeAnalyzerCommandRunner('installed\n');
+      const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+
+      await adapter.test(provider);
+
+      expect(runner.calls).toHaveLength(1);
+      expect(runner.calls[0]?.args).toEqual(['--version']);
+      expect(runner.calls[0]?.options.timeoutMs).toBe(PROBE_TIMEOUT_MS);
+    }
   });
 
   it('reports why a configured harness binary is unavailable', async () => {
