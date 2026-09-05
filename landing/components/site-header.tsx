@@ -17,6 +17,8 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
   const isDark = mounted ? resolvedTheme === "dark" : true;
 
   useEffect(() => {
+    // The resolved theme is client-only, so the first paint has to match the server HTML.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

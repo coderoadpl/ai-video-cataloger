@@ -18,6 +18,8 @@ export function LangBanner() {
     );
 
     if (storedChoice === "pl" || (!storedChoice && prefersPolish)) {
+      // localStorage and navigator languages only exist after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(true);
     }
   }, []);

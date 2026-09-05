@@ -18,6 +18,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
 
+### Security
+
+- The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency.
+
 ## [0.6.29] - 2026-09-04
 
 ### Added
