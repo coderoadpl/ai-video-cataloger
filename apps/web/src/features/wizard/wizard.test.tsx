@@ -324,6 +324,19 @@ describe('SetupWizard', () => {
     expect(recorders.configUnsets).toEqual([]);
   }, scaledTimeout(10_000));
 
+  it('opens the analyzer step on the configured harness family, so a local setup starts with an explicit Local choice', async () => {
+    installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+
+    await passLanguageStep();
+    await waitFor(() => expect(screen.getByTestId('analyzer-family-harness').getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.queryByTestId('wizard-local-model-select')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('analyzer-family-local'));
+
+    expect(screen.getByTestId('wizard-local-model-select')).toBeDefined();
+  });
+
   it('clears a stale folder override for a key it just saved home-scoped', async () => {
     const recorders = installHandlers();
     server.use(
