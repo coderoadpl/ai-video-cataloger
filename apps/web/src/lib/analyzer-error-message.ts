@@ -30,7 +30,7 @@ const KNOWN_ERROR_SHAPES: readonly KnownErrorShape[] = [
   { pattern: /^Command failed[:.]/, resolve: (_match, messages) => messages.analyzerFailed },
   { pattern: /^Command (not found|is not executable)\.?$/, resolve: (_match, messages) => messages.analyzerCommandNotFound },
   { pattern: /^Command could not be started/, resolve: (_match, messages) => messages.analyzerCommandNotStarted },
-  { pattern: /^Command timed out\.?$/, resolve: (_match, messages) => messages.analyzerTimedOut },
+  { pattern: /^Command timed out(?: after \d+ ms)?\.?$/, resolve: (_match, messages) => messages.analyzerTimedOut },
   { pattern: /^Command cancelled\.?$/, resolve: (_match, messages) => messages.analyzerCancelled },
   {
     pattern: /^Local AI (runtime not reachable|runtime is not available|returned an empty response)/,

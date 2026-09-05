@@ -53,6 +53,8 @@ const envKeysToExclude = new Set([
   'CLAUDECODE',
 ]);
 
+export const PROBE_TIMEOUT_MS = 20_000;
+
 const ollamaChatResponseSchema = z.object({
   message: z.object({ content: z.string().optional() }).optional(),
 });
@@ -443,10 +445,16 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     const startedAt = performance.now();
     const runtime = harnessRuntimeDefinition(provider.providerId);
     const command = this.resolveCommand(provider.command);
-    const version = await this.commandRunner.run(command, runtime.versionArgs, {
+    let version = await this.commandRunner.run(command, runtime.versionArgs, {
       env: filteredAnalyzerEnv(this.env),
-      timeoutMs: 5000,
+      timeoutMs: PROBE_TIMEOUT_MS,
     });
+    if (!version.ok && isProbeTimeout(version.error)) {
+      version = await this.commandRunner.run(command, runtime.versionArgs, {
+        env: filteredAnalyzerEnv(this.env),
+        timeoutMs: PROBE_TIMEOUT_MS,
+      });
+    }
     if (!version.ok) {
       return {
         family: 'harness',
@@ -1061,6 +1069,11 @@ const spawnFailureMessage = (cause: unknown): string => {
   return `Command could not be started (${parsed.data.code}).`;
 };
 
+const probeTimeoutMessage = (timeoutMs: number): string => `Command timed out after ${String(timeoutMs)} ms.`;
+
+const isProbeTimeout = (error: AppError): boolean =>
+  error.code === 'processing_error' && error.message === probeTimeoutMessage(PROBE_TIMEOUT_MS);
+
 export const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
   run: (command, args, options) =>
     new Promise((resolve) => {
@@ -1117,8 +1130,8 @@ export const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
         if (forcedTermination !== undefined) clearTimeout(forcedTermination);
         options.signal?.removeEventListener('abort', abort);
         if (timedOut) {
-          process.stderr.write(`[analyzer] command timed out: ${command} ${args.join(' ')}\n${stderr}`);
-          resolve({ ok: false, error: appError('processing_error', 'Command timed out.') });
+          process.stderr.write(`[analyzer] command timed out after ${String(options.timeoutMs)} ms: ${command} ${args.join(' ')}\n${stderr}`);
+          resolve({ ok: false, error: appError('processing_error', probeTimeoutMessage(options.timeoutMs)) });
           return;
         }
         if (cancelled) {

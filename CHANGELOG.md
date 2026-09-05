@@ -24,6 +24,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Doctor/setup analyzer probes no longer fail on a slow machine.
 - The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location.
 - Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.
 - The release walkthrough captures its tree-expand screenshot while the whole-tree scope is still expanded, restoring the folder scope only after the frame is on disk.
