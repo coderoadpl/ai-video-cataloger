@@ -32,6 +32,7 @@ const spawnNode = (args: readonly string[], env: NodeJS.ProcessEnv, cwd: string)
 const BENIGN_STDERR_PREFIXES = [
   '[backup] Keychain disabled:',
   '[analyzer] command could not be started:',
+  '[analyzer] command timed out:',
   'spawn claude ENOENT',
   'spawn codex ENOENT',
   'spawn cursor-agent ENOENT',
@@ -45,6 +46,20 @@ const unexpectedStderr = (stderr: string): string =>
       return trimmed.length > 0 && !BENIGN_STDERR_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
     })
     .join('\n');
+
+describe('unexpectedStderr', () => {
+  it('filters timed-out analyzer probe lines without hiding unrelated stderr', () => {
+    const result = unexpectedStderr(
+      [
+        '[analyzer] command timed out: /usr/local/bin/analyzer --version',
+        'unrelated failure',
+        '',
+      ].join('\n'),
+    );
+
+    expect(result).toBe('unrelated failure');
+  });
+});
 
 let stagedDir = '';
 let home = '';
