@@ -55,6 +55,7 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
   const dictionary = useDictionary();
   const { photo, ownerPath, sightings } = detail;
   const capturedAt = formatCapturedAt(photo.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate;
+  const otherSightings = sightings.filter((sighting) => sighting.currentPath !== ownerPath);
   const capturedValue = photo.capturedAtSource === null
     ? capturedAt
     : `${capturedAt} (${capturedAtSourceLabel(dictionary, photo.capturedAtSource)})`;
@@ -91,13 +92,20 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
         value={photo.exifRating === null ? null : String(photo.exifRating)}
       />
       <Row icon={<ClockIcon fontSize="small" />} label={dictionary.photos.detailCaptured} value={capturedValue} />
-      <Row icon={<FolderIcon fontSize="small" />} label={dictionary.photos.detailOwnerPath} value={ownerPath} pathLayout />
-      {sightings.map((sighting, index) => (
+      <Row
+        icon={<FolderIcon fontSize="small" />}
+        label={dictionary.photos.detailOwnerPath}
+        value={ownerPath}
+        testId="photo-metadata-row-owner-path"
+        pathLayout
+      />
+      {otherSightings.map((sighting, index) => (
         <Row
           key={sighting.currentPath}
           icon={<FolderIcon fontSize="small" />}
-          label={index === 0 ? dictionary.photos.detailAlsoAt(sightings.length) : ''}
+          label={index === 0 ? dictionary.photos.detailAlsoAt(otherSightings.length) : ''}
           value={sighting.currentPath}
+          testId="photo-metadata-row-also-at"
           separator={false}
           pathLayout
         />

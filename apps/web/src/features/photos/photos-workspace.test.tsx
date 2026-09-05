@@ -272,7 +272,7 @@ describe('PhotosWorkspace', () => {
 
     expect(screen.getByRole('heading', { name: 'Photo Information' })).toBeDefined();
     expect(screen.getByTestId('photo-metadata-row-dimensions').textContent).toContain('4032×3024');
-    expect(document.querySelectorAll('[data-detail-metadata-row="true"]')).toHaveLength(4);
+    expect(document.querySelectorAll('[data-detail-metadata-row="true"]')).toHaveLength(3);
   });
 
   it('keeps long Polish metadata labels on one line while values can wrap', () => {
@@ -281,7 +281,17 @@ describe('PhotosWorkspace', () => {
     if (firstItem === undefined) throw new Error('missing item');
     renderThemed(<PhotosWorkspace
       active
-      state={baseState({ items, selectedFingerprint: firstItem.fingerprint, detail: detailFor(firstItem) })}
+      state={baseState({
+        items,
+        selectedFingerprint: firstItem.fingerprint,
+        detail: {
+          ...detailFor(firstItem),
+          sightings: [
+            { currentPath: firstItem.currentPath, folderId: 'folder-1', lastSeenAt: '2026-01-01T00:00:00.000Z' },
+            { currentPath: '/photos/backup/a.jpg', folderId: 'folder-2', lastSeenAt: '2026-01-01T00:00:00.000Z' },
+          ],
+        },
+      })}
     />);
 
     expect(getComputedStyle(screen.getByText('Owner path:')).minWidth).toBe('112px');
