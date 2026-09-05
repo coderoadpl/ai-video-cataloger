@@ -5,3 +5,4 @@ public/downloads/
 .pnpm-store/
 .firebase/
 .source/
+tsconfig.tsbuildinfo
