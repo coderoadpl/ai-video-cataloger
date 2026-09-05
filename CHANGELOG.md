@@ -18,8 +18,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
 
+### Security
+
+- The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency.
+
 ### Fixed
 
+- The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location.
+- Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.
+- The release walkthrough captures its tree-expand screenshot while the whole-tree scope is still expanded, restoring the folder scope only after the frame is on disk.
 - Packaged-CLI verification no longer fails when a `doctor` analyzer probe times out; that stderr line is now recognized as benign.
 
 ## [0.6.29] - 2026-09-04

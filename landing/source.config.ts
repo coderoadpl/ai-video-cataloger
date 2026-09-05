@@ -3,10 +3,11 @@ import {
   defineDocs,
   frontmatterSchema,
 } from "fumadocs-mdx/config";
+import lastModified from "fumadocs-mdx/plugins/last-modified";
 import { z } from "zod";
 
 export default defineConfig({
-  lastModifiedTime: "git",
+  plugins: [lastModified({ versionControl: "git" })],
   mdxOptions: {
     providerImportSource: "@/mdx-components",
     // Static image imports resolve to objects only next/image can render, and this export is unoptimized.

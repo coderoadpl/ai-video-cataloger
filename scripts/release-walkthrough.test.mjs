@@ -18,6 +18,7 @@ import {
   checkOllamaAnalyzer,
   clearLibrarySearch,
   collectionPhotoChipOutcome,
+  createRecorder,
   fakeDriveArchives,
   localAnalyzerConfig,
   peopleOutcome,
@@ -567,5 +568,65 @@ describe('peopleOutcome', () => {
     const outcome = peopleOutcome({ headingVisible: true, chipLabels: null, emptyState: { testId: 'people-empty-state', text: '' } });
 
     expect(outcome.status).toBe('failed');
+  });
+});
+
+describe('tree-expand step', () => {
+  const source = () => stepSource('tree-expand', 'select-video');
+
+  it('keeps the whole-tree scope on screen while the frame is captured', () => {
+    const [body] = source().split('}, async () => {');
+    expect(body).toContain("getByTestId('scope-tree')");
+    expect(body).not.toContain('scope-folder');
+  });
+
+  it('restores the folder scope only after the capture', () => {
+    const [, afterCapture] = source().split('}, async () => {');
+    expect(afterCapture).toContain("getByTestId('scope-folder')");
+  });
+
+  it('expands the first subfolder instead of blindly toggling it', () => {
+    expect(source()).toContain('await expandTreeRow(folderRow)');
+  });
+});
+
+describe('createRecorder', () => {
+  const recorderPageStub = () => {
+    const calls = [];
+    const page = {
+      screenshot: vi.fn(() => {
+        calls.push('screenshot');
+        return Promise.resolve();
+      }),
+      waitForFunction: vi.fn(() => Promise.resolve()),
+      waitForTimeout: vi.fn(() => Promise.resolve()),
+    };
+    return { calls, page };
+  };
+
+  it('runs afterCapture only once the screenshot is on disk', async () => {
+    const { calls, page } = recorderPageStub();
+    const { record, results } = createRecorder(page, mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-shots-')));
+
+    await record('launch', () => {
+      calls.push('body');
+      return Promise.resolve({ status: 'ok', note: 'launched' });
+    }, () => {
+      calls.push('afterCapture');
+      return Promise.resolve();
+    });
+
+    expect(calls).toEqual(['body', 'screenshot', 'afterCapture']);
+    expect(results[0].status).toBe('ok');
+  });
+
+  it('fails the step when the post-capture restore throws', async () => {
+    const { page } = recorderPageStub();
+    const { record, results } = createRecorder(page, mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-shots-')));
+
+    await record('launch', () => Promise.resolve({ status: 'ok', note: 'launched' }), () =>
+      Promise.reject(new Error('scope toggle vanished')));
+
+    expect(results[0]).toMatchObject({ status: 'failed', note: 'scope toggle vanished' });
   });
 });
