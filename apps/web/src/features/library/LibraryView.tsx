@@ -224,12 +224,12 @@ export const LibraryView = ({
     }
     return groupByCaptureDay(library.items, toLocalDay).map((section) => ({
       key: section.day ?? 'undated',
-      label: section.day === null ? dictionary.library.unknownDate : formatDayLabel(section.day, dictionary.locale),
+      label: section.day === null ? dictionary.library.noRecordingDate : formatDayLabel(section.day, dictionary.locale),
       offline: false,
       offlineReason: null,
       items: section.items,
     }));
-  }, [effectiveGroupBy, library.items, library.effectiveSort, dictionary.library.unknownDate, dictionary.locale]);
+  }, [effectiveGroupBy, library.items, library.effectiveSort, dictionary.library.noRecordingDate, dictionary.locale]);
 
   const viewerOrder = useMemo(
     () => sections.flatMap((section) => section.items.map((item) => item.fingerprint)),

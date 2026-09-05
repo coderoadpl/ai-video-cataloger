@@ -251,7 +251,7 @@ exit **39**; a fatal uncaught error → `Fatal error: …` on stderr, exit **1**
 | PHT-01 | P1 | Fresh home, no photo root scanned | 1. Switch to Analysis → Zdjęcia (**analysis-media-photos**). | Sidebar shows the honest empty state with a scan CTA (**photos-sidebar-empty-scan**); never falls back to the video list. |
 | PHT-02 | P1 | ≥1 scanned photo root | 1. Read the sidebar folder header. | Folder name and full path render, with no "Pokaż w Bibliotece" button; **Ten folder / Wszystkie** scope toggle present. |
 | PHT-03 | P1 | ≥1 scanned photo root with mixed states | 1. Inspect sidebar rows. | Badges render per item: Ukończony (analysed), Duplikat (sightings > 1), Podgląd nieudany (proxy failed), Brak EXIF (no EXIF read), Brak pliku (missing). |
-| PHT-04 | P1 | Sidebar populated | 1. Click a sidebar row. | The workspace to the right shows `photos-analysis-detail`: proxy preview, EXIF rows, captured/provenance, owner path + sightings, description/tags when analysed, variant picker, and the analyze strip when unanalysed. |
+| PHT-04 | P1 | Sidebar populated | 1. Click a sidebar row. | The workspace to the right shows `photos-analysis-detail`: proxy preview, EXIF rows, captured/provenance, owner path + the other sightings of the same content (see PHT-13), description/tags when analysed, variant picker, and the analyze strip when unanalysed. |
 | PHT-05 | P2 | A row is selected | 1. Click the proxy preview image. | The full-screen `PhotoViewer` overlay opens; prev/next navigate in the sidebar's current item order (folder or all-folders scope). |
 | PHT-06 | P1 | No row selected | 1. Open Analysis → Zdjęcia with nothing selected. | Workspace shows the placeholder `photos-workspace-empty` ("Wybierz zdjęcie z listy po lewej"). |
 | PHT-07 | P1 | Sidebar toolbar visible | 1. Click **Zeskanuj folder**. | The photos folder picker opens (not the video folder picker); a `photos_scan` job runs and the scanned root becomes selected. |
@@ -260,6 +260,7 @@ exit **39**; a fatal uncaught error → `Fatal error: …` on stderr, exit **1**
 | PHT-10 | P1 | Analysis → Zdjęcia open | 1. Read the workspace top strip. | **Index faces** (`FacesIndexAction`) renders above the detail, same active/lock semantics as before. |
 | PHT-11 | P1 | ≥1 analyzed photo | 1. Switch to Biblioteka → Kolekcja and select the Zdjęcia chip. | Only analyzed photos appear in the unified timeline; selecting a tile opens the shared photo viewer and no analysis controls appear. |
 | PHT-12 | P1 | ≥1 scanned but unanalyzed photo | 1. Compare Analysis → Zdjęcia with Biblioteka → Kolekcja → Zdjęcia. | The photo remains selectable in Analysis and is absent from Kolekcja until analysis completes. |
+| PHT-13 | P2 | One photo stored in a single folder, one photo duplicated into a second folder | 1. Select each in Analysis → Zdjęcia and read the metadata card. | The single-location photo shows **Ścieżka właściciela** and no **Także w** row at all; the duplicated one lists only the paths other than the owner path, counted accordingly (**Także w: 1 ścieżce** for one extra copy). |
 
 ---
 

@@ -924,7 +924,7 @@ export interface Dictionary {
     removeRecentSearch: (label: string) => string;
     loadingLibrary: string;
     loadMore: string;
-    unknownDate: string;
+    noRecordingDate: string;
     emptyCatalogTitle: string;
     emptyCatalogBody: string;
     emptyCatalogAction: string;
@@ -2045,7 +2045,7 @@ export const en: Dictionary = {
     removeRecentSearch: (label: string) => `Remove ${label}`,
     loadingLibrary: 'Loading library…',
     loadMore: 'Load more',
-    unknownDate: 'No date',
+    noRecordingDate: 'No recording date',
     emptyCatalogTitle: 'Nothing analyzed yet',
     emptyCatalogBody: 'Analyze a folder of videos or photos to start building your library.',
     emptyCatalogAction: 'Go to Videos',
@@ -3185,7 +3185,7 @@ export const pl: Dictionary = {
     removeRecentSearch: (label: string) => `Usuń ${label}`,
     loadingLibrary: 'Ładowanie biblioteki…',
     loadMore: 'Wczytaj więcej',
-    unknownDate: 'Brak daty',
+    noRecordingDate: 'Bez daty nagrania',
     emptyCatalogTitle: 'Jeszcze nic nie przeanalizowano',
     emptyCatalogBody: 'Przeanalizuj folder z filmami lub zdjęciami, aby zacząć budować bibliotekę.',
     emptyCatalogAction: 'Przejdź do Filmów',
