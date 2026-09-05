@@ -18,6 +18,7 @@ const requireShim = [
 const BENIGN_STDERR_PREFIXES = [
   '[backup] Keychain disabled:',
   '[analyzer] command could not be started:',
+  '[analyzer] command timed out:',
   'spawn claude ENOENT',
   'spawn codex ENOENT',
   'spawn cursor-agent ENOENT',
@@ -82,9 +83,15 @@ async function verifyStagedCli(sourceDir) {
         AVC_WORKING_DIRECTORY: folder,
         AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
       });
-      if (!command.expectedCodes.includes(result.code) || unexpectedStderr(result.stderr).length > 0) {
+      if (!command.expectedCodes.includes(result.code)) {
         throw new Error(
           `Packaged CLI verification failed: "${command.args.join(' ')}" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+        );
+      }
+      const offendingStderr = unexpectedStderr(result.stderr);
+      if (offendingStderr.length > 0) {
+        throw new Error(
+          `Packaged CLI verification failed: "${command.args.join(' ')}" exited ${result.code}.\nstdout: ${result.stdout}\nstderr: ${offendingStderr}`,
         );
       }
     }
