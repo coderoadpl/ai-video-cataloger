@@ -514,6 +514,7 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
     await expect(page.getByTestId('wizard-step-language')).toBeVisible();
     await page.getByTestId('wizard-next').click();
     await expect(page.getByTestId('wizard-step-analyzer')).toBeVisible();
+    await page.getByTestId('analyzer-family-local').click();
     await page.getByTestId('wizard-local-model-select').click();
     await page.getByRole('option', { name: /Gemma 3 4B/i }).click();
     await page.getByTestId('wizard-next').click();
