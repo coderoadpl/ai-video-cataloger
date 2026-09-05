@@ -854,6 +854,18 @@ name; relevance only while a text query is active) is a tested matrix, not an
 improvised JSX branch — grouping and sort are independent axes (e.g.
 group-by-date with `sort=name` is legal).
 
+**Date grouping reads capture metadata only, and says so.** A section's day
+comes from `capturedAt` — the container's recording timestamp for a video, EXIF
+(or, for photos only, the file mtime the EXIF reader falls back to) for a
+photo — never from a filename or from analysis time. A file whose capture
+metadata is missing lands in one trailing section labeled "Bez daty nagrania" /
+"No recording date", not "no date": the analyzed video's renamed file already
+carries a `YYYY-MM-DD` prefix, and that prefix is derived from the file's mtime
+(`datePrefix` in `core/server/usecases/final-name.ts`), so a flat "no date"
+label contradicts a filename the same screen is showing. Videos never fall back
+to mtime for `capturedAt`, and this section label is the honest statement of
+that rule rather than an invitation to add such a fallback.
+
 **The tile→folder direction is the only cross-surface folder connection left.**
 A tile's primary click and its context menu (open in folder view, reveal in
 Finder, copy path) resolve a tile to its Analysis folder. The former

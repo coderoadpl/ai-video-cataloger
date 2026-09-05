@@ -390,6 +390,17 @@ describe('LibraryView', () => {
     });
   });
 
+  it('names the undated group after the missing recording date, which the mtime-derived filename prefix never carries', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-1', capturedAt: null })]);
+    server.use(http.get('/api/config', () => HttpResponse.json(configResponse('pl'))));
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('library-section-header').textContent).toBe('Bez daty nagrania');
+    });
+  });
+
   it('opens the shared media viewer for an online video tile, not the analysis workspace', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-open' })]);
     stubLibraryPreview();

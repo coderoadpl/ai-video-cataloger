@@ -432,6 +432,11 @@ Read every screenshot against the sensitivities that have burned us before:
   selected files back in the default Kolekcja view after visiting `Ukryte`, with
   no stale bulk action bar left over and no English fallback in the hide/restore
   controls?
+- **Videos folder tree (`tree-expand`, W94)** — the frame is captured while
+  "Całe drzewo" is still the selected scope and the first subfolder is expanded
+  (the runner returns to "Ten folder" only after the screenshot), so this shot
+  must show the videos tree — root row, expanded subfolder, the rows below it —
+  and must not be pixel-identical to the flat `open-folder` list.
 - **Photos folder tree (W57/W60/W64)** — in the `photos-tree` screenshot, does the
   "Całe drzewo" scope render the collapsible tree (the root row and the
   expanded `subfolder` row the runner plants a photo into, each carrying an

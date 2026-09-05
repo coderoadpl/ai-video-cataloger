@@ -528,9 +528,9 @@ const settle = async (page) => {
   }
 };
 
-const createRecorder = (page, outDir) => {
+export const createRecorder = (page, outDir) => {
   const results = [];
-  const record = async (name, body) => {
+  const record = async (name, body, afterCapture) => {
     assertStepName(results.length, name);
     const startedAt = Date.now();
     const screenshot = `${String(results.length + 1).padStart(2, '0')}-${name}.png`;
@@ -542,6 +542,13 @@ const createRecorder = (page, outDir) => {
     }
     await settle(page).catch(() => undefined);
     await page.screenshot({ path: path.join(outDir, screenshot) }).catch(() => undefined);
+    if (afterCapture !== undefined) {
+      try {
+        await afterCapture();
+      } catch (error) {
+        outcome = { status: 'failed', note: error instanceof Error ? error.message : String(error) };
+      }
+    }
     results.push({ name, ...outcome, durationMs: Date.now() - startedAt, screenshot });
     console.log(`  ${outcome.status.padEnd(7)} ${name}${outcome.note === '' ? '' : ` — ${outcome.note}`}`);
   };
@@ -678,10 +685,11 @@ const drive = async (plan) => {
     await scopeTree.click();
     const folderRow = page.getByTestId('folder-row').first();
     if (!(await appeared(folderRow, SETTLE_TIMEOUT_MS))) return skipped('fixture folder has no subfolders');
-    await folderRow.click();
+    await expandTreeRow(folderRow);
+    return done('first subfolder expanded under the whole-tree scope');
+  }, async () => {
     const scopeFolder = page.getByTestId('scope-folder');
     if (await appeared(scopeFolder, SETTLE_TIMEOUT_MS)) await scopeFolder.click();
-    return done('first subfolder toggled');
   });
 
   await record('select-video', async () => {
