@@ -699,6 +699,55 @@ Design: [docs/architecture.md](../docs/architecture.md), "Library — hide and
 move-to-trash"; [ADR-0020](../docs/decisions/0020-library-hide-and-trash.md);
 [tasks/prd-library-hide-and-trash.md](prd-library-hide-and-trash.md).
 
+### Post-parity note — pairwise people decisions (W99)
+
+The pairwise people review is a post-parity capability: the old app had no face
+pipeline at all, so nothing in this inventory describes behaviour it changes.
+Recorded here because the sections above are the parity ground truth for the
+on-disk and database layout, and the reader must be able to tell an addition
+from a drift.
+
+- **One new table, no new database file and no new on-disk directory.**
+  `catalog.db` (schema **V19**) gains `people_pair_decisions` — one row per
+  unordered pair of face-observation ids, holding a `same` / `different` /
+  `skip` verdict, the two person ids at decision time (**nullable**: an anchor
+  that currently belongs to no person stores `NULL`), an ISO-8601 decision
+  time and a source — plus two indexes on the person columns. `photos.db` stays
+  at **v7**: the identity pool has lived in `catalog.db` since V11 and the
+  decisions belong with it.
+- **The migration is additive.** No existing row is read or rewritten, and an
+  upgraded installation with no decisions looks exactly as it did at V18.
+- **No artifact changes.** The review surface shows the per-observation face
+  crops that [ADR-0014](../docs/decisions/0014-per-observation-face-crops.md)
+  already places under the home-scope `faces/obs/` tree; it writes none and
+  deletes none.
+- **Row lifetime follows the observations.** A decision is deleted with the
+  observations it anchors — by every one of the three store writes that delete
+  face observations: `forgetPerson`, `deleteFaceObservationsForFile` (the
+  photos leg of the W88 trash flow and the stale-engine re-index path) and
+  `forgetEntry` (the videos leg of the W88 trash flow and
+  `forget <fingerprint>`) — re-keyed by a person merge, refreshed (to a person
+  id or to `NULL`) by a recluster, and cleared wholesale by `faces purge`.
+  Hiding files never deletes one, and never stops one from suppressing its
+  pair.
+- **A `FACE_ENGINE_VERSION` bump loses decisions.** The re-index path deletes
+  and re-extracts a stale file's observations, so their ids are re-minted and
+  the rows anchored on them go with them. Recorded here because it is the one
+  operation that discards stored user answers, and its changelog line must say
+  so.
+- **No snapshot change.** `catalog.ndjson` and its
+  `CATALOG_SNAPSHOT_SCHEMA_VERSION` are untouched: decisions are home-scope
+  identity state, not per-folder catalog state.
+- **No new NDJSON step, exit code or job kind.** `faces pairs list`,
+  `faces pairs decide` and `faces pairs import` use the existing envelope shape
+  and the existing exit-code taxonomy.
+
+Design: [docs/architecture.md](../docs/architecture.md), "People — pairwise
+review and decision constraints (W99)";
+[ADR-0018](../docs/decisions/0018-unified-people.md), amendment "Pairwise
+decisions as clustering constraints";
+[tasks/prd-people-pair-review.md](prd-people-pair-review.md).
+
 ## 6. Bundled / Managed Runtimes
 
 ### ffmpeg / ffprobe
