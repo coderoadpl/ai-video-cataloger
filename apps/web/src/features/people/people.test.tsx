@@ -603,6 +603,153 @@ describe('PeopleView', () => {
     expect(bodies).toContainEqual({ force: true });
   }, scaledTimeout(30_000));
 
+  it('merges every selected person into the only named one, whatever the click order', async () => {
+    const bodies: unknown[] = [];
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 42,
+      people: [
+        person({ personId: 'p1', fallbackIndex: 0, observationCount: 30 }),
+        person({ personId: 'p2', displayName: 'Alex', observationCount: 2 }),
+        person({ personId: 'p3', fallbackIndex: 2, observationCount: 10 }),
+      ],
+    });
+    server.use(
+      http.post('/api/faces/merge', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: { fromPersonId: 'p1', toPersonId: 'p2', movedObservations: 1, affectedFingerprints: [] },
+        });
+      }),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+    const user = userEvent.setup();
+    await screen.findByTestId('people-grid');
+
+    await user.click(screen.getByLabelText('Select Person 1'));
+    expect(screen.getByTestId('people-merge-hint').textContent).toBe('Select at least two people.');
+
+    await user.click(screen.getByLabelText('Select Alex'));
+    await user.click(screen.getByLabelText('Select Person 3'));
+    expect(screen.queryByTestId('people-merge-hint')).toBeNull();
+
+    await waitFor(() => expect(screen.getByTestId('people-merge-selected').getAttribute('disabled')).toBeNull());
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+
+    expect((await screen.findByTestId('people-merge-body')).textContent)
+      .toBe('Merge 3 people into "Alex"? The other groupings disappear. This cannot be undone.');
+    fireEvent.click(screen.getByTestId('people-merge-confirm'));
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies).toContainEqual({ fromPersonId: 'p1', toPersonId: 'p2' });
+    expect(bodies).toContainEqual({ fromPersonId: 'p3', toPersonId: 'p2' });
+  }, scaledTimeout(30_000));
+
+  it('targets the largest selected person when none of them is named', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 40,
+      people: [
+        person({ personId: 'p1', fallbackIndex: 0, observationCount: 10 }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 30 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+    const user = userEvent.setup();
+    await screen.findByTestId('people-grid');
+
+    await user.click(screen.getByLabelText('Select Person 1'));
+    await user.click(screen.getByLabelText('Select Person 2'));
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+
+    expect((await screen.findByTestId('people-merge-body')).textContent)
+      .toBe('Merge 2 people into "Person 2"? The other groupings disappear. This cannot be undone.');
+  }, scaledTimeout(30_000));
+
+  it('asks which name wins when several selected people are named', async () => {
+    const bodies: unknown[] = [];
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 20,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 3 }),
+        person({ personId: 'p2', displayName: 'Blake', observationCount: 12 }),
+      ],
+    });
+    server.use(
+      http.post('/api/faces/merge', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: { fromPersonId: 'p2', toPersonId: 'p1', movedObservations: 1, affectedFingerprints: [] },
+        });
+      }),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+    const user = userEvent.setup();
+    await screen.findByTestId('people-grid');
+
+    await user.click(screen.getByLabelText('Select Alex'));
+    await user.click(screen.getByLabelText('Select Blake'));
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+
+    expect((await screen.findByTestId('people-merge-body')).textContent)
+      .toBe('Merge 2 people into "Blake"? The other groupings disappear. This cannot be undone.');
+    await user.click(screen.getByRole('radio', { name: 'Alex' }));
+    expect(screen.getByTestId('people-merge-body').textContent)
+      .toBe('Merge 2 people into "Alex"? The other groupings disappear. This cannot be undone.');
+
+    fireEvent.click(screen.getByTestId('people-merge-confirm'));
+    await waitFor(() => expect(bodies).toEqual([{ fromPersonId: 'p2', toPersonId: 'p1' }]));
+  }, scaledTimeout(30_000));
+
+  it('keeps the merge dialog, the selection and the server error when a merge fails', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 20,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 3 }),
+        person({ personId: 'p2', fallbackIndex: 1, observationCount: 12 }),
+      ],
+    });
+    server.use(
+      http.post('/api/faces/merge', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'Catalog is locked by another run' } },
+        { status: 500 },
+      )),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+    const user = userEvent.setup();
+    await screen.findByTestId('people-grid');
+
+    await user.click(screen.getByLabelText('Select Alex'));
+    await user.click(screen.getByLabelText('Select Person 2'));
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+    fireEvent.click(await screen.findByTestId('people-merge-confirm'));
+
+    const alert = await screen.findByTestId('people-merge-error');
+    expect(alert.textContent).toContain('Catalog is locked by another run');
+    expect(screen.getByTestId('people-merge-body')).toBeDefined();
+    expect(screen.getByLabelText('Select Alex')).toHaveProperty('checked', true);
+  }, scaledTimeout(30_000));
+
   it('requires a recluster dry-run report before enabling the destructive run', async () => {
     const bodies: unknown[] = [];
     stubPeople({

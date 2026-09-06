@@ -1,11 +1,13 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { SqlJsGlobalCatalogStore } from '../../adapters/db/index.js';
 import { HuggingFaceWhisperModelDownloader } from '../../adapters/whisper/index.js';
-import { FILE_ARTIFACTS } from '../../core/domain/index.js';
+import { FILE_ARTIFACTS, type AppError, type Result } from '../../core/domain/index.js';
+import { ensureE2eFaceModels } from './face-models.js';
 import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
@@ -121,6 +123,166 @@ test.describe('People: enable faces, index, and rename a real grouping', () => {
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
+const MERGE_TIMESTAMP = '2026-08-16T12:00:00.000Z';
+const MERGE_FOLDER_ID = '80808080-8080-4080-8080-808080808080';
+const MERGE_PEOPLE = ['person-alpha', 'person-beta', 'person-gamma'] as const;
+const MERGE_OBSERVATIONS_PER_PERSON = 10;
+
+const mergeEmbedding = Array.from({ length: 128 }, (_value, index) => (index === 0 ? 1 : 0));
+
+const expectMergeResult = <T>(result: Result<T, AppError>): asserts result is { ok: true; value: T } => {
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+};
+
+const seedMergeCatalog = async (workdir: string): Promise<{ workspacePath: string }> => {
+  const homeDirectory = isolatedHome(workdir);
+  const workspacePath = join(workdir, 'workspace');
+  const folderPath = join(workdir, 'people-merge');
+  mkdirSync(workspacePath, { recursive: true });
+  mkdirSync(folderPath, { recursive: true });
+
+  expectMergeResult(await ensureE2eFaceModels({ homeDirectory }));
+
+  const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory });
+  try {
+    expectMergeResult(await globalCatalog.upsertFolder({
+      folderId: MERGE_FOLDER_ID,
+      currentPath: folderPath,
+      displayName: 'People Merge',
+      firstSeenAt: MERGE_TIMESTAMP,
+      lastSeenAt: MERGE_TIMESTAMP,
+    }));
+    for (const personId of MERGE_PEOPLE) {
+      const fingerprint = `video-${personId}`;
+      writeFileSync(join(folderPath, `${personId}.mp4`), Buffer.from([0]));
+      expectMergeResult(await globalCatalog.upsertFile({
+        fingerprint,
+        folderId: MERGE_FOLDER_ID,
+        fileName: `${personId}.mp4`,
+        size: 1,
+        durationS: null,
+        width: null,
+        height: null,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: MERGE_TIMESTAMP,
+        analyzer: 'harness',
+        model: 'claude-code',
+        missingAt: null,
+        capturedAt: '2026-08-15T12:00:00.000Z',
+        capturedAtSource: 'container',
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
+      }));
+      expectMergeResult(await globalCatalog.upsertAnalysis({
+        fingerprint,
+        finalName: null,
+        description: `A clip of ${personId}.`,
+        transcript: null,
+        language: 'en',
+        tags: [],
+      }));
+      expectMergeResult(await globalCatalog.upsertPerson({
+        personId,
+        displayName: null,
+        kind: 'face',
+        createdAt: MERGE_TIMESTAMP,
+        centroid: mergeEmbedding,
+        exemplarCount: MERGE_OBSERVATIONS_PER_PERSON,
+      }));
+      for (let index = 0; index < MERGE_OBSERVATIONS_PER_PERSON; index += 1) {
+        expectMergeResult(await globalCatalog.upsertFaceObservation({
+          obsId: `${fingerprint}:face:${String(index)}:1`,
+          fingerprint,
+          kind: 'face',
+          frameTsS: index + 1,
+          bbox: { x: 0, y: 0, width: 80, height: 80 },
+          embedding: mergeEmbedding,
+          quality: 0.9,
+          personId,
+          cropPath: null,
+          media: 'video',
+        }));
+      }
+    }
+  } finally {
+    expectMergeResult(await globalCatalog.dispose());
+  }
+
+  return { workspacePath };
+};
+
+test.describe('People: merging several selected groupings into the named one', () => {
+  test('selecting three people merges them all into the person the user named', async () => {
+    const workdir = makeEmptyWorkdir('people-merge-selected');
+    const { workspacePath } = await seedMergeCatalog(workdir);
+    const session = await launch(workdir);
+    try {
+      await session.page.getByTestId('mode-analysis').click();
+      await stubOpenDialog(session.app, workspacePath);
+      const openFolderButton = session.page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+      await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
+      await openFolderButton.click();
+      await expect(session.page.getByText(workspacePath)).toBeVisible({ timeout: 30_000 });
+
+      await session.page.getByTestId('open-settings-button').click();
+      const modal = session.page.getByTestId('settings-modal');
+      await expect(modal).toBeVisible({ timeout: 15_000 });
+      const facesSwitch = session.page.getByTestId('faces-enabled-switch');
+      await expect(facesSwitch).toBeVisible({ timeout: 15_000 });
+      if (!(await facesSwitch.locator('input[type="checkbox"]').isChecked())) {
+        await facesSwitch.click();
+        await session.page.getByTestId('settings-save').click();
+        await expect(session.page.getByTestId('saved-snackbar')).toBeVisible({ timeout: 15_000 });
+      } else {
+        await session.page.getByTestId('settings-cancel').click();
+      }
+      await expect(modal).toBeHidden({ timeout: 15_000 });
+
+      await session.page.getByTestId('mode-library').click();
+      await session.page.getByTestId('subnav-people').click();
+      await expect(session.page.getByTestId('people-card')).toHaveCount(3, { timeout: 30_000 });
+
+      const alphaCard = session.page.locator('[data-testid="people-card"][data-person-id="person-alpha"]');
+      await alphaCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
+      await session.page.getByTestId('people-rename').click();
+      const renameInput = session.page.getByTestId('people-rename-input');
+      await expect(renameInput).toBeVisible({ timeout: 10_000 });
+      await renameInput.fill('E2E Alpha');
+      await session.page.getByTestId('people-rename-save').click();
+      await expect(alphaCard.getByText('E2E Alpha')).toBeVisible({ timeout: 15_000 });
+
+      const mergeButton = session.page.getByTestId('people-merge-selected');
+      await session.page.locator('[data-person-id="person-beta"] input[type="checkbox"]').check();
+      await expect(mergeButton).toBeDisabled();
+      await expect(session.page.getByTestId('people-merge-hint')).toBeVisible();
+
+      await session.page.locator('[data-person-id="person-alpha"] input[type="checkbox"]').check();
+      await session.page.locator('[data-person-id="person-gamma"] input[type="checkbox"]').check();
+      await expect(session.page.getByTestId('people-merge-hint')).toHaveCount(0);
+      await expect(mergeButton).toBeEnabled();
+
+      await mergeButton.click();
+      const mergeBody = session.page.getByTestId('people-merge-body');
+      await expect(mergeBody).toContainText('E2E Alpha', { timeout: 10_000 });
+      await expect(mergeBody).toContainText('3');
+      await session.page.getByTestId('people-merge-confirm').click();
+
+      await expect(session.page.getByTestId('people-card')).toHaveCount(1, { timeout: 30_000 });
+      const merged = session.page.getByTestId('people-card').first();
+      await expect(merged).toHaveAttribute('data-person-id', 'person-alpha');
+      await expect(merged.getByText('E2E Alpha')).toBeVisible();
+      await expect(merged.getByTestId('people-card-body')).toContainText(/3\s+(videos|filmy)/);
+    } finally {
+      await session.app.close().catch(() => undefined);
+      rmSync(workdir, { recursive: true, force: true });
     }
   });
 });

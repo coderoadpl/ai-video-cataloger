@@ -22,6 +22,8 @@ export interface PeopleState {
   error: string | null;
   mutationError: string | null;
   dismissMutationError: () => void;
+  mergeError: string | null;
+  clearMergeError: () => void;
   people: FacePerson[];
   observations: number;
   selectedPersonIds: string[];
@@ -31,7 +33,7 @@ export interface PeopleState {
   installArtifacts: () => void;
   indexFaces: () => void;
   rename: (personId: string, displayName: string) => void;
-  merge: (fromPersonId: string, toPersonId: string) => void;
+  merge: (input: { toPersonId: string; fromPersonIds: readonly string[] }) => Promise<boolean>;
   forget: (personId: string) => void;
   purge: () => void;
   reclusterDryRunReport: FacesReclusterReport | null;
@@ -80,6 +82,7 @@ export const usePeople = ({
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const [reclusterDryRunReport, setReclusterDryRunReport] = useState<FacesReclusterReport | null>(null);
   const isBusy = activeJobLabel !== null
     || facesIndex.isBusy
@@ -169,14 +172,25 @@ export const usePeople = ({
   );
 
   const merge = useCallback(
-    (fromPersonId: string, toPersonId: string) => {
-      mutateAndRefresh(
-        mergeMutation.mutateAsync({ fromPersonId, toPersonId }),
-        dictionary.people.mergedGroupingsLog,
-        dictionary.people.mergeGroupingsFailedLog,
-      );
+    async ({ toPersonId, fromPersonIds }: { toPersonId: string; fromPersonIds: readonly string[] }): Promise<boolean> => {
+      setMergeError(null);
+      for (const fromPersonId of fromPersonIds) {
+        try {
+          await mergeMutation.mutateAsync({ fromPersonId, toPersonId });
+        } catch (error) {
+          const message = `${dictionary.people.mergeGroupingsFailedLog}: ${messageOf(error)}`;
+          addLine(message, 'error');
+          setMergeError(message);
+          await invalidate();
+          return false;
+        }
+      }
+      addLine(dictionary.people.mergedGroupingsLog, 'success');
+      setSelectedPersonIds([]);
+      await invalidate();
+      return true;
     },
-    [dictionary, mergeMutation, mutateAndRefresh],
+    [addLine, dictionary, invalidate, mergeMutation],
   );
 
   const forget = useCallback(
@@ -255,7 +269,7 @@ export const usePeople = ({
     setSelectedPersonIds((current) =>
       current.includes(personId)
         ? current.filter((selected) => selected !== personId)
-        : current.length >= 2 ? [current[1] ?? personId, personId] : [...current, personId]);
+        : [...current, personId]);
   }, []);
 
   const error = useMemo(() => {
@@ -277,6 +291,8 @@ export const usePeople = ({
     error,
     mutationError,
     dismissMutationError: () => setMutationError(null),
+    mergeError,
+    clearMergeError: () => setMergeError(null),
     people: people.data?.people ?? [],
     observations: status.data?.observations ?? 0,
     selectedPersonIds,

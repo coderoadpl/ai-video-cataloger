@@ -17,6 +17,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Added
 
 - Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
+- "Scal wybrane" merges any number of selected people in one action, into the named person (or the largest one), naming the target in the confirmation and asking which name wins when several are named.
 
 ### Security
 
@@ -24,6 +25,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Selecting a third person in Osoby no longer silently drops the first selection, so "Scal wybrane" can no longer merge two people the user did not intend.
+- Merging people keeps the display name when only the source side was named, persists the merge to disk immediately instead of waiting for the auto-flush timer, and reports a failed merge inline in the confirmation dialog while keeping the selection.
 - Doctor/setup analyzer probes no longer fail on a slow machine.
 - The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location.
 - Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.

@@ -355,7 +355,11 @@ export const facesMerge = async (
   if (input.fromPersonId === input.toPersonId) {
     return { ok: false, error: appError('validation', 'Cannot merge a person into itself') };
   }
-  return deps.globalCatalog.mergePeople(input);
+  const merged = await deps.globalCatalog.mergePeople(input);
+  if (!merged.ok) return merged;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  return merged;
 };
 
 export const facesForget = async (

@@ -149,7 +149,9 @@ describe('dictionary', () => {
     expect(en.readinessNotice.title).toBe('Analysis setup is incomplete');
     expect(pl.readinessNotice.title).toBe('Konfiguracja analizy jest niepełna');
     expect(pl.cancelDialog.continueProcessing).toBe('Kontynuuj analizę');
-    expect(pl.people.mergeBody('A', 'B')).toBe('Włączyć A do B? Grupa A zniknie. Tego nie można cofnąć.');
+    expect(pl.people.mergeBody(2, 'Ala')).toBe('Scal 2 osoby w «Ala»? Pozostałe grupy znikną. Tego nie można cofnąć.');
+    expect(pl.people.mergeBody(5, 'Ala')).toBe('Scal 5 osób w «Ala»? Pozostałe grupy znikną. Tego nie można cofnąć.');
+    expect(pl.people.mergeSelectHint).toBe('Zaznacz co najmniej dwie osoby.');
   });
 
   it('describes people grouping as videos and photos in both locales', () => {
