@@ -33,6 +33,7 @@ import {
   type CredentialDeletion,
   type CredentialsBackendStatus,
   type FaceObservation,
+  type FaceObservationSummary,
   type FileArtifact,
   type Person,
   type Result,
@@ -1310,6 +1311,17 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       (input.fingerprint === undefined || observation.fingerprint === input.fingerprint)
       && (input.personId === undefined || observation.personId === input.personId));
     return Promise.resolve(ok(observations));
+  }
+
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
+    return Promise.resolve(ok([...this.faceObservations.values()].map((observation) => ({
+      obsId: observation.obsId,
+      fingerprint: observation.fingerprint,
+      personId: observation.personId,
+      quality: observation.quality,
+      cropPath: observation.cropPath,
+      media: observation.media,
+    }))));
   }
 
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {

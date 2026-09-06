@@ -1536,6 +1536,20 @@ grid; named people are always promoted into the main grid, and opening `Inne` on
 the Osoby grid scope, leaving the shared people query, Library people facets and search
 filters untouched.
 
+A person card is a button whose primary action is navigation, not a dialog: clicking the
+card body sends the user to the collection filtered by that person, carrying the Osoby
+media chip, and the filter shows up as a removable `Osoba: <name>` chip. The navigation is
+reversible and self-evident from that chip, so it asks for no confirmation; the older
+person-media dialog remains behind the card's overflow menu as `Podgląd plików` for a quick
+look without leaving Osoby. Both surfaces are read paths over a library-sized catalog, so
+neither may walk the observation table once per person: `facesPeople` reads one
+embedding-free projection of `face_observations` and folds it into per-person totals in a
+single pass, the collection's person predicate resolves through the
+`face_observations(fingerprint)` index, and the photo half of a person's page binds its
+fingerprint allow list as one JSON parameter instead of one placeholder per file.
+`adapters/db/faces-people-scale.test.ts` holds those three properties with budgets on a
+synthetic catalog and doubles as the profiling bench (`pnpm run bench:people`).
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive

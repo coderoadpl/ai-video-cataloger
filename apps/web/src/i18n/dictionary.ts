@@ -535,6 +535,7 @@ export interface Dictionary {
     frameObservationCount: (count: number) => string;
     rename: string;
     delete: string;
+    previewFiles: string;
     searchInLibrary: string;
     hidePersonFiles: string;
     trashPersonFiles: string;
@@ -957,6 +958,7 @@ export interface Dictionary {
     filterDatePresetLastYear: string;
     chipHasGps: string;
     chipNoGps: string;
+    chipPerson: (displayName: string) => string;
     chipFolder: (displayName: string) => string;
     chipDateRange: (from: string, to: string) => string;
     chipDateFrom: (from: string) => string;
@@ -1607,6 +1609,7 @@ export const en: Dictionary = {
     frameObservationCount: (count) => `${count} ${count === 1 ? 'occurrence' : 'occurrences'}`,
     rename: 'Rename',
     delete: 'Delete',
+    previewFiles: 'Preview files',
     searchInLibrary: 'Search in Library',
     hidePersonFiles: 'Hide this person’s files',
     trashPersonFiles: 'Move this person’s files to Trash',
@@ -2080,6 +2083,7 @@ export const en: Dictionary = {
     filterDatePresetLastYear: 'Last year',
     chipHasGps: 'With GPS',
     chipNoGps: 'Without GPS',
+    chipPerson: (displayName) => `Person: ${displayName}`,
     chipFolder: (displayName) => `Folder: ${displayName}`,
     chipDateRange: (from, to) => `${from} – ${to}`,
     chipDateFrom: (from) => `From ${from}`,
@@ -2745,6 +2749,7 @@ export const pl: Dictionary = {
     frameObservationCount: (count) => `${count} ${plPlural(count, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
+    previewFiles: 'Podgląd plików',
     searchInLibrary: 'Szukaj w Bibliotece',
     hidePersonFiles: 'Ukryj pliki tej osoby',
     trashPersonFiles: 'Przenieś do Kosza pliki tej osoby',
@@ -3222,6 +3227,7 @@ export const pl: Dictionary = {
     filterDatePresetLastYear: 'Poprzedni rok',
     chipHasGps: 'Z GPS',
     chipNoGps: 'Bez GPS',
+    chipPerson: (displayName) => `Osoba: ${displayName}`,
     chipFolder: (displayName) => `Folder: ${displayName}`,
     chipDateRange: (from, to) => `${from} – ${to}`,
     chipDateFrom: (from) => `Od ${from}`,

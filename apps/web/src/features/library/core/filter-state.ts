@@ -75,6 +75,7 @@ export interface LibraryFilterChip {
 export interface LibraryFilterChipLabels {
   hasGps: string;
   noGps: string;
+  person: (displayName: string) => string;
   folder: (displayName: string) => string;
   dateRange: (from: string, to: string) => string;
   dateFrom: (from: string) => string;
@@ -95,7 +96,7 @@ export const libraryFilterChips = (state: LibraryFilterState, labels: LibraryFil
   for (const personId of state.personIds) {
     chips.push({
       id: `person:${personId}`,
-      label: state.personLabels[personId] ?? personId,
+      label: labels.person(state.personLabels[personId] ?? personId),
       remove: { type: 'removePerson', personId },
     });
   }

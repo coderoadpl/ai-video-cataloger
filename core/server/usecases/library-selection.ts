@@ -164,7 +164,7 @@ const resolvePerson = async (
   const person = await deps.globalCatalog.getPerson(personId);
   if (!person.ok) return person;
   if (person.value === null) return { ok: false, error: appError('not_found', 'Person not found', { personId }) };
-  const observations = await deps.globalCatalog.listFaceObservations();
+  const observations = await deps.globalCatalog.listFaceObservationSummaries();
   if (!observations.ok) return observations;
   const selected = new Set(observations.value.filter((observation) => observation.personId === personId).map((observation) => observation.fingerprint));
   const shared = sharedFingerprints(observations.value, personId);

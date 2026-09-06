@@ -23,8 +23,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency.
 
+### Changed
+
+- Clicking a person card in Osoby now opens Kolekcja filtered by that person, with a removable "Osoba: <name>" chip; the file preview dialog moved to the card's overflow menu.
+
 ### Fixed
 
+- Osoby and the person-filtered Kolekcja page no longer scan every face observation per person, so a large library opens them without a long spinner.
 - Selecting a third person in Osoby no longer silently drops the first selection, so "Scal wybrane" can no longer merge two people the user did not intend.
 - Merging people keeps the display name when only the source side was named, persists the merge to disk immediately instead of waiting for the auto-flush timer, and reports a failed merge inline in the confirmation dialog while keeping the selection.
 - Doctor/setup analyzer probes no longer fail on a slow machine.

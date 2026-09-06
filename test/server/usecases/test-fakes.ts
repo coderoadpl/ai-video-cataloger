@@ -23,6 +23,7 @@ import {
   type ConfigKey,
   type ExifSummary,
   type FaceObservation,
+  type FaceObservationSummary,
   type FileArtifact,
   type GeminiUsageAccounting,
   type GpsSource,
@@ -2026,6 +2027,17 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     if (input.fingerprint !== undefined) rows = rows.filter((observation) => observation.fingerprint === input.fingerprint);
     else if (input.personId !== undefined) rows = rows.filter((observation) => observation.personId === input.personId);
     return Promise.resolve(ok(rows));
+  }
+
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
+    return Promise.resolve(ok([...this.faceObservations.values()].map((observation) => ({
+      obsId: observation.obsId,
+      fingerprint: observation.fingerprint,
+      personId: observation.personId,
+      quality: observation.quality,
+      cropPath: observation.cropPath,
+      media: observation.media,
+    }))));
   }
 
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {

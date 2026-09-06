@@ -327,8 +327,8 @@ export const IndexRoute = () => {
           folder={shell.currentFolder}
           addLine={terminal.addLine}
           onOpenSettings={() => setModalRequest('settings')}
-          onSearchInLibrary={(personId, label) => {
-            setLibrarySeed({ kind: 'person', personId, label });
+          onOpenInCollection={(personId, label, media) => {
+            setLibrarySeed({ kind: 'person', personId, label, media });
             setMode('library');
             setLibrarySurface('collection');
           }}

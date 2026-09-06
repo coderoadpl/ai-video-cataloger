@@ -23,6 +23,7 @@ import type {
   FaceBox,
   FaceLandmarks,
   FaceObservation,
+  FaceObservationSummary,
   FileArtifact,
   FileArtifactId,
   GeminiUsageAccounting,
@@ -780,6 +781,7 @@ export interface GlobalCatalogStore {
     fingerprint?: string | undefined;
     personId?: string | undefined;
   }): Promise<Result<FaceObservation[], AppError>>;
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>>;
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
   assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
   mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>>;
