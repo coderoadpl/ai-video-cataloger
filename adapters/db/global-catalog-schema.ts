@@ -394,3 +394,7 @@ export const migrateGlobalCatalogSchemaSqlV17 = [
   'ALTER TABLE files ADD COLUMN hidden_at INTEGER',
   'CREATE INDEX IF NOT EXISTS files_hidden_at_idx ON files(hidden_at)',
 ] as const;
+
+export const migrateGlobalCatalogSchemaSqlV18 = [
+  'CREATE INDEX IF NOT EXISTS idx_face_observations_fingerprint ON face_observations(fingerprint)',
+] as const;

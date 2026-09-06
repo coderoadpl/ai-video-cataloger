@@ -1055,6 +1055,68 @@ describe('SqlJsGlobalCatalogStore', () => {
     });
   });
 
+  it('projects face observations without their embedding blobs', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertPerson({
+      personId: 'person-1',
+      displayName: 'Person 1',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.2),
+      exemplarCount: 1,
+    });
+    await store.upsertFaceObservation({
+      obsId: `${file.fingerprint}:face:2:1`,
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      media: 'video',
+      frameTsS: 4.5,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: '/home/faces/obs/fp-abc/2-1.jpg',
+    });
+    await store.upsertFaceObservation({
+      obsId: 'ph_0123456789abcdef:face:1:1',
+      fingerprint: 'ph_0123456789abcdef',
+      kind: 'face',
+      media: 'photo',
+      frameTsS: null,
+      bbox: { x: 1, y: 2, width: 3, height: 4 },
+      embedding: Array.from({ length: 128 }, () => 0.3),
+      quality: 0.4,
+      personId: null,
+      cropPath: null,
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const summaries = await reopened.listFaceObservationSummaries();
+
+    expect(summaries.ok && summaries.value).toEqual([
+      {
+        obsId: 'fp-abc:face:2:1',
+        fingerprint: 'fp-abc',
+        personId: 'person-1',
+        quality: 0.9,
+        cropPath: '/home/faces/obs/fp-abc/2-1.jpg',
+        media: 'video',
+      },
+      {
+        obsId: 'ph_0123456789abcdef:face:1:1',
+        fingerprint: 'ph_0123456789abcdef',
+        personId: null,
+        quality: 0.4,
+        cropPath: null,
+        media: 'photo',
+      },
+    ]);
+  });
+
   it('replaceFaceClustering rebuilds people and reassigns observations in one write', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -1777,7 +1839,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       (after.exec(`PRAGMA index_list('${table}')`)[0]?.values ?? []).map((row) => String(row[1]));
     expect(indexNames('files')).toEqual(expect.arrayContaining(['idx_files_captured_at', 'idx_files_folder_id', 'idx_files_place_name']));
     expect(indexNames('file_tags')).toEqual(expect.arrayContaining(['idx_file_tags_tag_id']));
-    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person']));
+    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person', 'idx_face_observations_fingerprint']));
     expect(indexNames('analyses')).toEqual(expect.arrayContaining(['idx_analyses_fingerprint']));
     after.close();
   });
@@ -2056,7 +2118,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       (after.exec(`PRAGMA index_list('${table}')`)[0]?.values ?? []).map((row) => String(row[1]));
     expect(indexNames('files')).toEqual(expect.arrayContaining(['idx_files_captured_at', 'idx_files_folder_id', 'idx_files_place_name']));
     expect(indexNames('file_tags')).toEqual(expect.arrayContaining(['idx_file_tags_tag_id']));
-    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person']));
+    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person', 'idx_face_observations_fingerprint']));
     expect(indexNames('analyses')).toEqual(expect.arrayContaining(['idx_analyses_fingerprint']));
     after.close();
   });

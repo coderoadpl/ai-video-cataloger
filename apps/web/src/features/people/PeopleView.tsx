@@ -67,7 +67,7 @@ export interface PeopleViewProps {
   folder: string | null;
   addLine: AddLogLine;
   onOpenSettings: () => void;
-  onSearchInLibrary: (personId: string, label: string) => void;
+  onOpenInCollection: (personId: string, label: string, media: PeopleMedia) => void;
   renderPersonMedia?: ((request: PersonMediaRequest) => ReactNode) | undefined;
   lockReason?: string | undefined;
   intervalMs?: number;
@@ -128,7 +128,7 @@ export const PeopleView = ({
   folder,
   addLine,
   onOpenSettings,
-  onSearchInLibrary,
+  onOpenInCollection,
   renderPersonMedia,
   lockReason,
   intervalMs,
@@ -407,8 +407,8 @@ export const PeopleView = ({
                   onToggle={() => people.toggleSelected(person.personId)}
                   onRename={() => setRename({ person, value: name })}
                   onForget={() => setForgetTarget(person)}
-                  onOpen={() => setOpenPerson({ personId: person.personId, label: name })}
-                  onSearchInLibrary={() => onSearchInLibrary(person.personId, name)}
+                  onOpenInCollection={() => onOpenInCollection(person.personId, name, media)}
+                  onPreviewFiles={() => setOpenPerson({ personId: person.personId, label: name })}
                   onHidePersonFiles={() => setLibraryAction({
                     kind: 'hide',
                     personId: person.personId,
@@ -846,8 +846,8 @@ interface PersonCardProps {
   onToggle: () => void;
   onRename: () => void;
   onForget: () => void;
-  onOpen: () => void;
-  onSearchInLibrary: () => void;
+  onOpenInCollection: () => void;
+  onPreviewFiles: () => void;
   onHidePersonFiles: () => void;
   onTrashPersonFiles: () => void;
 }
@@ -864,8 +864,8 @@ const PersonCard = ({
   onToggle,
   onRename,
   onForget,
-  onOpen,
-  onSearchInLibrary,
+  onOpenInCollection,
+  onPreviewFiles,
   onHidePersonFiles,
   onTrashPersonFiles,
 }: PersonCardProps) => {
@@ -942,7 +942,13 @@ const PersonCard = ({
           {dictionary.people.delete}
         </MenuItem>
         <MenuItem
-          onClick={() => { setMenuAnchor(null); onSearchInLibrary(); }}
+          onClick={() => { setMenuAnchor(null); onPreviewFiles(); }}
+          data-testid="people-preview-files"
+        >
+          {dictionary.people.previewFiles}
+        </MenuItem>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onOpenInCollection(); }}
           data-testid="people-search-library"
         >
           {dictionary.people.searchInLibrary}
@@ -967,8 +973,21 @@ const PersonCard = ({
       </Menu>
     </Box>
     <CardContent
-      sx={{ p: 1.25, flex: 1, cursor: 'pointer' }}
-      onClick={onOpen}
+      component="button"
+      type="button"
+      sx={{
+        p: 1.25,
+        flex: 1,
+        cursor: 'pointer',
+        display: 'block',
+        width: '100%',
+        border: 0,
+        bgcolor: 'transparent',
+        color: 'inherit',
+        font: 'inherit',
+        textAlign: 'left',
+      }}
+      onClick={onOpenInCollection}
       data-testid="people-card-body"
     >
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>

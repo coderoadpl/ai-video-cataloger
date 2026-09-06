@@ -1043,12 +1043,12 @@ describe('LibraryView', () => {
         onOpenResult={vi.fn()}
        
         onGoToVideos={vi.fn()}
-        seed={{ kind: 'person', personId: 'person-abc123', label: 'Alex' }}
+        seed={{ kind: 'person', personId: 'person-abc123', label: 'Alex', media: 'all' }}
         onSeedConsumed={vi.fn()}
       />,
     );
 
-    expect(await screen.findByText('Alex')).toBeDefined();
+    expect(await screen.findByText('Person: Alex')).toBeDefined();
     await waitFor(() =>
       expect(collectionRequests[collectionRequests.length - 1]?.get('people')).toBe('person-abc123'),
     );

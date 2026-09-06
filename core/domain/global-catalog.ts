@@ -6,7 +6,7 @@ import { analysisLanguageResolutionSchema, configDescriptorSchema, configId } fr
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 17;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 18;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 13;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;

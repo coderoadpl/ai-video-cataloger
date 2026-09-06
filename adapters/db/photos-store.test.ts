@@ -1303,6 +1303,48 @@ describe('SqlJsPhotosStore', () => {
     expect(nextPage.ok && nextPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
   });
 
+  it('collectionPage restricts browse rows to a fingerprint allow list of any size', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    const fingerprints = Array.from({ length: 400 }, (_unused, index) => `ph_${String(index).padStart(14, '0')}`);
+    await store.withBatch(async () => {
+      for (const [index, fingerprint] of fingerprints.entries()) {
+        await store.upsertPhoto(photo({
+          fingerprint,
+          fileName: `p${String(index)}.jpg`,
+          currentPath: `/media/photos/p${String(index)}.jpg`,
+          capturedAt: `2026-01-01T00:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        }));
+        await store.recordPhotoAnalysis(analysisInput({ fingerprint }));
+      }
+      return { ok: true as const, value: undefined };
+    });
+
+    const browse = {
+      match: null,
+      rankingTerms: [],
+      from: null,
+      to: null,
+      folderId: null,
+      tagTermSets: [],
+      excludeMissing: false,
+      sort: 'name_asc' as const,
+      limit: 500,
+      offset: 0,
+    };
+    const selected = fingerprints.slice(0, 250);
+    const allowed = await store.collectionPage({ ...browse, fingerprints: [...selected, ...selected, 'ph_ffffffffffffff'] });
+    const none = await store.collectionPage({ ...browse, fingerprints: [] });
+    const unrestricted = await store.collectionPage({ ...browse, fingerprints: null });
+
+    expect(allowed.ok && allowed.value.total).toBe(250);
+    expect(allowed.ok && new Set(allowed.value.rows.map((row) => row.fingerprint))).toEqual(new Set(selected));
+    expect(none.ok && none.value).toMatchObject({ total: 0, rows: [] });
+    expect(unrestricted.ok && unrestricted.value.total).toBe(400);
+  });
+
   it('collectionPage serves every keyset anchor the exact tail of the ordered page', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

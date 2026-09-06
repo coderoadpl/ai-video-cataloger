@@ -41,7 +41,7 @@ export const libraryFacets = async (
   if (!hiddenPhotoFingerprints.ok) return hiddenPhotoFingerprints;
   const hiddenVideoFingerprints = await deps.globalCatalog.listHiddenFingerprints();
   if (!hiddenVideoFingerprints.ok) return hiddenVideoFingerprints;
-  const observations = await deps.globalCatalog.listFaceObservations();
+  const observations = await deps.globalCatalog.listFaceObservationSummaries();
   if (!observations.ok) return observations;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;

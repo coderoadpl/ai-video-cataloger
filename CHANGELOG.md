@@ -22,8 +22,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency.
 
+### Changed
+
+- Clicking a person card in Osoby now opens Kolekcja filtered by that person, with a removable "Osoba: <name>" chip; the file preview dialog moved to the card's overflow menu.
+
 ### Fixed
 
+- Osoby and the person-filtered Kolekcja page no longer scan every face observation per person, so a large library opens them without a long spinner.
 - Doctor/setup analyzer probes no longer fail on a slow machine.
 - The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location.
 - Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.

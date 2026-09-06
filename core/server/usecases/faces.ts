@@ -14,6 +14,7 @@ import {
   planExemplarBackfill,
   faceCropFileName,
   selectExemplars,
+  totalsByPerson,
   updateCentroid,
   appError,
   ok,
@@ -21,7 +22,9 @@ import {
   type ExemplarPlanObservation,
   type FaceClusterInput,
   type FaceObservation,
+  type FaceObservationSummary,
   type Person,
+  type PersonObservationTotals,
   type Result,
 } from '@core/domain/index.js';
 
@@ -61,6 +64,8 @@ export interface FacesDeps {
 export type FacesIndexDeps = Omit<FacesDeps, 'jobs' | 'photos'> & { photos?: PhotosStore | undefined };
 
 export type FacesReclusterDeps = Pick<FacesDeps, 'config' | 'fs' | 'globalCatalog'>;
+
+export type FacesPeopleDeps = Pick<FacesDeps, 'config' | 'fs' | 'globalCatalog' | 'photos'>;
 
 export type FacesExemplarsDeps = Omit<FacesDeps, 'jobs'>;
 
@@ -312,23 +317,23 @@ export const runFacesReclusterPass = async (
   return ok(output);
 };
 
-export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: FacePersonView[] }, AppError>> => {
+export const facesPeople = async (deps: FacesPeopleDeps): Promise<Result<{ people: FacePersonView[] }, AppError>> => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
-  const observations = await deps.globalCatalog.listFaceObservations();
+  const observations = await deps.globalCatalog.listFaceObservationSummaries();
   if (!observations.ok) return observations;
   const hiddenVideos = await deps.globalCatalog.listHiddenFingerprints();
   if (!hiddenVideos.ok) return hiddenVideos;
   const hiddenPhotos = await deps.photos.listHiddenFingerprints();
   if (!hiddenPhotos.ok) return hiddenPhotos;
   const hidden = new Set([...hiddenVideos.value, ...hiddenPhotos.value]);
-  const visibleObservations = observations.value.filter((observation) => !hidden.has(observation.fingerprint));
+  const totals = totalsByPerson(observations.value.filter((observation) => !hidden.has(observation.fingerprint)));
   const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
   return ok({
     people: people.value
-      .map((person, index) => ({ ...personView(person, visibleObservations, currentCatalogDir), fallbackIndex: index }))
+      .map((person, index) => personView(person, totals.get(person.personId), currentCatalogDir, index))
       .filter((person) => person.observationCount > 0),
   });
 };
@@ -1349,25 +1354,22 @@ export const reanchorFaceCropPath = (currentCatalogDir: string, stored: string):
   return `${currentCatalogDir}/${suffix}`;
 };
 
-const personView = (person: Person, observations: readonly FaceObservation[], currentCatalogDir: string): FacePersonView => {
-  const matching = observations.filter((observation) => observation.personId === person.personId);
-  const videoFingerprints = new Set(matching
-    .filter((observation) => observation.media === 'video')
-    .map((observation) => observation.fingerprint));
-  const photoFingerprints = new Set(matching
-    .filter((observation) => observation.media === 'photo')
-    .map((observation) => observation.fingerprint));
-  const selected = selectExemplars(matching);
-  const exemplarCropPaths = selected
-    .filter((observation): observation is FaceObservation & { cropPath: string } => observation.cropPath !== null)
+const personView = (
+  person: Person,
+  totals: PersonObservationTotals | undefined,
+  currentCatalogDir: string,
+  fallbackIndex: number,
+): FacePersonView => {
+  const exemplarCropPaths = (totals?.exemplars ?? [])
+    .filter((observation): observation is FaceObservationSummary & { cropPath: string } => observation.cropPath !== null)
     .map((observation) => reanchorFaceCropPath(currentCatalogDir, observation.cropPath));
   return {
     ...person,
-    fallbackIndex: 0,
-    observationCount: matching.length,
-    videoCount: matching.filter((observation) => observation.media === 'video').length,
-    photoCount: matching.filter((observation) => observation.media === 'photo').length,
-    fileCounts: { video: videoFingerprints.size, photo: photoFingerprints.size },
+    fallbackIndex,
+    observationCount: totals?.observationCount ?? 0,
+    videoCount: totals?.videoCount ?? 0,
+    photoCount: totals?.photoCount ?? 0,
+    fileCounts: { video: totals?.videoFileCount ?? 0, photo: totals?.photoFileCount ?? 0 },
     exemplarCropPath: exemplarCropPaths[0] ?? null,
     exemplarCropPaths,
   };
