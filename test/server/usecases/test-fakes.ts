@@ -2050,7 +2050,12 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const embeddings = [...this.faceObservations.values()]
       .filter((observation) => observation.personId === input.toPersonId)
       .map((observation) => observation.embedding);
-    this.people.set(input.toPersonId, { ...to, centroid: fakeCentroid(embeddings), exemplarCount: embeddings.length });
+    this.people.set(input.toPersonId, {
+      ...to,
+      centroid: fakeCentroid(embeddings),
+      exemplarCount: embeddings.length,
+      displayName: to.displayName ?? from.displayName,
+    });
     this.people.delete(input.fromPersonId);
     return Promise.resolve(ok({ fromPersonId: input.fromPersonId, toPersonId: input.toPersonId, movedObservations: moved.length, affectedFingerprints }));
   }

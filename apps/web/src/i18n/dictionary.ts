@@ -517,7 +517,9 @@ export interface Dictionary {
     displayName: string;
     personName: (index: number) => string;
     mergeGroupings: string;
-    mergeBody: (from: string, to: string) => string;
+    mergeBody: (count: number, target: string) => string;
+    mergeNameChoice: string;
+    mergeSelectHint: string;
     merge: string;
     deleteFaceGrouping: string;
     deleteFaceGroupingBody: string;
@@ -1587,7 +1589,9 @@ export const en: Dictionary = {
     displayName: 'Display name',
     personName: (index) => `Person ${String(index + 1)}`,
     mergeGroupings: 'Merge groupings',
-    mergeBody: (from, to) => `Merge ${from} into ${to}? This cannot be undone.`,
+    mergeBody: (count, target) => `Merge ${count} people into "${target}"? The other groupings disappear. This cannot be undone.`,
+    mergeNameChoice: 'Which name should be kept?',
+    mergeSelectHint: 'Select at least two people.',
     merge: 'Merge',
     deleteFaceGrouping: 'Delete face grouping',
     deleteFaceGroupingBody: "This permanently deletes this person's grouping, face observations (including embeddings), and exemplar crops. It cannot be undone.",
@@ -2723,7 +2727,9 @@ export const pl: Dictionary = {
     displayName: 'Nazwa wyświetlana',
     personName: (index) => `Osoba ${String(index + 1)}`,
     mergeGroupings: 'Scal grupy',
-    mergeBody: (from, to) => `Włączyć ${from} do ${to}? Grupa ${from} zniknie. Tego nie można cofnąć.`,
+    mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w «${target}»? Pozostałe grupy znikną. Tego nie można cofnąć.`,
+    mergeNameChoice: 'Które imię zachować?',
+    mergeSelectHint: 'Zaznacz co najmniej dwie osoby.',
     merge: 'Scal',
     deleteFaceGrouping: 'Usuń grupę twarzy',
     deleteFaceGroupingBody: 'To trwale usuwa grupę tej osoby, obserwacje twarzy (w tym embeddingi) i przykładowe wycinki. Tego nie można cofnąć.',

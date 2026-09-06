@@ -1,4 +1,11 @@
 export {
+  defaultMergeTarget,
+  mergeNameChoices,
+  mergePlanFor,
+  type MergeCandidate,
+  type MergePlan,
+} from './merge-target.js';
+export {
   peopleForMedium,
   peopleMediaCounts,
   personCountForMedium,

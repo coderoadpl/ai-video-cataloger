@@ -943,6 +943,42 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
   });
 
+  it('mergePeople keeps the source display name when the target is unnamed', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    for (const [personId, displayName] of [['named', 'Ada'], ['unnamed', null]] as const) {
+      await store.upsertPerson({
+        personId,
+        displayName,
+        kind: 'face',
+        createdAt: '2026-01-04T00:00:00.000Z',
+        centroid: Array.from({ length: 128 }, () => 0.1),
+        exemplarCount: 1,
+      });
+    }
+    await store.upsertFaceObservation({
+      obsId: 'obs-named',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      media: 'video',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.1),
+      quality: 0.9,
+      personId: 'named',
+      cropPath: null,
+    });
+
+    const merged = await store.mergePeople({ fromPersonId: 'named', toPersonId: 'unnamed' });
+
+    expect(merged.ok && merged.value.movedObservations).toBe(1);
+    const people = await store.listPeople();
+    expect(people.ok && people.value.map((person) => [person.personId, person.displayName]))
+      .toEqual([['unnamed', 'Ada']]);
+  });
+
   it('forgetPerson deletes the person and its face observations including embeddings', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
