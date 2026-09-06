@@ -1350,6 +1350,9 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       affected.add(observation.fingerprint);
       movedObservations += 1;
     }
+    if (to.displayName === null && from.displayName !== null) {
+      this.people.set(input.toPersonId, { ...to, displayName: from.displayName });
+    }
     this.people.delete(input.fromPersonId);
     return Promise.resolve(ok({
       fromPersonId: input.fromPersonId,
