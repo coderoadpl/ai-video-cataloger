@@ -626,7 +626,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
     const user = userEvent.setup();
     await screen.findByTestId('people-grid');
@@ -662,7 +662,7 @@ describe('PeopleView', () => {
     });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
     const user = userEvent.setup();
     await screen.findByTestId('people-grid');
@@ -697,7 +697,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
     const user = userEvent.setup();
     await screen.findByTestId('people-grid');
@@ -734,7 +734,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
     const user = userEvent.setup();
     await screen.findByTestId('people-grid');
