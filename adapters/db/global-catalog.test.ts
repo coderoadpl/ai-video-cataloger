@@ -3035,10 +3035,10 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
     ]);
   });
 
-  it('shares the selected-variant COALESCE resolution SQL constant across listLocations, search and facets', async () => {
+  it('shares the selected-variant COALESCE resolution SQL constant across listLocations, search, facets and the tag list', async () => {
     const source = await readFile(new URL('./global-catalog.ts', import.meta.url), 'utf8');
     const occurrences = source.match(/SELECTED_ANALYSIS_CONFIG_ID_SQL/g) ?? [];
-    expect(occurrences.length).toBe(4);
+    expect(occurrences.length).toBe(5);
   });
 });
 

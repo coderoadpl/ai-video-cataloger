@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Autocomplete,
   Box,
@@ -52,7 +52,7 @@ interface FilterBarProps {
   onHiddenChange: (value: boolean) => void;
 }
 
-export const FilterBar = ({
+const FilterBarView = ({
   state,
   dispatch,
   facets,
@@ -91,13 +91,32 @@ export const FilterBar = ({
 
   const chips = libraryFilterChips(state, chipLabels);
   const thisYear = new Date().getFullYear();
-  const presets = [
+  const presets = useMemo(() => [
     { value: String(thisYear), label: dictionary.library.filterDatePresetThisYear },
     { value: String(thisYear - 1), label: dictionary.library.filterDatePresetLastYear },
     ...facets.years
       .filter((year) => year.year !== String(thisYear) && year.year !== String(thisYear - 1))
       .map((year) => ({ value: year.year, label: labelWithCount(year.year, year.count) })),
-  ];
+  ], [facets.years, thisYear, dictionary.library.filterDatePresetThisYear, dictionary.library.filterDatePresetLastYear]);
+
+  const tagOptions = useMemo(() => facets.tags.map((tag) => tag.name), [facets.tags]);
+  const tagCounts = useMemo(() => new Map(facets.tags.map((tag) => [tag.name, tag.count])), [facets.tags]);
+  const personOptions = useMemo(() => facets.people.map((person) => person.personId), [facets.people]);
+  const peopleById = useMemo(
+    () => new Map(facets.people.map((person) => [person.personId, person])),
+    [facets.people],
+  );
+  const placeOptions = useMemo(() => facets.places.map((place) => place.name), [facets.places]);
+  const placeCounts = useMemo(() => new Map(facets.places.map((place) => [place.name, place.count])), [facets.places]);
+  const folderOptions = useMemo(() => facets.folders.map((folder) => folder.folderId), [facets.folders]);
+  const foldersById = useMemo(
+    () => new Map(facets.folders.map((folder) => [folder.folderId, folder])),
+    [facets.folders],
+  );
+  const personLabel = (personId: string): string => {
+    const person = peopleById.get(personId);
+    return person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
+  };
 
   const applyPreset = (year: string) => {
     setPreset(year);
@@ -115,12 +134,11 @@ export const FilterBar = ({
           multiple
           size="small"
           sx={{ minWidth: 200 }}
-          options={facets.tags.map((tag) => tag.name)}
+          options={tagOptions}
           getOptionLabel={(tag) => tag}
           renderOption={(props, tag) => {
             const { key, ...optionProps } = props;
-            const count = facets.tags.find((facet) => facet.name === tag)?.count ?? 0;
-            return <li key={key} {...optionProps}>{labelWithCount(tag, count)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(tag, tagCounts.get(tag) ?? 0)}</li>;
           }}
           value={state.tags}
           onChange={(_event, next) => {
@@ -133,24 +151,21 @@ export const FilterBar = ({
           multiple
           size="small"
           sx={{ minWidth: 200 }}
-          options={facets.people.map((person) => person.personId)}
-          getOptionLabel={(personId) => {
-            const person = facets.people.find((candidate) => candidate.personId === personId);
-            return person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
-          }}
+          options={personOptions}
+          getOptionLabel={personLabel}
           renderOption={(props, personId) => {
             const { key, ...optionProps } = props;
-            const person = facets.people.find((candidate) => candidate.personId === personId);
-            const label = person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
-            return <li key={key} {...optionProps}>{labelWithCount(label, person?.count ?? 0)}</li>;
+            return (
+              <li key={key} {...optionProps}>
+                {labelWithCount(personLabel(personId), peopleById.get(personId)?.count ?? 0)}
+              </li>
+            );
           }}
           value={state.personIds}
           onChange={(_event, next) => {
             for (const personId of next) {
               if (!state.personIds.includes(personId)) {
-                const person = facets.people.find((candidate) => candidate.personId === personId);
-                const displayName = person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
-                dispatch({ type: 'addPerson', personId, displayName });
+                dispatch({ type: 'addPerson', personId, displayName: personLabel(personId) });
               }
             }
             for (const personId of state.personIds) if (!next.includes(personId)) dispatch({ type: 'removePerson', personId });
@@ -161,11 +176,10 @@ export const FilterBar = ({
           freeSolo
           size="small"
           sx={{ minWidth: 200 }}
-          options={facets.places.map((place) => place.name)}
+          options={placeOptions}
           renderOption={(props, name) => {
             const { key, ...optionProps } = props;
-            const count = facets.places.find((place) => place.name === name)?.count ?? 0;
-            return <li key={key} {...optionProps}>{labelWithCount(name, count)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(name, placeCounts.get(name) ?? 0)}</li>;
           }}
           inputValue={placeInput}
           onInputChange={(_event, next) => setPlaceInput(next)}
@@ -174,16 +188,16 @@ export const FilterBar = ({
         <Autocomplete
           size="small"
           sx={{ minWidth: 200 }}
-          options={facets.folders.map((folder) => folder.folderId)}
-          getOptionLabel={(folderId) => facets.folders.find((folder) => folder.folderId === folderId)?.displayName ?? folderId}
+          options={folderOptions}
+          getOptionLabel={(folderId) => foldersById.get(folderId)?.displayName ?? folderId}
           renderOption={(props, folderId) => {
             const { key, ...optionProps } = props;
-            const folder = facets.folders.find((candidate) => candidate.folderId === folderId);
+            const folder = foldersById.get(folderId);
             return <li key={key} {...optionProps}>{labelWithCount(folder?.displayName ?? folderId, folder?.count ?? 0)}</li>;
           }}
           value={state.folderId}
           onChange={(_event, next) => {
-            const folder = next === null ? null : facets.folders.find((candidate) => candidate.folderId === next);
+            const folder = next === null ? null : foldersById.get(next);
             dispatch({ type: 'setFolder', folderId: next, displayName: folder?.displayName ?? next });
           }}
           renderInput={(params) => <TextField {...params} label={dictionary.library.filterFolder} data-testid="library-filter-folder" />}
@@ -319,3 +333,5 @@ export const FilterBar = ({
     </Stack>
   );
 };
+
+export const FilterBar = memo(FilterBarView);

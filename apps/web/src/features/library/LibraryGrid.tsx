@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Box, Checkbox, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -39,16 +39,18 @@ interface LibraryGridProps {
   onRestoreItem?: ((item: LibraryItem) => void) | undefined;
 }
 
-export const LibraryGrid = ({
+const NO_SELECT = (): void => undefined;
+
+const LibraryGridView = ({
   sections,
   onOpen,
-  onSelect = () => undefined,
-  onSelectAll = () => undefined,
+  onSelect = NO_SELECT,
+  onSelectAll = NO_SELECT,
   onOpenInAnalysis,
   selectedFingerprints = EMPTY_SELECTION,
   hiddenView = false,
-  onHideItem = () => undefined,
-  onRestoreItem = () => undefined,
+  onHideItem = NO_SELECT,
+  onRestoreItem = NO_SELECT,
 }: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +85,11 @@ export const LibraryGrid = ({
       onSelectAll();
     }
   };
+  const tileMenuOpen = tileMenu.open;
+  const openTileMenu = useCallback(
+    (event: MouseEvent, item: LibraryItem) => tileMenuOpen(event, item),
+    [tileMenuOpen],
+  );
 
   return (
     <Box
@@ -127,9 +134,9 @@ export const LibraryGrid = ({
                   <LibraryTile
                     key={item.fingerprint}
                     item={item}
-                    onOpen={() => onOpen(item)}
-                    onSelect={(event) => onSelect(item, event)}
-                    onContextMenu={(event: MouseEvent) => tileMenu.open(event, item)}
+                    onOpen={onOpen}
+                    onSelect={onSelect}
+                    onContextMenu={openTileMenu}
                     selected={selectedFingerprints.has(item.fingerprint)}
                   />
                 ))}
@@ -149,15 +156,17 @@ export const LibraryGrid = ({
   );
 };
 
+export const LibraryGrid = memo(LibraryGridView);
+
 interface LibraryTileProps {
   item: LibraryItem;
-  onOpen: () => void;
-  onSelect: (event: MouseEvent) => void;
-  onContextMenu: (event: MouseEvent) => void;
+  onOpen: (item: LibraryItem) => void;
+  onSelect: (item: LibraryItem, event: MouseEvent) => void;
+  onContextMenu: (event: MouseEvent, item: LibraryItem) => void;
   selected: boolean;
 }
 
-const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: LibraryTileProps) => {
+const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: LibraryTileProps) => {
   const dictionary = useDictionary();
   const isVideo = item.media === 'video';
   const imagePath = isVideo ? (item.gridThumbnailPath ?? item.thumbnailPath) : (item.gridThumbPath ?? item.thumbPath);
@@ -190,12 +199,12 @@ const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: Librar
       tabIndex={-1}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
-          onSelect(event);
+          onSelect(item, event);
           return;
         }
-        onOpen();
+        onOpen(item);
       }}
-      onContextMenu={onContextMenu}
+      onContextMenu={(event) => onContextMenu(event, item)}
       sx={{
         position: 'relative',
         width: TILE_SIZE,
@@ -251,7 +260,7 @@ const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: Librar
         slotProps={{ input: { 'aria-label': name } }}
         onClick={(event) => {
           event.stopPropagation();
-          onSelect(event);
+          onSelect(item, event);
         }}
         sx={{
           position: 'absolute',
@@ -279,3 +288,5 @@ const LibraryTile = ({ item, onOpen, onSelect, onContextMenu, selected }: Librar
     </Box>
   );
 };
+
+const LibraryTile = memo(LibraryTileView);

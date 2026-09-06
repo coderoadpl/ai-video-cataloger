@@ -9,6 +9,7 @@ import { toSearchParams, type LibraryFilterState, type LibrarySearchParams } fro
 import type { LibrarySort } from './core/folder-groups.js';
 
 const PAGE_LIMIT = 200;
+const EMPTY_MEDIA_TOTALS = { all: 0, video: 0, photo: 0 } as const;
 const SEARCH_DEBOUNCE_MS = 220;
 
 export interface LibraryState {
@@ -121,7 +122,7 @@ export const useLibrary = (input: {
     total: page.data?.total ?? 0,
     videoTotal: page.data?.videoTotal ?? 0,
     photoTotal: page.data?.photoTotal ?? 0,
-    mediaTotals: page.data?.mediaTotals ?? { all: 0, video: 0, photo: 0 },
+    mediaTotals: page.data?.mediaTotals ?? EMPTY_MEDIA_TOTALS,
     isLoading: input.active && cursor === null && page.isLoading,
     isLoadingMore: cursor !== null && page.isFetching,
     isError: page.isError,

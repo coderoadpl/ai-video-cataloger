@@ -1141,6 +1141,37 @@ islands, so small pure helpers are duplicated rather than cross-imported,
 matching the pre-existing `day-groups.ts`/`grid-rows.ts` split) — never a
 video-shaped `folder.currentPath` join.
 
+**Search query budget and debounce contract (W102).** Typing in the Kolekcja
+search field must stay a per-keystroke-cheap operation, so the path has a
+budget on both sides. Renderer: the field is uncontrolled state inside
+`useLibrary`, debounced by `SEARCH_DEBOUNCE_MS` (220 ms) into the query key, so
+a burst of keystrokes produces at most one `libraryCollection` request per
+debounce window; `keepPreviousData` holds the previous page on screen while it
+flies. Facets and the tag suggestions are keyed on nothing the keystroke
+changes — `libraryFacets` has no query parameter and `tagsList` is fetched
+once on first focus — so neither is ever re-requested per keystroke, and
+`FilterBar`, `LibraryGrid` and each tile are memoized with stable callbacks so
+a keystroke re-renders the input, not the grid. Server: every full-text branch
+pages in SQL. The match query resolves `COUNT(*)` plus an ordered page of
+fingerprints, then hydrates only that page (snippets, transcripts, scoring
+columns); relevance still scores the whole match set, but without computing a
+snippet per row. Both stores pin the full-text table as the outer loop with
+`CROSS JOIN` — with the W88 `hidden_at` indexes present the planner otherwise
+drives the join from `files`/`photos` and re-runs the FTS query once per
+catalogued row, which is what turned a one-character prefix into minutes of
+blocked event loop. `libraryCollection` resolves each folder's online state,
+offline reason and artifact root once per request instead of once per row, and
+`libraryFacets` counts people from the observation summary projection rather
+than loading every face observation with its embedding. The budgets are
+asserted by `scripts/bench/library-search-budget.test.ts` against a synthetic
+catalog seeded by `scripts/bench/seed-large-catalog.ts` — a small fixed shape
+with `AVC_GATE_TIMEOUT_FACTOR`-scaled budgets inside `check`, the full library
+shape behind `AVC_LIBRARY_SCALE_BENCH=1`, the same split `faces-people-scale`
+uses. The join order itself is pinned deterministically by
+`adapters/db/library-search-query-plan.test.ts`, which asserts the full-text
+table is the outermost loop of both matched collection queries. `pnpm run
+bench:library` prints the same route timings at full scale outside the gates.
+
 ### Library — hide and move-to-trash (W88)
 
 Kolekcja gains two removal verbs with deliberately different weights, decided

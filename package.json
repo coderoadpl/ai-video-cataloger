@@ -50,6 +50,7 @@
     "electron:package": "pnpm run electron:build && electron-builder --config electron-builder.config.js",
     "visual": "playwright test --config visual/playwright.visual.config.ts",
     "verify:package": "node scripts/verify-package.mjs",
+    "bench:library": "node --import tsx scripts/bench/library-search-bench.ts",
     "qa:walkthrough": "node scripts/release-walkthrough.mjs",
     "lock-lint": "node scripts/lock-lint.mjs",
     "promote-home": "node --import tsx scripts/promote-home.ts",

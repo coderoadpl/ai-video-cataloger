@@ -14,6 +14,7 @@ import type {
   PhotosStore,
 } from '../ports.js';
 import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
+import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import { buildSearchMatch, resolveGridThumbnailPath, resolveOfflineReason, resolveThumbnailPath, sanitizeSearchQuery, type SearchDeps } from './search.js';
 import type { OfflineReason } from './shared.js';
 
@@ -467,6 +468,7 @@ const mergePage = async (
   let videoIndex = 0;
   let photoIndex = 0;
   const items: CollectionItem[] = [];
+  const folderCache: VideoFolderCache = new Map();
 
   while (items.length < input.limit && (videoIndex < input.videoRows.length || photoIndex < input.photoRows.length)) {
     const videoRow = input.videoRows[videoIndex];
@@ -482,7 +484,7 @@ const mergePage = async (
         ) <= 0)
     );
     if (pickVideo && videoRow !== undefined) {
-      const item = await videoItemFrom(deps, videoRow);
+      const item = await videoItemFrom(deps, folderCache, videoRow);
       if (!item.ok) return item;
       items.push(item.value);
       videoIndex += 1;
@@ -501,15 +503,50 @@ const mergePage = async (
 
 const searchDepsFrom = (deps: CollectionDeps): SearchDeps => ({ globalCatalog: deps.globalCatalog, fs: deps.fs, media: deps.media });
 
-const videoItemFrom = async (deps: CollectionDeps, row: CatalogSearchRow): Promise<Result<CollectionVideoItem, AppError>> => {
-  const searchDeps = searchDepsFrom(deps);
-  const online = await deps.fs.exists(row.folder.currentPath);
+interface VideoFolderState {
+  online: boolean;
+  offlineReason: OfflineReason | null;
+  artifactRoot: ArtifactRoot | undefined;
+}
+
+type VideoFolderCache = Map<string, VideoFolderState>;
+
+const videoFolderStateFrom = async (
+  deps: CollectionDeps,
+  cache: VideoFolderCache,
+  folder: CatalogSearchRow['folder'],
+): Promise<Result<VideoFolderState, AppError>> => {
+  const cached = cache.get(folder.folderId);
+  if (cached !== undefined) return ok(cached);
+  const online = await deps.fs.exists(folder.currentPath);
   if (!online.ok) return online;
-  const offlineReason = await resolveOfflineReason(deps.fs, row.folder.currentPath, online.value);
+  const offlineReason = await resolveOfflineReason(deps.fs, folder.currentPath, online.value);
   if (!offlineReason.ok) return offlineReason;
-  const thumbnailPath = await resolveThumbnailPath(searchDeps, row, online.value, 'existing');
+  const artifactRoot = online.value
+    ? await discoverArtifactRoot(deps.fs, folder.currentPath, folder.folderId)
+    : ok(undefined);
+  if (!artifactRoot.ok) return artifactRoot;
+  const state: VideoFolderState = {
+    online: online.value,
+    offlineReason: offlineReason.value,
+    artifactRoot: artifactRoot.value,
+  };
+  cache.set(folder.folderId, state);
+  return ok(state);
+};
+
+const videoItemFrom = async (
+  deps: CollectionDeps,
+  cache: VideoFolderCache,
+  row: CatalogSearchRow,
+): Promise<Result<CollectionVideoItem, AppError>> => {
+  const searchDeps = searchDepsFrom(deps);
+  const folderState = await videoFolderStateFrom(deps, cache, row.folder);
+  if (!folderState.ok) return folderState;
+  const { online, offlineReason, artifactRoot } = folderState.value;
+  const thumbnailPath = await resolveThumbnailPath(searchDeps, row, online, 'existing', artifactRoot);
   if (!thumbnailPath.ok) return thumbnailPath;
-  const gridThumbnailPath = await resolveGridThumbnailPath(searchDeps, row, online.value, 'existing');
+  const gridThumbnailPath = await resolveGridThumbnailPath(searchDeps, row, online, 'existing', artifactRoot);
   if (!gridThumbnailPath.ok) return gridThumbnailPath;
   return ok({
     media: 'video',
@@ -526,8 +563,8 @@ const videoItemFrom = async (deps: CollectionDeps, row: CatalogSearchRow): Promi
       folderId: row.folder.folderId,
       currentPath: row.folder.currentPath,
       displayName: row.folder.displayName,
-      online: online.value,
-      offlineReason: offlineReason.value,
+      online,
+      offlineReason,
     },
     gps: row.gps,
     missing: row.missing,
