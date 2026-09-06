@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CatalogFile, CatalogFolder } from '@core/domain/index.js';
+import type { AppError, CatalogFile, CatalogFolder, FaceObservation, Result } from '@core/domain/index.js';
 
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryPhotosStore } from '../../../test/server/usecases/test-fakes.js';
 import { libraryFacets } from './library-facets.js';
@@ -52,6 +52,17 @@ const personRecord = (personId: string, displayName: string | null) => ({
   centroid: [],
   exemplarCount: 0,
 });
+
+class ObservationScanCountingCatalog extends InMemoryGlobalCatalogStore {
+  fullObservationScans = 0;
+
+  override listFaceObservations(
+    input: { fingerprint?: string | undefined; personId?: string | undefined } = {},
+  ): Promise<Result<FaceObservation[], AppError>> {
+    if (input.fingerprint === undefined && input.personId === undefined) this.fullObservationScans += 1;
+    return super.listFaceObservations(input);
+  }
+}
 
 const deps = (globalCatalog: InMemoryGlobalCatalogStore, fs: InMemoryFileSystem) => ({
   globalCatalog,
@@ -216,5 +227,24 @@ describe('libraryFacets', () => {
       { folderId: folderOffline.folderId, displayName: 'offline', currentPath: '/media/offline', online: false, count: 0 },
       { folderId: folderOnline.folderId, displayName: 'online', currentPath: '/media/online', online: true, count: 2 },
     ]);
+  });
+
+  it('counts people from the person-fingerprint projection, never by loading every face embedding', async () => {
+    const globalCatalog = new ObservationScanCountingCatalog();
+    const fs = new InMemoryFileSystem();
+    await globalCatalog.upsertFolder(folderOnline);
+    await globalCatalog.upsertFile(file('fp-1', folderOnline.folderId));
+    await globalCatalog.upsertPerson(personRecord('p-named', 'Alex'));
+    await globalCatalog.upsertFaceObservation({
+      obsId: 'o1', fingerprint: 'fp-1', kind: 'face', frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
+      personId: 'p-named', cropPath: null, media: 'video',
+    });
+    const result = await libraryFacets({ globalCatalog, fs, photos: new InMemoryPhotosStore() });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.people).toEqual([{ personId: 'p-named', displayName: 'Alex', count: 1, fallbackIndex: 0 }]);
+    expect(globalCatalog.fullObservationScans).toBe(0);
   });
 });

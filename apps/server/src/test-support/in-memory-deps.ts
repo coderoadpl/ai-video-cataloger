@@ -115,6 +115,7 @@ import type {
   MediaPort,
   MediaProbe,
   ModelDownloadPort,
+  PersonFingerprint,
   PlacesPort,
   ProvidersPort,
   ProviderTestResult,
@@ -1310,6 +1311,19 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       (input.fingerprint === undefined || observation.fingerprint === input.fingerprint)
       && (input.personId === undefined || observation.personId === input.personId));
     return Promise.resolve(ok(observations));
+  }
+
+  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
+    const seen = new Set<string>();
+    const rows: PersonFingerprint[] = [];
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId === null) continue;
+      const key = `${observation.personId}|${observation.fingerprint}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ personId: observation.personId, fingerprint: observation.fingerprint });
+    }
+    return Promise.resolve(ok(rows));
   }
 
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {

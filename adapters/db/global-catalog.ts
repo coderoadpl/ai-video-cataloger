@@ -30,7 +30,6 @@ import {
   parseDriveRunBatchState,
   appError,
   canonicalPath,
-  compareUtf8Bytes,
   normalizeTagList,
   normalizeTagName,
   ok,
@@ -74,6 +73,7 @@ import type {
   GlobalCatalogCounts,
   GlobalCatalogStore,
   LibraryFacets,
+  PersonFingerprint,
   ReconcileFolderInput,
   ReconcileFolderResult,
   TagTermExpansion,
@@ -705,21 +705,18 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async listTags(): Promise<Result<CatalogTagSummary[], AppError>> {
-    return this.read((db) => {
-      const tagRows = db.select().from(tags).all();
-      const fileTagRows = db.select().from(fileTags).all();
-      const selectedKeys = new Set(db.select().from(files).all().flatMap((fileRow) => {
-        const selected = selectedAnalysisRow(db, fileRow.fingerprint);
-        return selected === undefined ? [] : [variantKey(fileRow.fingerprint, selected.configId)];
-      }));
-      return tagRows
-        .map((tag) => ({
-          name: tag.name,
-          count: fileTagRows.filter((fileTag) => (
-            fileTag.tagId === tag.tagId
-            && selectedKeys.has(variantKey(fileTag.fingerprint, fileTag.configId))
-          )).length,
-        }))
+    return this.read((_db, client) => {
+      const rows = client.exec(
+        `SELECT t.name, COUNT(DISTINCT ft.fingerprint)
+          FROM tags t
+          JOIN file_tags ft ON ft.tag_id = t.tag_id
+          JOIN files f ON f.fingerprint = ft.fingerprint
+          JOIN folders fo ON fo.folder_id = f.folder_id
+          WHERE ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
+          GROUP BY t.name`,
+      )[0]?.values ?? [];
+      return rows
+        .map((row) => ({ name: stringValue(row[0]), count: numberValue(row[1]) }))
         .filter((tag) => tag.count > 0)
         .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
     });
@@ -825,26 +822,60 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
       if (input.match !== null) {
         const where = combineSearchWhere('search_documents_fts MATCH $match', clauses);
-        const result = client.exec(
-          `SELECT ${SEARCH_COLUMNS_MATCHED}
-            FROM search_documents_fts
-            JOIN search_documents sd ON sd.docid = search_documents_fts.docid
-            JOIN files f ON f.fingerprint = sd.fingerprint
-            JOIN folders fo ON fo.folder_id = f.folder_id
-            WHERE ${where.sql}`,
-          { $match: input.match, ...where.params },
-        );
-        const values = result[0]?.values ?? [];
-        const rows = values.map((row) => searchRowFromValues(row, input.rankingTerms));
-        const sorted = input.sort === 'relevance'
-          ? rows.sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
-          : sortSearchRows(rows, input.sort);
-        const matchSort = input.sort;
-        if (anchor !== null && matchSort !== 'relevance') {
-          const remaining = sorted.filter((row) => compareSearchRowToAnchor(matchSort, row, anchor) > 0);
-          return { total: sorted.length, rows: remaining.slice(0, input.limit) };
+        // CROSS JOIN pins the full-text scan as the outer loop: with the hidden_at index
+        // present the planner otherwise drives from files and re-runs the FTS query per row.
+        const matchFrom = `FROM search_documents_fts
+            CROSS JOIN search_documents sd ON sd.docid = search_documents_fts.docid
+            CROSS JOIN files f ON f.fingerprint = sd.fingerprint
+            CROSS JOIN folders fo ON fo.folder_id = f.folder_id`;
+        const matchParams = { $match: input.match, ...where.params };
+        const hydrate = (fingerprints: readonly string[]): CatalogSearchRow[] => {
+          if (fingerprints.length === 0) return [];
+          const placeholders = fingerprints.map((_, index) => `$page${String(index)}`);
+          const pageParams = Object.fromEntries(
+            fingerprints.map((fingerprint, index) => [`$page${String(index)}`, fingerprint]),
+          );
+          const hydrated = client.exec(
+            `SELECT ${SEARCH_COLUMNS_MATCHED}
+              ${matchFrom}
+              WHERE search_documents_fts MATCH $match AND f.fingerprint IN (${placeholders.join(', ')})`,
+            { $match: input.match, ...pageParams },
+          );
+          const byFingerprint = new Map((hydrated[0]?.values ?? []).map((row) => {
+            const mapped = searchRowFromValues(row, input.rankingTerms);
+            return [mapped.fingerprint, mapped];
+          }));
+          return fingerprints
+            .map((fingerprint) => byFingerprint.get(fingerprint))
+            .filter((row): row is CatalogSearchRow => row !== undefined);
+        };
+
+        if (input.sort === 'relevance') {
+          const ranked = client.exec(
+            `SELECT ${SEARCH_COLUMNS_UNMATCHED} ${matchFrom} WHERE ${where.sql}`,
+            matchParams,
+          );
+          const sorted = (ranked[0]?.values ?? [])
+            .map((row) => searchRowFromValues(row, input.rankingTerms))
+            .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName));
+          const page = sorted.slice(input.offset, input.offset + input.limit).map((row) => row.fingerprint);
+          return { total: sorted.length, rows: hydrate(page) };
         }
-        return { total: sorted.length, rows: sorted.slice(input.offset, input.offset + input.limit) };
+
+        const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${where.sql}`, matchParams);
+        const keyset = anchor === null ? { sql: '', params: {} } : searchAfterClause(input.sort, anchor);
+        const ordered = client.exec(
+          `SELECT f.fingerprint
+            ${matchFrom}
+            WHERE ${where.sql}${keyset.sql}
+            ORDER BY ${searchOrderBySql(input.sort)}
+            LIMIT $limit OFFSET $offset`,
+          { ...matchParams, ...keyset.params, $limit: input.limit, $offset: keyset.sql === '' ? input.offset : 0 },
+        );
+        return {
+          total: numberValue(matchTotal[0]?.values[0]?.[0]),
+          rows: hydrate((ordered[0]?.values ?? []).map((row) => stringValue(row[0]))),
+        };
       }
 
       const where = combineSearchWhere(null, clauses);
@@ -1065,6 +1096,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         params,
       )[0]?.values ?? [];
       return rows.map((row) => stringValue(row[0]));
+    });
+  }
+
+  async listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
+    return this.read((_db, client) => {
+      const rows = client.exec(
+        `SELECT DISTINCT o.person_id, o.fingerprint
+          FROM face_observations o
+          WHERE o.person_id IS NOT NULL`,
+      )[0]?.values ?? [];
+      return rows.map((row) => ({ personId: stringValue(row[0]), fingerprint: stringValue(row[1]) }));
     });
   }
 
@@ -2523,54 +2565,6 @@ const searchAfterClause = (
       + ` OR (f.captured_at = $afterCaptured AND ${nameTail}))))))`,
     params,
   };
-};
-
-const compareSearchRowToAnchor = (
-  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
-  row: CatalogSearchRow,
-  anchor: CollectionRowAnchor,
-): number => {
-  const displayName = (name: string, finalName: string | null): string =>
-    finalName !== null && finalName.length > 0 ? finalName : name;
-  const nameTail = compareUtf8Bytes(row.fileName, anchor.fileName)
-    || compareUtf8Bytes(row.fingerprint, anchor.fingerprint);
-  if (sort === 'name_asc') {
-    return compareUtf8Bytes(displayName(row.fileName, row.finalName), anchor.displayName) || nameTail;
-  }
-  const direction = sort === 'captured_desc' ? -1 : 1;
-  if (row.capturedAt === null && anchor.capturedAt === null) return nameTail;
-  if (row.capturedAt === null) return 1;
-  if (anchor.capturedAt === null) return -1;
-  return direction * compareUtf8Bytes(row.capturedAt, anchor.capturedAt) || nameTail;
-};
-
-const sortSearchRows = (
-  rows: readonly CatalogSearchRow[],
-  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
-): CatalogSearchRow[] => {
-  const displayName = (row: CatalogSearchRow): string => row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName;
-  const sorted = [...rows];
-  switch (sort) {
-    case 'captured_desc':
-      return sorted.sort((left, right) => capturedAtCompare(left, right, -1));
-    case 'captured_asc':
-      return sorted.sort((left, right) => capturedAtCompare(left, right, 1));
-    case 'name_asc':
-      return sorted.sort((left, right) =>
-        compareUtf8Bytes(displayName(left), displayName(right))
-        || compareUtf8Bytes(left.fileName, right.fileName)
-        || compareUtf8Bytes(left.fingerprint, right.fingerprint));
-  }
-};
-
-const capturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
-  const nameTieBreak = compareUtf8Bytes(left.fileName, right.fileName)
-    || compareUtf8Bytes(left.fingerprint, right.fingerprint);
-  if (left.capturedAt === null && right.capturedAt === null) return nameTieBreak;
-  if (left.capturedAt === null) return 1;
-  if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return nameTieBreak;
-  return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 
 const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {

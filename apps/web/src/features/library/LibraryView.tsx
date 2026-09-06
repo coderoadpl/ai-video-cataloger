@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, Snackbar, TextField, Typography } from '@mui/material';
 import { ApiError, isTerminalJobStatus, invalidateLibraryVisibilityConsumers } from '@core/client/index.js';
@@ -152,18 +152,18 @@ export const LibraryView = ({
   const trashMutation = useMutation(actions.libraryTrash);
   const suggestions = useSearchSuggestions();
 
-  const setGroupBy = (next: LibraryGroupBy) => {
+  const setGroupBy = useCallback((next: LibraryGroupBy) => {
     setGroupByState(next);
     if (typeof window !== 'undefined') window.localStorage.setItem(GROUP_BY_KEY, next);
-  };
-  const setMedia = (next: LibraryMedia) => {
+  }, []);
+  const setMedia = useCallback((next: LibraryMedia) => {
     setMediaState(next);
     if (typeof window !== 'undefined') window.localStorage.setItem(MEDIA_KEY, next);
-  };
-  const setHideUnavailable = (next: boolean) => {
+  }, []);
+  const setHideUnavailable = useCallback((next: boolean) => {
     setHideUnavailableState(next);
     if (typeof window !== 'undefined') window.localStorage.setItem(HIDE_UNAVAILABLE_KEY, String(next));
-  };
+  }, []);
 
   useEffect(() => {
     if (seed === null) return;
@@ -175,7 +175,7 @@ export const LibraryView = ({
       setMedia(seed.media);
     }
     onSeedConsumed?.();
-  }, [seed, onSeedConsumed]);
+  }, [seed, onSeedConsumed, setMedia]);
 
   const chipLabels: LibraryFilterChipLabels = useMemo(() => ({
     hasGps: dictionary.library.chipHasGps,
@@ -272,18 +272,20 @@ export const LibraryView = ({
   const selectionResetKeyRef = useRef(resetKey);
 
   const clearSelection = (): void => dispatchSelection({ type: 'clear' });
-  const runVisibilityMutation = (scope: LibrarySelectionScope, restore: boolean): void => {
+  const unhideAsync = unhideMutation.mutateAsync;
+  const hideAsync = hideMutation.mutateAsync;
+  const runVisibilityMutation = useCallback((scope: LibrarySelectionScope, restore: boolean): void => {
     void (async () => {
       try {
-        if (restore) await unhideMutation.mutateAsync({ scope });
-        else await hideMutation.mutateAsync({ scope });
-        clearSelection();
+        if (restore) await unhideAsync({ scope });
+        else await hideAsync({ scope });
+        dispatchSelection({ type: 'clear' });
         setMutationError(null);
       } catch (error) {
         setMutationError(`${restore ? dictionary.library.restoreFailed : dictionary.library.hideFailed}: ${messageOf(error)}`);
       }
     })();
-  };
+  }, [unhideAsync, hideAsync, dictionary.library.restoreFailed, dictionary.library.hideFailed]);
   const openTrashDialog = (scope: LibrarySelectionScope): void => {
     setTrashScope(scope);
     setTrashChecked(false);
@@ -355,9 +357,7 @@ export const LibraryView = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, trashScope, viewerItem]);
 
-  if (!active) return null;
-
-  const openInAnalysis = (item: LibraryItem): void => {
+  const openInAnalysis = useCallback((item: LibraryItem): void => {
     if (item.media === 'video') {
       if (!item.folder.online) return;
       onOpenResult(item.folder.currentPath, `${item.folder.currentPath}/${item.fileName}`);
@@ -367,7 +367,27 @@ export const LibraryView = ({
     const root = ownerPhotoRootFor(item.currentPath, photoRoots);
     if (root === null) return;
     onOpenPhotoInAnalysis(root, item.fingerprint);
-  };
+  }, [onOpenResult, onOpenPhotoInAnalysis, photoRoots]);
+
+  const openViewer = useCallback((item: LibraryItem): void => setViewerFingerprint(item.fingerprint), []);
+  const selectTile = useCallback((item: LibraryItem, event: ReactMouseEvent): void => {
+    if (event.shiftKey) {
+      dispatchSelection({ type: 'extendTo', fingerprint: item.fingerprint, order: viewerOrder });
+      return;
+    }
+    dispatchSelection({ type: 'toggle', fingerprint: item.fingerprint });
+  }, [viewerOrder]);
+  const selectAllInFilter = useCallback((): void => dispatchSelection({ type: 'selectAllInFilter' }), []);
+  const hideItem = useCallback(
+    (item: LibraryItem): void => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, false),
+    [runVisibilityMutation],
+  );
+  const restoreItem = useCallback(
+    (item: LibraryItem): void => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, true),
+    [runVisibilityMutation],
+  );
+
+  if (!active) return null;
 
   const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
     && libraryFilterIsEmpty(filters) && !hideUnavailable && !hiddenActive && library.total === 0;
@@ -474,20 +494,14 @@ export const LibraryView = ({
         ) : null}
         <LibraryGrid
           sections={sections}
-          onOpen={(item) => setViewerFingerprint(item.fingerprint)}
-          onSelect={(item, event) => {
-            if (event.shiftKey) {
-              dispatchSelection({ type: 'extendTo', fingerprint: item.fingerprint, order: viewerOrder });
-              return;
-            }
-            dispatchSelection({ type: 'toggle', fingerprint: item.fingerprint });
-          }}
-          onSelectAll={() => dispatchSelection({ type: 'selectAllInFilter' })}
+          onOpen={openViewer}
+          onSelect={selectTile}
+          onSelectAll={selectAllInFilter}
           onOpenInAnalysis={openInAnalysis}
           selectedFingerprints={selectedFingerprintLookup}
           hiddenView={hiddenActive}
-          onHideItem={(item) => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, false)}
-          onRestoreItem={(item) => runVisibilityMutation({ kind: 'fingerprints', fingerprints: [item.fingerprint] }, true)}
+          onHideItem={hideItem}
+          onRestoreItem={restoreItem}
         />
         {library.hasMore ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>

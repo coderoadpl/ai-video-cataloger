@@ -41,7 +41,7 @@ export const libraryFacets = async (
   if (!hiddenPhotoFingerprints.ok) return hiddenPhotoFingerprints;
   const hiddenVideoFingerprints = await deps.globalCatalog.listHiddenFingerprints();
   if (!hiddenVideoFingerprints.ok) return hiddenVideoFingerprints;
-  const observations = await deps.globalCatalog.listFaceObservations();
+  const observations = await deps.globalCatalog.listPersonFingerprints();
   if (!observations.ok) return observations;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
@@ -51,7 +51,7 @@ export const libraryFacets = async (
   const peopleById = new Map(people.value.map((person) => [person.personId, person]));
   const fingerprintCountsByPersonId = new Map<string, Set<string>>();
   for (const observation of observations.value) {
-    if (observation.personId === null || hiddenFingerprints.has(observation.fingerprint)) continue;
+    if (hiddenFingerprints.has(observation.fingerprint)) continue;
     const current = fingerprintCountsByPersonId.get(observation.personId) ?? new Set<string>();
     current.add(observation.fingerprint);
     fingerprintCountsByPersonId.set(observation.personId, current);

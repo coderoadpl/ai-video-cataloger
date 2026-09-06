@@ -234,6 +234,11 @@ export interface LibraryFacetPerson {
   count: number;
 }
 
+export interface PersonFingerprint {
+  personId: string;
+  fingerprint: string;
+}
+
 export interface LibraryFacetPlace {
   name: string;
   country: string | null;
@@ -757,6 +762,7 @@ export interface GlobalCatalogStore {
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
   listFingerprintsForPeople(input: { personIds: readonly string[]; media: FaceObservation['media'] }):
     Promise<Result<string[], AppError>>;
+  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;

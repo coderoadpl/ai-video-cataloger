@@ -70,6 +70,7 @@ import type {
   GlobalCatalogCounts,
   GlobalCatalogStore,
   LibraryFacets,
+  PersonFingerprint,
   ReconcileFolderInput,
   ReconcileFolderResult,
   SpendLedgerPort,
@@ -2025,6 +2026,19 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     let rows = [...this.faceObservations.values()];
     if (input.fingerprint !== undefined) rows = rows.filter((observation) => observation.fingerprint === input.fingerprint);
     else if (input.personId !== undefined) rows = rows.filter((observation) => observation.personId === input.personId);
+    return Promise.resolve(ok(rows));
+  }
+
+  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
+    const seen = new Set<string>();
+    const rows: PersonFingerprint[] = [];
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId === null) continue;
+      const key = `${observation.personId}|${observation.fingerprint}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ personId: observation.personId, fingerprint: observation.fingerprint });
+    }
     return Promise.resolve(ok(rows));
   }
 

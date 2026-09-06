@@ -965,8 +965,8 @@ export class SqlJsPhotosStore implements PhotosStore {
             p.proxy_state,
             p.missing_at
           FROM photo_search_documents_fts
-          JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
-          JOIN photos p ON p.fingerprint = sd.fingerprint
+          CROSS JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
+          CROSS JOIN photos p ON p.fingerprint = sd.fingerprint
           WHERE photo_search_documents_fts MATCH $match${hiddenClause}`,
         { $match: input.match },
       );
@@ -1015,38 +1015,67 @@ export class SqlJsPhotosStore implements PhotosStore {
       const analysedClause = 'EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)';
 
       if (input.match !== null) {
-        const extraWhere = ` AND ${[analysedClause, ...clauses].join(' AND ')}`;
-        const result = client.exec(
-          `SELECT
-              p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
-              NULLIF(sd.description, ''),
-              snippet(photo_search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
-              sd.tags_text, sd.place,
-              (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
-              p.thumb_state, p.proxy_state, p.missing_at
-            FROM photo_search_documents_fts
-            JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
-            JOIN photos p ON p.fingerprint = sd.fingerprint
-            WHERE photo_search_documents_fts MATCH $match${extraWhere}`,
-          { $match: input.match, ...params },
-        );
-        const scored = (result[0]?.values ?? []).map((row) => photoSearchRowFromValues(row, input.rankingTerms));
-        const matchSort = input.sort;
-        const sorted = matchSort === 'relevance'
-          ? scored
+        // CROSS JOIN pins the full-text scan as the outer loop: with the hidden_at index
+        // present the planner otherwise drives from photos and re-runs the FTS query per row.
+        const matchFrom = `FROM photo_search_documents_fts
+            CROSS JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
+            CROSS JOIN photos p ON p.fingerprint = sd.fingerprint`;
+        const matchWhere = `photo_search_documents_fts MATCH $match AND ${[analysedClause, ...clauses].join(' AND ')}`;
+        const matchParams = { $match: input.match, ...params };
+        const hydrate = (fingerprints: readonly string[]): PhotoSearchRow[] => {
+          if (fingerprints.length === 0) return [];
+          const placeholders = fingerprints.map((_, index) => `$page${String(index)}`);
+          const pageParams = Object.fromEntries(
+            fingerprints.map((fingerprint, index) => [`$page${String(index)}`, fingerprint]),
+          );
+          const hydrated = client.exec(
+            `SELECT ${PHOTO_COLLECTION_COLUMNS_MATCHED}
+              ${matchFrom}
+              WHERE photo_search_documents_fts MATCH $match AND p.fingerprint IN (${placeholders.join(', ')})`,
+            { $match: input.match, ...pageParams },
+          );
+          const byFingerprint = new Map((hydrated[0]?.values ?? []).map((row) => {
+            const mapped = photoSearchRowFromValues(row, input.rankingTerms).row;
+            return [mapped.fingerprint, mapped];
+          }));
+          return fingerprints
+            .map((fingerprint) => byFingerprint.get(fingerprint))
+            .filter((row): row is PhotoSearchRow => row !== undefined);
+        };
+
+        if (input.sort === 'relevance') {
+          const ranked = client.exec(
+            `SELECT ${PHOTO_COLLECTION_COLUMNS_UNMATCHED} ${matchFrom} WHERE ${matchWhere}`,
+            matchParams,
+          );
+          const sorted = (ranked[0]?.values ?? [])
+            .map((row) => photoSearchRowFromValues(row, input.rankingTerms))
             .sort((left, right) =>
               right.score - left.score
               || compareUtf8Bytes(left.row.fileName, right.row.fileName)
-              || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint))
-            .map((entry) => entry.row)
-          : sortPhotoSearchRows(scored.map((entry) => entry.row), matchSort);
-        if (anchor !== null && matchSort !== 'relevance') {
-          const remaining = sorted.filter((row) => comparePhotoRowToAnchor(matchSort, row, anchor) > 0);
-          return { total: sorted.length, rows: remaining.slice(0, input.limit) };
+              || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint));
+          const page = sorted.slice(input.offset, input.offset + input.limit).map((entry) => entry.row.fingerprint);
+          return { total: sorted.length, rows: hydrate(page) };
         }
+
+        const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${matchWhere}`, matchParams);
+        const matchKeyset = anchor === null ? { sql: '', params: {} } : photoCollectionAfterClause(input.sort, anchor);
+        const ordered = client.exec(
+          `SELECT p.fingerprint
+            ${matchFrom}
+            WHERE ${matchWhere}${matchKeyset.sql}
+            ORDER BY ${photoCollectionOrderBySql(input.sort)}
+            LIMIT $limit OFFSET $offset`,
+          {
+            ...matchParams,
+            ...matchKeyset.params,
+            $limit: input.limit,
+            $offset: matchKeyset.sql === '' ? input.offset : 0,
+          },
+        );
         return {
-          total: sorted.length,
-          rows: sorted.slice(input.offset, input.offset + input.limit),
+          total: numberValue(matchTotal[0]?.values[0]?.[0]),
+          rows: hydrate((ordered[0]?.values ?? []).map((row) => stringValue(row[0]))),
         };
       }
 
@@ -1060,13 +1089,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         ? { sql: '', params: {} }
         : photoCollectionAfterClause(sort, anchor);
       const result = client.exec(
-        `SELECT
-            p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
-            NULLIF(sd.description, ''),
-            '' AS snippet,
-            COALESCE(sd.tags_text, ''), COALESCE(sd.place, ''),
-            (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
-            p.thumb_state, p.proxy_state, p.missing_at
+        `SELECT ${PHOTO_COLLECTION_COLUMNS_UNMATCHED}
           ${baseFrom}
           WHERE ${where}${keyset.sql}
           ORDER BY ${photoCollectionOrderBySql(sort)}
@@ -1954,6 +1977,22 @@ const rebuildPhotoSearchIndex = (db: PhotosDrizzle, client: Database): void => {
   }
 };
 
+const PHOTO_COLLECTION_ROW_COLUMNS = `
+  p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
+  NULLIF(sd.description, ''),
+  __SNIPPET__,
+  COALESCE(sd.tags_text, ''), COALESCE(sd.place, ''),
+  (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
+  p.thumb_state, p.proxy_state, p.missing_at
+`;
+
+const PHOTO_COLLECTION_COLUMNS_MATCHED = PHOTO_COLLECTION_ROW_COLUMNS.replace(
+  '__SNIPPET__',
+  `snippet(photo_search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12)`,
+);
+
+const PHOTO_COLLECTION_COLUMNS_UNMATCHED = PHOTO_COLLECTION_ROW_COLUMNS.replace('__SNIPPET__', `''`);
+
 const photoSearchRowFromValues = (
   row: SqlValue[],
   rankingTerms: readonly string[],
@@ -2087,47 +2126,6 @@ const photoCollectionAfterClause = (
       + ` OR (p.captured_at = $afterCaptured AND ${nameTail}))))))`,
     params,
   };
-};
-
-const comparePhotoRowToAnchor = (
-  sort: PhotoCollectionSort,
-  row: PhotoSearchRow,
-  anchor: CollectionRowAnchor,
-): number => {
-  const nameTail = compareUtf8Bytes(row.fileName, anchor.fileName)
-    || compareUtf8Bytes(row.fingerprint, anchor.fingerprint);
-  if (sort === 'name_asc') return nameTail;
-  const direction = sort === 'captured_desc' ? -1 : 1;
-  if (row.capturedAt === null && anchor.capturedAt === null) return nameTail;
-  if (row.capturedAt === null) return 1;
-  if (anchor.capturedAt === null) return -1;
-  return direction * compareUtf8Bytes(row.capturedAt, anchor.capturedAt) || nameTail;
-};
-
-const photoCapturedAtCompare = (left: PhotoSearchRow, right: PhotoSearchRow, direction: 1 | -1): number => {
-  const nameTieBreak = compareUtf8Bytes(left.fileName, right.fileName)
-    || compareUtf8Bytes(left.fingerprint, right.fingerprint);
-  if (left.capturedAt === null && right.capturedAt === null) return nameTieBreak;
-  if (left.capturedAt === null) return 1;
-  if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return nameTieBreak;
-  return left.capturedAt < right.capturedAt ? -direction : direction;
-};
-
-const sortPhotoSearchRows = (
-  rows: readonly PhotoSearchRow[],
-  sort: 'captured_desc' | 'captured_asc' | 'name_asc',
-): PhotoSearchRow[] => {
-  const sorted = [...rows];
-  switch (sort) {
-    case 'captured_desc':
-      return sorted.sort((left, right) => photoCapturedAtCompare(left, right, -1));
-    case 'captured_asc':
-      return sorted.sort((left, right) => photoCapturedAtCompare(left, right, 1));
-    case 'name_asc':
-      return sorted.sort((left, right) =>
-        compareUtf8Bytes(left.fileName, right.fileName) || compareUtf8Bytes(left.fingerprint, right.fingerprint));
-  }
 };
 
 const photoSearchScore = (

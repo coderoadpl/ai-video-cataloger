@@ -71,6 +71,7 @@ const matchesQuery = (item: LibraryItem, query: string): boolean =>
   displayNameOf(item).includes(query) || item.tags.some((tag) => tag.includes(query));
 
 const collectionRequests: URLSearchParams[] = [];
+const facetsRequests: number[] = [];
 const libraryHideRequests: unknown[] = [];
 const libraryUnhideRequests: unknown[] = [];
 const libraryTrashRequests: unknown[] = [];
@@ -170,7 +171,9 @@ const stubTags = (tags: { name: string; count: number }[]) => {
 
 const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>> = {}) => {
   server.use(
-    http.get('/api/library/facets', () => HttpResponse.json({
+    http.get('/api/library/facets', () => {
+      facetsRequests.push(Date.now());
+      return HttpResponse.json({
       ok: true,
       data: {
         tags: [],
@@ -181,7 +184,8 @@ const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>
         counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, hidden: 0, offlineFolders: 0 },
         ...overrides,
       },
-    })),
+      });
+    }),
   );
 };
 
@@ -329,6 +333,7 @@ const stubLibraryPreview = (
 describe('LibraryView', () => {
   beforeEach(() => {
     collectionRequests.length = 0;
+    facetsRequests.length = 0;
     window.localStorage.removeItem(RECENT_SEARCHES_KEY);
     window.localStorage.removeItem('avc.library.media');
     window.localStorage.removeItem('avc.library.groupBy');
@@ -890,6 +895,26 @@ describe('LibraryView', () => {
 
     await waitFor(() => expect(collectionRequests.filter((params) => params.get('place') !== null)).toHaveLength(1));
     expect(collectionRequests[collectionRequests.length - 1]?.get('place')).toBe('Wro');
+  });
+
+  it('coalesces prefix typing into one collection request and never refetches facets per keystroke', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-1', fileName: 'wakacje-1.mp4' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+    const facetsBefore = facetsRequests.length;
+    const queriesBefore = collectionRequests.filter((params) => params.get('query') !== null).length;
+
+    const searchInput = screen.getByTestId('library-search-input').querySelector('input')
+      ?? screen.getByTestId('library-search-input');
+    for (const value of ['w', 'wa', 'wak', 'waka', 'wakac', 'wakacj']) {
+      fireEvent.change(searchInput, { target: { value } });
+    }
+
+    await waitFor(() => expect(collectionRequests[collectionRequests.length - 1]?.get('query')).toBe('wakacj'));
+    const queries = collectionRequests.filter((params) => params.get('query') !== null);
+    expect(queries).toHaveLength(queriesBefore + 1);
+    expect(facetsRequests).toHaveLength(facetsBefore);
   });
 
   it('toggles grouping by folder', async () => {

@@ -38,6 +38,9 @@ export default defineConfig({
         // scan docs and process.exit()): run by `pnpm run smoke` / `pnpm run
         // doc-lint`, never by vitest, so counting them 0% would depress the floor.
         'scripts/smoke.ts',
+        // Hand-run scale bench (`pnpm run bench:library`): a top-level program that
+        // seeds a synthetic catalog and prints route timings, never driven by vitest.
+        'scripts/bench/library-search-bench.ts',
         'scripts/doc-lint.ts',
       ],
       // Ratchet floor, not aspiration: each threshold is the measured coverage of

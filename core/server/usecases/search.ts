@@ -203,10 +203,13 @@ export const resolveThumbnailPath = async (
   row: CatalogSearchRow,
   online: boolean,
   thumbnails: ThumbnailsMode,
+  knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId);
+  const root = knownRoot === undefined
+    ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
+    : ok(knownRoot);
   if (!root.ok) return root;
   const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
   const exists = await deps.fs.exists(thumbnailPath);
@@ -226,10 +229,13 @@ export const resolveGridThumbnailPath = async (
   row: CatalogSearchRow,
   online: boolean,
   thumbnails: ThumbnailsMode,
+  knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId);
+  const root = knownRoot === undefined
+    ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
+    : ok(knownRoot);
   if (!root.ok) return root;
   const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
   const exists = await deps.fs.exists(gridThumbnailPath);
