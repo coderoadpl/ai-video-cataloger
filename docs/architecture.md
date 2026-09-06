@@ -1164,9 +1164,13 @@ offline reason and artifact root once per request instead of once per row, and
 `libraryFacets` counts people from the observation summary projection rather
 than loading every face observation with its embedding. The budgets are
 asserted by `scripts/bench/library-search-budget.test.ts` against a synthetic
-catalog seeded by `scripts/bench/seed-large-catalog.ts`; `pnpm run
-bench:library` runs the same measurement at full library scale outside the
-gates.
+catalog seeded by `scripts/bench/seed-large-catalog.ts` — a small fixed shape
+with `AVC_GATE_TIMEOUT_FACTOR`-scaled budgets inside `check`, the full library
+shape behind `AVC_LIBRARY_SCALE_BENCH=1`, the same split `faces-people-scale`
+uses. The join order itself is pinned deterministically by
+`adapters/db/library-search-query-plan.test.ts`, which asserts the full-text
+table is the outermost loop of both matched collection queries. `pnpm run
+bench:library` prints the same route timings at full scale outside the gates.
 
 ### Library — hide and move-to-trash (W88)
 

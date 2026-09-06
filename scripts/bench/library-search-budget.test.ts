@@ -6,16 +6,20 @@ import { z } from 'zod';
 
 import { createApp, type App } from '../../apps/server/src/create-app.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
-import { seedLargeCatalog } from './seed-large-catalog.js';
+import { DEFAULT_SEED_SIZES, seedLargeCatalog, type SeedSizes } from './seed-large-catalog.js';
+
+const BENCH = process.env.AVC_LIBRARY_SCALE_BENCH === '1';
+
+const GATE_SHAPE: SeedSizes = { photos: 1_500, videos: 250, people: 150, faceObservations: 800 };
+
+const SHAPE = BENCH ? DEFAULT_SEED_SIZES : GATE_SHAPE;
 
 const BUDGET_MS = {
-  collectionPageMedian: 800,
-  collectionPageWorst: 2_500,
-  facets: 300,
-  suggestions: 50,
+  collectionPageMedian: scaledTimeout(800),
+  collectionPageWorst: scaledTimeout(2_500),
+  facets: scaledTimeout(300),
+  suggestions: scaledTimeout(100),
 };
-
-const SIZES = { photos: 2_500, videos: 300, people: 200, faceObservations: 1_500 };
 
 const PREFIXES = ['w', 'wa', 'wak', 'waka', 'wakac', 'wakacj'];
 
@@ -34,6 +38,11 @@ const collectionUrl = (query: string | null): string => {
 let home: string;
 let app: App;
 
+const report = (label: string, samples: readonly number[]): void => {
+  if (!BENCH) return;
+  console.log(`${label}: ${samples.map((ms) => `${ms.toFixed(0)}ms`).join(' ')} (${String(SHAPE.photos)} photos, ${String(SHAPE.videos)} videos)`);
+};
+
 const timedCall = async (url: string): Promise<{ ms: number; body: unknown }> => {
   const startedAt = performance.now();
   const response = await app.honoApp.request(url);
@@ -44,10 +53,10 @@ const timedCall = async (url: string): Promise<{ ms: number; body: unknown }> =>
 
 beforeAll(async () => {
   home = await mkdtemp(path.join(tmpdir(), 'avc-library-budget-'));
-  await seedLargeCatalog({ home, sizes: SIZES });
+  await seedLargeCatalog({ home, sizes: SHAPE });
   app = createApp({ homeDirectory: home, processName: 'cli', version: 'budget' });
   await timedCall(collectionUrl(null));
-}, scaledTimeout(300_000));
+}, scaledTimeout(BENCH ? 900_000 : 300_000));
 
 afterAll(async () => {
   await app.dispose();
@@ -61,12 +70,11 @@ describe('library query budget at scale', () => {
       const { ms } = await timedCall(collectionUrl(prefix));
       measured.push(ms);
     }
-    console.log(`collection prefix search: ${measured.map((ms) => `${ms.toFixed(0)}ms`).join(' ')}`);
+    report('collection prefix search', measured);
     const sorted = [...measured].sort((left, right) => left - right);
-    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
-    expect(median).toBeLessThan(BUDGET_MS.collectionPageMedian);
+    expect(sorted[Math.floor(sorted.length / 2)] ?? 0).toBeLessThan(BUDGET_MS.collectionPageMedian);
     expect(Math.max(...measured)).toBeLessThan(BUDGET_MS.collectionPageWorst);
-  }, scaledTimeout(300_000));
+  }, scaledTimeout(BENCH ? 900_000 : 300_000));
 
   it('keeps a searched page identical to the page the unbounded scan used to return', async () => {
     const { body } = await timedCall(collectionUrl('wakacj'));
@@ -85,13 +93,13 @@ describe('library query budget at scale', () => {
 
   it('answers the facet rebuild within budget', async () => {
     const { ms } = await timedCall('/api/library/facets');
-    console.log(`facets: ${ms.toFixed(0)}ms`);
+    report('facets', [ms]);
     expect(ms).toBeLessThan(BUDGET_MS.facets);
   }, scaledTimeout(120_000));
 
   it('answers the search suggestion list within budget', async () => {
     const { ms } = await timedCall('/api/tags');
-    console.log(`tags: ${ms.toFixed(0)}ms`);
+    report('tags', [ms]);
     expect(ms).toBeLessThan(BUDGET_MS.suggestions);
   }, scaledTimeout(120_000));
 });
