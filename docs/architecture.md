@@ -1317,6 +1317,95 @@ lives in NDJSON progress-step names (`library-trash-preflight`,
 job-result fields, following the precedent
 [docs/architecture-photos.md](architecture-photos.md) §7 set for photos.
 
+### People — pairwise review and decision constraints (W99)
+
+Osoby gains a second repair verb next to "Scal wybrane": the app proposes two
+people it believes may be one and asks a single question. The decision record
+is [ADR-0018](decisions/0018-unified-people.md)'s amendment "Pairwise decisions
+as clustering constraints" (D9–D13); the specification is
+[tasks/prd-people-pair-review.md](../tasks/prd-people-pair-review.md).
+
+**A decision is a row, and it is anchored on observations.** `catalog.db`
+(schema **V19**) gains `people_pair_decisions`, keyed on an unordered pair of
+observation ids with a `same` / `different` / `skip` verdict, a decision time
+and a source; the two person ids ride along as refreshed, non-authoritative and
+**nullable** columns — an anchor the rebuild leaves unassigned stores `NULL`
+without weakening the constraint, which is resolved through the observation
+table anyway, over the full set including hidden files. `photos.db` is
+untouched at **v7** — the identity pool has lived in `catalog.db` since V11 and
+decisions belong with it. The anchor is the
+observation, not the person, because a full recluster re-mints every person id
+(ADR-0018 D5) and a person-keyed row would be stale exactly when the constraint
+matters; observation ids are deterministic from fingerprint, frame index and
+detection index, so they survive the rebuild that the decision is meant to
+bind. Rows are re-keyed by `mergePeople`, deleted with the observations they
+anchor — by all three store writes that delete observations: `forgetPerson`,
+`deleteFaceObservationsForFile` (the photos leg of the W88 trash flow and the
+stale-engine re-index path) and `forgetEntry` (the videos leg of that flow and
+`forget <fingerprint>`) — cleared wholesale by `purgeFaces`, and untouched by
+hide. A `FACE_ENGINE_VERSION` bump consequently discards the decisions anchored
+on re-extracted files: the observation ids are re-minted, so the anchors cease
+to exist, and the app does not re-attach a statement to crops the user never
+compared.
+
+**The queue is a query surface, not a job.** `GET /api/faces/pairs` assembles
+the same *visible* people set `GET /api/faces/people` assembles, over the same
+embedding-free `listFaceObservationSummaries()` projection and `totalsByPerson`
+helper — hidden fingerprints from both stores removed first, per
+[ADR-0020](decisions/0020-library-hide-and-trash.md) — then pairs them from the
+stored person centroids and the exemplar embeddings it loads for those
+exemplars alone, excludes every pair an active decision already covers, ranks
+the rest by a similarity weight that saturates
+at `FACE_CLUSTERING.clusterCutSimilarity` multiplied by the log sizes of both
+people, and returns a capped queue with the uncapped `pending` count and up to
+six diverse crops per person for the contact sheet. The band floor comes from
+the `faces_pair_scope` config key (`careful` / `standard` / `wide`); the band
+has no ceiling, because the strong-edge fraction floor and the greedy
+incremental assignment path both leave above-cut pairs unmerged. Generation
+runs on demand — when the view opens and after each answer — so there is no job
+kind, no NDJSON step and no background pass; the cost sits on a surface that
+already reads that projection to build person views. `POST
+/api/faces/pairs/decide` writes the row and, for `same`, performs the merge
+through the existing `GlobalCatalogStore.mergePeople` write under the same
+`withCatalogWriteLock` every other faces write uses, with both inside one
+`withBatch` transaction. It calls the store method rather than the `facesMerge`
+use-case because `facesMerge` flushes right after merging, and a sql.js flush
+inside an open batch closes and reopens the database handle, rolling the
+transaction back; flushing is `withCatalogWriteLock`'s job, after the batch has
+committed. `POST /api/faces/pairs/undo` removes the most recent user-sourced
+`different` or `skip` row (an imported corpus row is never undoable by a
+keystroke); a merge is not undoable and the route says so in a successful envelope
+(`reason: 'merge_not_undoable'`) rather than through a new error kind. `POST
+/api/faces/pairs/import` turns the ADR-0018 D4 labelled-pairs corpus into
+decisions in one pass — the CLI parses the file and posts the parsed pairs, so
+the server never opens a caller-supplied path and the contract stays the only
+bridge.
+
+**The rebuild reads the rows.** `faces recluster` is now a constrained
+clustering: `same` rows are must-link pairs pre-unioned before the
+agglomerative loop, `different` rows are cannot-link pairs that reject any
+merge whose union would hold both endpoints, and `skip` is never a constraint.
+Determinism is unchanged — sorted input, ties on the smallest member `obsId`,
+must-link components ordered by their smallest member — and the cost scales
+with the number of decisions rather than with cluster size, because each
+cluster carries only the constrained observation indices it holds. Because
+decisions survive the rebuild, so can a name: ADR-0018 D6 is revised to carry a
+name when the old named person maps one-to-one and total onto a new person over
+surviving observations — observations that carried no identity before the
+rebuild, unassigned or freshly indexed, do not break that mapping — and to keep
+dropping and reporting it in every other case. The recluster report grows
+`constraintsApplied`, `constraintConflicts`, `constraintsStale` and
+`nameConflicts`, and `namesCarried` stops being permanently zero.
+
+**No new taxonomy.** `not_found` covers an unknown person id, `validation` a
+malformed corpus or a person with no observations, and the existing
+`confirmation_required` is not needed — the only confirmation in the flow is a
+renderer dialog on a named-versus-named merge. No new `ErrorCode`, HTTP status,
+CLI exit code, job kind, NDJSON progress step, database file or on-disk
+directory; the contact sheet is built from the
+[ADR-0014](decisions/0014-per-observation-face-crops.md) crops already on disk,
+re-anchored through the existing `reanchorFaceCropPath`.
+
 ### Offset pagination — sanctioned ADR-0003 deviation (dated 2026-08-03)
 
 `GET /api/search`, `GET /api/photos/list` and `GET /api/photos/search` still
@@ -1498,11 +1587,14 @@ ADR-0011.
 
 Face identity is rebuildable without re-extraction: every observation keeps its
 embedding, so `faces recluster` recomputes all people and assignments from the stored
-vectors alone — no frame extraction, no detector, no `FACE_ENGINE_VERSION` bump (a
-version bump means the *extraction* changed and purges observations; a clustering-rule
-change never does). The rebuild is a replace: person ids are re-minted, owner-set names
-follow the plurality of their old observations, and exemplar crops stay attached to the
-observation that produced them. ADR-0012.
+vectors **and the stored pairwise decisions** — no frame extraction, no detector, no
+`FACE_ENGINE_VERSION` bump (a version bump means the *extraction* changed and purges
+observations; a clustering-rule change never does). The rebuild is a replace: person ids
+are re-minted, and an owner-set name is carried only when the old named person maps
+one-to-one and total onto exactly one new person over surviving observations — otherwise
+it is dropped and reported, never re-derived from a plurality vote. Exemplar crops stay
+attached to the observation that produced them. ADR-0012, superseded on names and on
+constraints by [ADR-0018](decisions/0018-unified-people.md) D6, D11 and D12.
 
 A face crop belongs to the observation it was cut from, not to the person that observation
 currently belongs to: indexing writes one crop per detected face under
@@ -1519,11 +1611,13 @@ input, and every people surface — the Osoby list, the person card, the collect
 filter, the facet counts, the media detail panes and `faces exemplars` — answers for both
 media or answers for neither. The person filter narrowing the library to videos while the
 Osoby facet counts photos is a contradiction, not a limitation. Identity rebuild is
-deterministic agglomerative average-linkage over cosine similarity on a sparse neighbour
-graph, calibrated by a repo benchmark script against a user-supplied reference partition
-and cut on the conservative side of the measured optimum (split rather than merge); the
-greedy per-observation assignment stays as the *incremental* path, cheap to be wrong on
-precisely because the rebuild exists. ADR-0018.
+deterministic **constrained** agglomerative average-linkage over cosine similarity on a
+sparse neighbour graph, calibrated by a repo benchmark script against a user-supplied
+reference partition and cut on the conservative side of the measured optimum (split
+rather than merge), with the stored `same` / `different` answers applied as must-link and
+cannot-link pairs; the greedy per-observation assignment stays as the *incremental* path,
+cheap to be wrong on precisely because the rebuild exists. ADR-0018, D11 and D12 for the
+constraints and for name carrying.
 
 People payloads keep observation counts because grouping quality is about detected face
 frames, but the Osoby card and person-media panel also need distinct file counts per

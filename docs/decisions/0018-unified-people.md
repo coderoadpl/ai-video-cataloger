@@ -166,7 +166,10 @@ Osoby gets a destructive-action affordance that runs `--dry-run` first, shows
 the report (people before/after, observations reassigned, largest clusters,
 `personsWithoutExemplar`, `namesDropped`), and only then offers the real run.
 
-**D6 — Names are not recovered.** ADR-0012's plurality name transfer is
+**D6 — Names are not recovered.** *(Revised by the amendment "Pairwise
+decisions as clustering constraints", D12: a name is now carried when the old
+named person maps one-to-one and total onto exactly one new person. Everything
+below still holds in every other case.)* ADR-0012's plurality name transfer is
 dropped for this rebuild: after a full re-mint the members behind a person id
 are a different set, and carrying the old label over hides that change behind a
 familiar name. Every person after the rebuild is unnamed and is named again
@@ -225,7 +228,11 @@ Ordered, and the order is load-bearing:
    wrong at the seams — that is what step 3 is for.
 3. `faces recluster --dry-run` from Osoby; the user reads the report.
 4. `faces recluster` for real. All person ids are re-minted; all names are
-   gone (D6).
+   gone (D6 — revised by the amendment "Pairwise decisions as clustering
+   constraints", D12: from that amendment on, a name whose person maps
+   one-to-one onto exactly one new person is carried, and only the ambiguous
+   cases lose theirs. On this first migration there are no decisions yet and no
+   names worth carrying, so the step reads as written).
 5. The user renames the people that matter.
 
 `faces purge` is never part of this sequence.
@@ -334,3 +341,155 @@ surfaced three lessons that change how future calibration runs must be read:
   change is therefore justified by the visual audit of its effect on cluster
   counts and composition, never by movement in the reference-partition
   metrics alone.
+
+## Amendment: pairwise decisions as clustering constraints
+
+Date: 2026-09-06 · Status: accepted · **Revises D6**
+
+The split-over-merge bias decided in D3 and tightened by the strong-edge
+fraction floor is working as designed, and the bill it produces is the one the
+asymmetry argument said it would: a rebuilt library holds many cards that are
+one person. The repair the app offered was a two-card selection and "Scal
+wybrane", which does not scale past a handful of mistakes. This amendment adds
+the missing half of the asymmetry: a cheap way to *state* that two identities
+are one, and a store that makes the statement outlive the rebuild that
+prompted it. It is specified in
+[tasks/prd-people-pair-review.md](../../tasks/prd-people-pair-review.md).
+
+**D9 — A user answer about a pair of people is stored as a durable
+constraint.** `catalog.db` gains `people_pair_decisions` (schema **V19**;
+`photos.db` is untouched at v7): one row per unordered pair, carrying a
+decision of `same`, `different` or `skip`, a decision time, and a source. The
+row is keyed on an unordered pair of **observation ids**, not person ids,
+because D5's rebuild re-mints every person id and an id-keyed row would be
+meaningless the moment the constraint is most needed; the two person ids are
+kept as refreshed, non-authoritative columns for candidate exclusion, merge
+re-keying and human-readable output. The anchor of each side is the **first
+entry of the contact sheet** the review card showed — the highest-quality
+observation of that person *that has a crop*, which is the crop the user was
+actually looking at. It is defined as the sheet selector's own output rather
+than as "the top exemplar", because a face observation's crop path is nullable
+and a quality-only exemplar pick can therefore name an observation the sheet
+never displayed. A person with no crop at all is shown as a placeholder and
+anchored on its top exemplar, which is as much as the card claimed.
+`same` merges the two people immediately through the existing merge path;
+`different` is permanent; `skip` suppresses the pair for 30 days.
+
+**D10 — Candidates are generated from the stored embeddings, on demand, and
+ranked by expected value.** Two people are proposed when their centroid cosine
+similarity is at or above a band floor, or when their centroids are near that
+floor and their best cross-exemplar pair clears
+`FACE_CLUSTERING.clusterCutSimilarity`. The band has **no upper bound**: the
+strong-edge fraction floor added by this ADR's first amendment, and the greedy
+incremental assignment path D3 deliberately kept, both leave pairs above the
+cut sitting as two people, so such a pair is the strongest candidate rather
+than an impossible one. Ranking is a similarity weight that saturates at the
+cut, multiplied by the log sizes of both people, so the question that unites
+the most observations with the best evidence is asked first. The band floor is
+a three-level user setting (`faces_pair_scope`: `careful` / `standard` /
+`wide`), not a hidden float, because how eagerly the app should ask is a taste
+judgement the owner must be able to move without a rebuild.
+
+**D11 — A full recluster is a constrained clustering.** `same` decisions are
+**must-link** pairs, pre-unioned before the agglomerative loop so the initial
+clusters are the must-link components; `different` decisions are
+**cannot-link** pairs that reject any merge whose union would contain both
+endpoints. `skip` is never a constraint. Determinism is unchanged: input sorted
+by `obsId`, ties on the smallest member `obsId`, must-link components ordered
+by their smallest member. A cannot-link pair that already sits inside a
+must-link component is a **conflict**, and the must-link wins — not because it
+is newer (an imported `different` can easily post-date a `same`), but because a
+`same` answer has already been **materialized as a merge**: the observations
+sit in one person on disk, and honouring the cannot-link would make the rebuild
+contradict the state the user is looking at. The conflict is counted and
+reported rather than silently resolved, so the contradiction is visible and can
+be corrected by re-deciding the pair. Constraints naming an observation that no
+longer exists are ignored and counted as stale. The cost is bounded by the
+number of decisions, not by the number of observations: each cluster carries
+only the constrained observation indices it holds.
+
+**D12 — Names may now be carried across a rebuild; D6 is revised.** D6 dropped
+every name because "after a full re-mint the members behind a person id are a
+different set, and carrying the old label over hides that change behind a
+familiar name". That reasoning stands — and it is now *testable* instead of
+assumed. A name is carried when the map from the old named person to a new
+person is one-to-one and total on both sides over surviving observations: every
+surviving observation of the old person is a member of the new one, and every
+observation of the new one that existed before the rebuild **and belonged to
+some person** belonged to the old one. Observations that existed but were
+**unassigned** before the rebuild (`personId = null` — the previous rebuild's
+`unassignedObsIds`, and anything the incremental path never placed) are exempt
+from that test: they carried no identity, so absorbing them cannot mean the old
+label now names a different set of people. Newly indexed observations joining
+the person are exempt for the same reason. In that case the member set is not a
+different set, which was exactly D6's condition. Every other case still drops
+the name and reports it: a person split
+across two new people, and two old names landing in one new person (a name
+conflict, where the app must not pick). `namesCarried` stops being permanently
+zero, `namesDropped` keeps listing the rest, and the recluster report gains
+`constraintsApplied`, `constraintConflicts`, `constraintsStale` and
+`nameConflicts`.
+
+**D13 — The labelled-pairs corpus is an input, not only a metric.** The
+same/different pairs D4 asks the user to label are, in form, exactly the
+statements D9 stores: an unordered pair of observation ids with a verdict. A
+one-off `faces pairs import` writes them as decisions with `source: 'import'`
+(`unsure` and `not_face` are skipped and counted), so calibration labelling
+pays twice — once as the acceptance metric D4 requires, once as constraints
+that bind every later rebuild. The import does not merge by default: a corpus
+of hundreds of `same` labels would otherwise fire hundreds of merges in one
+command, and the constraints take effect at the next recluster either way. The
+corpus is read in the **native observation-id** namespace: D4's benchmark
+script is what maps a reference partition's ids onto native ones, and the
+import does not repeat that match, because a geometric guess turning into a
+permanent cannot-link is a stronger act than scoring a metric. A `different`
+label whose two observations already sit in one person is the most valuable row
+in such a file — the corpus reporting a mixed person — and is kept and counted,
+not discarded as redundant.
+
+### Alternatives rejected
+
+- **Keying decisions on person ids alone**, as the shortest reading of the
+  feature suggests. Every id is re-minted by D5's rebuild, so the rows would be
+  stale exactly when D11 needs them, and a `same` row would degenerate into a
+  self-pair with no way to express the constraint.
+- **Lowering the cut or the strong-edge floor instead of asking.** The first
+  amendment's calibration lesson is explicit that moving those knobs fragments
+  real identities long before it fixes a mixed cluster; the knob that is
+  actually missing is the user's answer, not a smaller number.
+- **A bulk "merge everything above X" action.** That is the greedy assigner D3
+  replaced, wearing a button, and it reintroduces exactly the false merges the
+  asymmetry argument exists to avoid.
+- **Undoable merges.** A merge moves observations and deletes a person id;
+  restoring it is a rebuild, not an undo. The flow says so and offers undo for
+  `different` and `skip` only.
+- **Widening a `different` decision to every member pair of the two people.**
+  It would bind the rebuild harder, but it encodes a claim about crops the user
+  never saw. The narrow reading — the two anchors the user compared — is what
+  the user actually stated.
+- **A background generator or a scheduled pass.** The queue is a synchronous
+  read over data already loaded by the Osoby surface; a job kind would add an
+  event grammar and a failure mode for no gain.
+
+### Consequences
+
+- One new table and one additive migration (`catalog.db` V18 → V19); no new
+  database file, artifact kind, `ErrorCode`, HTTP status, exit code, job kind
+  or NDJSON step.
+- The migration path in this ADR's "Migration of existing data" section gains a
+  step 6 after step 5: the pairwise review is where the duplicates the
+  conservative cut left behind are resolved, and from then on step 4's rebuild
+  no longer discards that work.
+- `faces recluster` stops being purely destructive of user effort. Names
+  survive an unambiguous rebuild, and every answered pair survives every
+  rebuild.
+- The rebuild's output is no longer a function of the embeddings alone. Two
+  installations with identical observations and different decision sets produce
+  different partitions — intended, and the reason the report names the
+  constraints it applied.
+- **Parity:** unchanged. Faces remain a post-parity capability;
+  [tasks/parity-inventory.md](../../tasks/parity-inventory.md) carries a note
+  for the new table.
+- **Changelog:** this amendment is documentation only and carries no
+  `CHANGELOG.md` line. The lines each wave must land are enumerated in
+  [tasks/prd-people-pair-review.md](../../tasks/prd-people-pair-review.md).

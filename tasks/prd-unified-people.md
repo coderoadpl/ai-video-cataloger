@@ -264,6 +264,13 @@ adds no changelog line.
    gone.
 7. Rename the people that matter from the person cards.
 
+Steps 6 and 7 are the plan as written for this phase. From W99 onwards the
+rebuild honours stored pairwise decisions and carries a name across an
+unambiguous one-to-one mapping, and the duplicates the conservative cut leaves
+behind are drained through the pairwise review rather than by hand — see
+[tasks/prd-people-pair-review.md](prd-people-pair-review.md) and ADR-0018 D11 /
+D12.
+
 **Never** `faces purge` at any point: it destroys embeddings and leaves
 completion state stale, so the next pass believes the work is done.
 
@@ -323,7 +330,11 @@ reference-partition metrics.
 4. **Every person id changes and every name is dropped.** Cheap on a catalog
    with few names, expensive on one where many people have been named. A
    durable name anchor (a name pinned to an observation, not to a person id)
-   is the obvious follow-up and is deliberately **out of scope** here.
+   is the obvious follow-up and is deliberately **out of scope** here. That
+   follow-up landed as W99: decisions are anchored on observation ids and a
+   name survives a one-to-one rebuild —
+   [tasks/prd-people-pair-review.md](prd-people-pair-review.md), ADR-0018 D9
+   and D12.
 5. **Photo proxies are the detection substrate.** A photo whose proxy failed
    (`proxy_state != 'done'`) is invisible to the faces pass, exactly as
    `listPhotoFaceIndexCandidates` already filters. That is correct, and it
