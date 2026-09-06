@@ -285,13 +285,14 @@ the drive is reachable for photos — probes each with `MediaPort.probe` and
 picks the first whose short edge meets the floor. When none qualifies, any
 existing `.grid.jpg` is deleted rather than left stale, and the search/photo
 list rows report `null` for it rather than a path to a file that is not
-there. The library and photo tiles then fall back to the small cover and
-render it `object-fit: contain` — at its own size, letterboxed inside the
-tile — where a real grid thumbnail is rendered `cover`: a source too small
-for the grid is shown honestly small, never crop-upscaled. Because the
-check re-probes the current best source on every pass (not just at
-first-generation time), an already-generated grid thumb that was built from
-what was then the only source but a better one has since become reachable
+there. The library and photo tiles then fall back to the small cover, still
+rendered `object-fit: cover` in the fixed tile box (W103): honesty about a
+missing grid thumbnail is carried by the backfill and the unavailable
+placeholder, not by letting one tile letterbox itself into a different
+apparent size than its neighbours. Because the check re-probes the current
+best source on every pass (not just at first-generation time), an
+already-generated grid thumb that was built from what was then the only
+source but a better one has since become reachable
 gets regenerated even without `--force`; a fallback (non-primary) source
 always regenerates, bypassing the normal exists-skip.
 
@@ -810,6 +811,16 @@ import of, and not a copy-paste of, the `photos` feature's day-grouping/
 windowing types, per the cross-feature-import ban; it follows the same
 algorithm class (group by local capture day, window visible rows) over its
 own `LibraryItem` contract type.
+
+**The tile box is fixed, never derived from the thumbnail.** Every Kolekcja
+tile — photo or video — is one square of `LIBRARY_TILE_SIZE`
+(`features/library/tile-metrics.ts`) whose image is always `object-fit: cover`,
+so a tile never renders at its thumbnail's intrinsic aspect and never shifts
+when the image arrives: the reserved box holds a theme-token skeleton while the
+thumbnail loads, a labelled `library.thumbnailUnavailable` placeholder when it
+fails, and the first page paints the same boxes as skeleton tiles instead of an
+empty area, while a refetch keeps the previous tiles under a busy bar. Videos
+stay distinguishable from photos by their kind badge, never by tile shape.
 
 **Facets are computed server-side, whole-catalog, never from a loaded page.**
 `GET /api/library/facets` runs five `GROUP BY` queries (tags, people, places,

@@ -65,6 +65,29 @@ const photoItem = (overrides: Partial<LibraryPhotoItem> & { fingerprint: string 
   ...overrides,
 });
 
+const TILE_BOX = '168px';
+
+const boxesOf = (elements: readonly HTMLElement[]): [string, string][] =>
+  elements.map((element) => [getComputedStyle(element).width, getComputedStyle(element).height]);
+
+const searchInput = (): HTMLInputElement => {
+  const field = screen.getByTestId('library-search-input').querySelector('input');
+  if (field === null) throw new Error('search field has no input');
+  return field;
+};
+
+const imageIn = (tile: HTMLElement): HTMLImageElement => {
+  const image = tile.querySelector('img');
+  if (image === null) throw new Error('tile renders no thumbnail image');
+  return image;
+};
+
+const openGate = (): { opened: Promise<void>; open: () => void } => {
+  let open = (): void => undefined;
+  const opened = new Promise<void>((resolve) => { open = () => { resolve(); }; });
+  return { opened, open: () => { open(); } };
+};
+
 const displayNameOf = (item: LibraryItem): string => item.media === 'video' ? (item.finalName ?? item.fileName) : item.fileName;
 
 const matchesQuery = (item: LibraryItem, query: string): boolean =>
@@ -622,7 +645,7 @@ describe('LibraryView', () => {
     expect(gridImg?.getAttribute('src')).not.toContain('a.jpg?');
     expect(smallImg?.getAttribute('src')).toContain('b.jpg');
     expect(gridImg === undefined || gridImg === null ? null : window.getComputedStyle(gridImg).objectFit).toBe('cover');
-    expect(smallImg === undefined || smallImg === null ? null : window.getComputedStyle(smallImg).objectFit).toBe('contain');
+    expect(smallImg === undefined || smallImg === null ? null : window.getComputedStyle(smallImg).objectFit).toBe('cover');
   });
 
   it('renders a square gradient placeholder tile with the file name when no thumbnail exists', async () => {
@@ -638,6 +661,135 @@ describe('LibraryView', () => {
     const label = screen.getByText('clip.mp4');
     expect(label).toBeDefined();
     expect(getComputedStyle(label).color).toBe(hexToRgb(theme.palette.text.primary));
+  });
+
+  it('keeps one fixed square tile box before and after the thumbnail loads, whatever the source aspect', async () => {
+    const items = [
+      videoItem({ fingerprint: 'fp-portrait', gridThumbnailPath: null, width: 1080, height: 1920 }),
+      videoItem({
+        fingerprint: 'fp-landscape',
+        gridThumbnailPath: '/videos/.ai-video-cataloger/thumbnails/l.grid.jpg',
+        width: 1920,
+        height: 1080,
+      }),
+    ];
+    stubCollection(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const tiles = await screen.findAllByTestId('library-tile');
+    expect(boxesOf(tiles)).toEqual([[TILE_BOX, TILE_BOX], [TILE_BOX, TILE_BOX]]);
+    for (const tile of tiles) {
+      const image = imageIn(tile);
+      expect(getComputedStyle(image).objectFit).toBe('cover');
+      fireEvent.load(image);
+    }
+    expect(boxesOf(tiles)).toEqual([[TILE_BOX, TILE_BOX], [TILE_BOX, TILE_BOX]]);
+  });
+
+  it('shows a skeleton inside the tile box until the thumbnail has loaded, never a bare box', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-shimmer' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const tile = await screen.findByTestId('library-tile');
+    expect(tile.querySelector('[data-testid="library-tile-thumbnail-skeleton"]')).not.toBeNull();
+    fireEvent.load(imageIn(tile));
+    expect(tile.querySelector('[data-testid="library-tile-thumbnail-skeleton"]')).toBeNull();
+  });
+
+  it('fills the first-load grid with skeleton tiles in the same boxes instead of an empty area', async () => {
+    const gate = openGate();
+    server.use(http.get('/api/library/collection', async () => {
+      await gate.opened;
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          query: null,
+          media: 'all',
+          limit: 200,
+          total: 0,
+          videoTotal: 0,
+          photoTotal: 0,
+          mediaTotals: { all: 0, video: 0, photo: 0 },
+          count: 0,
+          items: [],
+          nextCursor: null,
+        },
+      });
+    }));
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const skeletons = await screen.findAllByTestId('library-tile-skeleton');
+    expect(skeletons.length).toBeGreaterThan(0);
+    expect(boxesOf(skeletons).every(([width, height]) => width === TILE_BOX && height === TILE_BOX)).toBe(true);
+    gate.open();
+    await screen.findByTestId('library-empty-catalog');
+  });
+
+  it('keeps the previous tiles on screen while a new query is in flight, with a busy indicator', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-kept', fileName: 'kept.mp4' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    const gate = openGate();
+    server.use(http.get('/api/library/collection', async () => {
+      await gate.opened;
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          query: 'kept',
+          media: 'all',
+          limit: 200,
+          total: 0,
+          videoTotal: 0,
+          photoTotal: 0,
+          mediaTotals: { all: 0, video: 0, photo: 0 },
+          count: 0,
+          items: [],
+          nextCursor: null,
+        },
+      });
+    }));
+    fireEvent.change(searchInput(), { target: { value: 'kept' } });
+
+    await screen.findByTestId('library-busy');
+    expect(screen.getAllByTestId('library-tile')).toHaveLength(1);
+    gate.open();
+    await screen.findByTestId('library-no-match');
+  });
+
+  it('renders a labelled unavailable placeholder, never the raw file name, when a thumbnail fails to load', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-broken', fileName: 'broken-clip.mp4' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const tile = await screen.findByTestId('library-tile');
+    fireEvent.error(imageIn(tile));
+
+    const unavailable = await screen.findByTestId('library-tile-thumbnail-unavailable');
+    expect(unavailable.getAttribute('aria-label')).toBe(en.library.thumbnailUnavailable);
+    expect(tile.querySelector('img')).toBeNull();
+    expect(screen.queryByText('broken-clip.mp4')).toBeNull();
+    expect(boxesOf([tile])).toEqual([[TILE_BOX, TILE_BOX]]);
+  });
+
+  it('marks videos with a kind badge, since the square box no longer distinguishes them from photos', async () => {
+    stubCollection([
+      videoItem({ fingerprint: 'fp-video-kind' }),
+      photoItem({ fingerprint: 'ph_0000000000000009' }),
+    ]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    await waitFor(() => { expect(screen.getAllByTestId('library-tile')).toHaveLength(2); });
+    const tiles = screen.getAllByTestId('library-tile');
+    const videoTile = tiles.find((tile) => tile.getAttribute('data-media') === 'video');
+    const photoTile = tiles.find((tile) => tile.getAttribute('data-media') === 'photo');
+    expect(videoTile?.querySelector('[data-testid="library-tile-video-badge"]')).not.toBeNull();
+    expect(photoTile?.querySelector('[data-testid="library-tile-video-badge"]')).toBeNull();
   });
 
   it('the tile menu opens the video in Analysis, with no folder-view item', async () => {

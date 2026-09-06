@@ -40,6 +40,9 @@ export interface LibraryPalette {
   selectionOutline: string;
   selectionOverlay: string;
   actionBarBackground: string;
+  tileBackground: string;
+  tileUnavailableBackground: string;
+  tileUnavailableForeground: string;
 }
 
 export interface PeoplePalette {
@@ -103,6 +106,9 @@ const LIGHT = {
     selectionOutline: '#007AFF',
     selectionOverlay: 'rgba(0, 122, 255, 0.18)',
     actionBarBackground: '#ffffff',
+    tileBackground: '#e8e8ed',
+    tileUnavailableBackground: '#dcdce1',
+    tileUnavailableForeground: '#6e6e73',
   } satisfies LibraryPalette,
   people: {
     otherTileBackground: '#f0f7f4',
@@ -145,6 +151,9 @@ const DARK = {
     selectionOutline: '#0a84ff',
     selectionOverlay: 'rgba(10, 132, 255, 0.24)',
     actionBarBackground: '#2c2c2e',
+    tileBackground: '#2c2c2e',
+    tileUnavailableBackground: '#3a3a3c',
+    tileUnavailableForeground: '#98989d',
   } satisfies LibraryPalette,
   people: {
     otherTileBackground: '#25342f',

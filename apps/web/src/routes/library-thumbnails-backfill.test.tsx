@@ -64,6 +64,17 @@ const completedPhotoGridJob = (jobId: string) => ({
   updatedAt: '2026-01-01T00:00:01.000Z',
 });
 
+const findTileThumbnail = async (name: string): Promise<HTMLImageElement> => {
+  const tile = await screen.findByRole('option', { name });
+  let image: HTMLImageElement | null = null;
+  await waitFor(() => {
+    image = tile.querySelector('img');
+    expect(image).not.toBeNull();
+  });
+  if (image === null) throw new Error(`tile ${name} renders no thumbnail image`);
+  return image;
+};
+
 const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
   let resolver: (value: T) => void = () => undefined;
   const promise = new Promise<T>((resolve) => {
@@ -295,7 +306,7 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
     expect(collectionRequests).toBe(1);
     completed.resolve(true);
 
-    const image = await screen.findByRole('img', { name: 'photo.jpg' });
+    const image = await findTileThumbnail('photo.jpg');
     expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain('/artifacts/grid-thumbs/ph_0000000000000001.jpg');
     expect(collectionRequests).toBe(2);
   });
@@ -388,7 +399,7 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
     renderRoute();
 
     await screen.findByTestId('library-tile-placeholder');
-    const image = await screen.findByRole('img', { name: 'photo.jpg' });
+    const image = await findTileThumbnail('photo.jpg');
     expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain('/artifacts/grid-thumbs/ph_0000000000000001.jpg');
     expect(collectionRequests).toBe(2);
   });

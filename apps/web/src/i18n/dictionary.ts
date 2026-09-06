@@ -937,6 +937,9 @@ export interface Dictionary {
     noMatchClearAction: string;
     offlineFolderBadge: string;
     missingBadge: string;
+    thumbnailUnavailable: string;
+    videoBadge: string;
+    refreshingResults: string;
     openInAnalysis: string;
     copyPath: string;
     groupByDate: string;
@@ -2062,6 +2065,9 @@ export const en: Dictionary = {
     noMatchClearAction: 'Clear search',
     offlineFolderBadge: 'Drive not connected',
     missingBadge: 'Missing',
+    thumbnailUnavailable: 'Thumbnail unavailable',
+    videoBadge: 'Video',
+    refreshingResults: 'Refreshing results…',
     openInAnalysis: 'Open in Analysis',
     copyPath: 'Copy path',
     groupByDate: 'Date',
@@ -3206,6 +3212,9 @@ export const pl: Dictionary = {
     noMatchClearAction: 'Wyczyść wyszukiwanie',
     offlineFolderBadge: 'Dysk niepodłączony',
     missingBadge: 'Brak pliku',
+    thumbnailUnavailable: 'Miniatura niedostępna',
+    videoBadge: 'Wideo',
+    refreshingResults: 'Odświeżanie wyników…',
     openInAnalysis: 'Otwórz w Analizie',
     copyPath: 'Kopiuj ścieżkę',
     groupByDate: 'Data',
