@@ -4,17 +4,17 @@ import { Box, Checkbox, Typography } from '@mui/material';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { AspectRatioIndicator } from '../../components/ui/AspectRatioIndicator.js';
+import { FilmIcon } from '../../components/ui/icons.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
 import { buildRows, columnsForWidth, visibleRowRange, type LibraryItem, type LibraryOfflineReason } from './core/index.js';
+import { LibraryTileThumbnail } from './LibraryTileThumbnail.js';
+import { LIBRARY_SECTION_HEADER_HEIGHT, LIBRARY_TILE_GAP, LIBRARY_TILE_SIZE } from './tile-metrics.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 
-const TILE_SIZE = 168;
-const GAP = 8;
-const HEADER_HEIGHT = 36;
 const EMPTY_SELECTION = new Set<string>();
-const INITIAL_WIDTH = TILE_SIZE * 3 + GAP * 2 + 32;
-const INITIAL_HEIGHT = (TILE_SIZE + GAP) * 4 + HEADER_HEIGHT;
+const INITIAL_WIDTH = LIBRARY_TILE_SIZE * 3 + LIBRARY_TILE_GAP * 2 + 32;
+const INITIAL_HEIGHT = (LIBRARY_TILE_SIZE + LIBRARY_TILE_GAP) * 4 + LIBRARY_SECTION_HEADER_HEIGHT;
 
 export interface LibraryGridSection {
   key: string;
@@ -72,11 +72,11 @@ const LibraryGridView = ({
     return () => observer.disconnect();
   }, []);
 
-  const columns = columnsForWidth(containerWidth - 32, TILE_SIZE, GAP);
+  const columns = columnsForWidth(containerWidth - 32, LIBRARY_TILE_SIZE, LIBRARY_TILE_GAP);
   const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
-  const rowHeight = TILE_SIZE + GAP;
+  const rowHeight = LIBRARY_TILE_SIZE + LIBRARY_TILE_GAP;
   const range = useMemo(
-    () => visibleRowRange(scrollTop, viewportHeight, rowHeight, HEADER_HEIGHT, rows),
+    () => visibleRowRange(scrollTop, viewportHeight, rowHeight, LIBRARY_SECTION_HEADER_HEIGHT, rows),
     [rowHeight, rows, scrollTop, viewportHeight],
   );
   const onGridKeyDown = (event: KeyboardEvent): void => {
@@ -111,7 +111,7 @@ const LibraryGridView = ({
               return (
                 <Box
                   key={`header-${String(row.section)}`}
-                  sx={{ height: HEADER_HEIGHT, display: 'flex', alignItems: 'center', gap: 1 }}
+                  sx={{ height: LIBRARY_SECTION_HEADER_HEIGHT, display: 'flex', alignItems: 'center', gap: 1 }}
                 >
                   <Typography variant="subtitle2" data-testid="library-section-header">
                     {section.label}
@@ -128,7 +128,7 @@ const LibraryGridView = ({
             return (
               <Box
                 key={`tiles-${String(row.section)}-${String(row.start)}`}
-                sx={{ display: 'flex', gap: `${String(GAP)}px`, height: rowHeight }}
+                sx={{ display: 'flex', gap: `${String(LIBRARY_TILE_GAP)}px`, height: rowHeight }}
               >
                 {tiles.map((item) => (
                   <LibraryTile
@@ -170,9 +170,7 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
   const dictionary = useDictionary();
   const isVideo = item.media === 'video';
   const imagePath = isVideo ? (item.gridThumbnailPath ?? item.thumbnailPath) : (item.gridThumbPath ?? item.thumbPath);
-  const gridPath = isVideo ? item.gridThumbnailPath : item.gridThumbPath;
   const name = isVideo ? (item.finalName ?? item.fileName) : item.fileName;
-  const imageFit = gridPath === null ? 'contain' : 'cover';
   const isOfflineFolder = isVideo && !item.folder.online;
   const offlineReason = isVideo ? item.folder.offlineReason : null;
   const isFileMissing = isVideo ? item.missing : item.missingAt !== null;
@@ -196,6 +194,7 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
       data-media={item.media}
       role="option"
       aria-selected={selected}
+      aria-label={name}
       tabIndex={-1}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
@@ -207,13 +206,13 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
       onContextMenu={(event) => onContextMenu(event, item)}
       sx={{
         position: 'relative',
-        width: TILE_SIZE,
-        height: TILE_SIZE,
+        width: LIBRARY_TILE_SIZE,
+        height: LIBRARY_TILE_SIZE,
         flexShrink: 0,
         borderRadius: 1,
         overflow: 'hidden',
         cursor: 'pointer',
-        bgcolor: 'background.default',
+        bgcolor: 'library.tileBackground',
         '&:hover': { outline: '2px solid', outlineColor: 'primary.main' },
         ...(selected ? {
           outline: '3px solid',
@@ -223,13 +222,7 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
       }}
     >
       {imagePath !== null ? (
-        <Box
-          component="img"
-          loading="lazy"
-          alt={name}
-          src={mediaUrl(imagePath, item.fingerprint)}
-          sx={{ width: '100%', height: '100%', objectFit: imageFit }}
-        />
+        <LibraryTileThumbnail src={mediaUrl(imagePath, item.fingerprint)} />
       ) : (
         <PlaceholderTile
           testId="library-tile-placeholder"
@@ -247,6 +240,27 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
         </Box>
       ) : null}
       <AspectRatioIndicator width={width} height={height} testId="library-aspect-indicator" />
+      {isVideo && !showMissingBadge ? (
+        <Box
+          data-testid="library-tile-video-badge"
+          role="img"
+          aria-label={dictionary.library.videoBadge}
+          sx={{
+            position: 'absolute',
+            bottom: 4,
+            left: 4,
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            bgcolor: 'background.paper',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <FilmIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+        </Box>
+      ) : null}
       {showMissingBadge ? (
         <Box
           data-testid="library-missing-badge"

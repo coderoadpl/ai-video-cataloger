@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, Snackbar, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, LinearProgress, Snackbar, TextField, Typography } from '@mui/material';
 import { ApiError, isTerminalJobStatus, invalidateLibraryVisibilityConsumers } from '@core/client/index.js';
 import { libraryTrashSummaryOfDetails } from '@core/contract/index.js';
 import { z } from 'zod';
@@ -46,6 +46,7 @@ import {
 } from './core/selection.js';
 import type { LibrarySort } from './core/folder-groups.js';
 import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
+import { LibraryGridSkeleton } from './LibraryGridSkeleton.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
 import { usePhotoRoots } from './use-photo-roots.js';
@@ -401,14 +402,7 @@ export const LibraryView = ({
     if (library.error !== null) {
       return <Alert severity="error" data-testid="library-error" sx={{ m: 2 }}>{formatAnalyzerError(library.error, dictionary.errors)}</Alert>;
     }
-    if (library.isLoading) {
-      return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }} data-testid="library-loading">
-          <CircularProgress size={24} />
-          <Typography sx={{ ml: 1 }}>{dictionary.library.loadingLibrary}</Typography>
-        </Box>
-      );
-    }
+    if (library.isLoading) return <LibraryGridSkeleton />;
     if (isEmptyCatalog) {
       return (
         <Box
@@ -489,6 +483,11 @@ export const LibraryView = ({
     }
     return (
       <>
+        <Box sx={{ height: 2, flexShrink: 0 }}>
+          {library.isRefreshing ? (
+            <LinearProgress data-testid="library-busy" aria-label={dictionary.library.refreshingResults} sx={{ height: 2 }} />
+          ) : null}
+        </Box>
         {showVideoOnlyFilterNotice ? (
           <Alert severity="info" data-testid="library-video-only-filter-notice" sx={{ mx: 2, mt: 1 }}>
             {dictionary.library.videoOnlyFilterNotice(videoOnlyFilterChips(filters, chipLabels).map((chip) => chip.label).join(', '))}

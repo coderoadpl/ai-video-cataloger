@@ -23,6 +23,7 @@ export interface LibraryState {
   photoTotal: number;
   mediaTotals: { all: number; video: number; photo: number };
   isLoading: boolean;
+  isRefreshing: boolean;
   isLoadingMore: boolean;
   isError: boolean;
   error: string | null;
@@ -124,6 +125,10 @@ export const useLibrary = (input: {
     photoTotal: page.data?.photoTotal ?? 0,
     mediaTotals: page.data?.mediaTotals ?? EMPTY_MEDIA_TOTALS,
     isLoading: input.active && cursor === null && page.isLoading,
+    isRefreshing: input.active
+      && cursor === null
+      && !page.isLoading
+      && (page.isFetching || query.trim() !== debouncedQuery),
     isLoadingMore: cursor !== null && page.isFetching,
     isError: page.isError,
     error: page.isError ? messageOf(page.error) : null,
