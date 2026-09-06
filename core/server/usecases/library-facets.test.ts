@@ -229,7 +229,7 @@ describe('libraryFacets', () => {
     ]);
   });
 
-  it('counts people from the person-fingerprint projection, never by loading every face embedding', async () => {
+  it('counts people from the observation summary projection, never by loading every face embedding', async () => {
     const globalCatalog = new ObservationScanCountingCatalog();
     const fs = new InMemoryFileSystem();
     await globalCatalog.upsertFolder(folderOnline);
@@ -240,6 +240,7 @@ describe('libraryFacets', () => {
       bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
       personId: 'p-named', cropPath: null, media: 'video',
     });
+
     const result = await libraryFacets({ globalCatalog, fs, photos: new InMemoryPhotosStore() });
 
     expect(result.ok).toBe(true);

@@ -2072,13 +2072,10 @@ const photoFingerprintWhereClause = (
   if (fingerprints === null) return { clauses: [], params: {} };
   const unique = [...new Set(fingerprints)];
   if (unique.length === 0) return { clauses: ['1 = 0'], params: {} };
-  const params: Record<string, string> = {};
-  const placeholders = unique.map((fingerprint, index) => {
-    const name = `$fingerprint${String(index)}`;
-    params[name] = fingerprint;
-    return name;
-  });
-  return { clauses: [`p.fingerprint IN (${placeholders.join(', ')})`], params };
+  return {
+    clauses: ['p.fingerprint IN (SELECT value FROM json_each($fingerprintList))'],
+    params: { $fingerprintList: JSON.stringify(unique) },
+  };
 };
 
 const photoHiddenClauses = (hidden: 'exclude' | 'only' | 'include' | undefined): string[] => {

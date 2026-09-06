@@ -50,6 +50,7 @@ describe('libraryFilterReducer', () => {
 const labels: LibraryFilterChipLabels = {
   hasGps: 'with GPS',
   noGps: 'without GPS',
+  person: (displayName) => `Person: ${displayName}`,
   folder: (displayName) => `Folder: ${displayName}`,
   dateRange: (from, to) => `${from} – ${to}`,
   dateFrom: (from) => `from ${from}`,

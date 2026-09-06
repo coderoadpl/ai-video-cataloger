@@ -55,7 +55,7 @@ import { useThumbnailsBackfillTrigger } from './use-thumbnails-backfill.js';
 
 export type LibrarySeed =
   | { kind: 'tag'; tag: string }
-  | { kind: 'person'; personId: string; label: string }
+  | { kind: 'person'; personId: string; label: string; media: LibraryMedia }
   | { kind: 'media'; media: LibraryMedia };
 
 interface LibraryViewProps {
@@ -169,6 +169,7 @@ export const LibraryView = ({
     if (seed === null) return;
     if (seed.kind === 'person') {
       dispatch({ type: 'addPerson', personId: seed.personId, displayName: seed.label });
+      setMedia(seed.media);
     } else if (seed.kind === 'tag') {
       dispatch({ type: 'addTag', tag: seed.tag });
     } else {
@@ -180,6 +181,7 @@ export const LibraryView = ({
   const chipLabels: LibraryFilterChipLabels = useMemo(() => ({
     hasGps: dictionary.library.chipHasGps,
     noGps: dictionary.library.chipNoGps,
+    person: dictionary.library.chipPerson,
     folder: dictionary.library.chipFolder,
     dateRange: dictionary.library.chipDateRange,
     dateFrom: dictionary.library.chipDateFrom,

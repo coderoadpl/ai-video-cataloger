@@ -41,6 +41,7 @@ import {
   type CatalogPlace,
   type CatalogVariant,
   type FaceObservation,
+  type FaceObservationSummary,
   type GpsSource,
   type Person,
   type Result,
@@ -73,7 +74,6 @@ import type {
   GlobalCatalogCounts,
   GlobalCatalogStore,
   LibraryFacets,
-  PersonFingerprint,
   ReconcileFolderInput,
   ReconcileFolderResult,
   TagTermExpansion,
@@ -104,6 +104,7 @@ import {
   migrateGlobalCatalogSchemaSqlV13,
   migrateGlobalCatalogSchemaSqlV14,
   migrateGlobalCatalogSchemaSqlV17,
+  migrateGlobalCatalogSchemaSqlV18,
   schemaMeta,
   tagAliases,
   tags,
@@ -1099,17 +1100,6 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
-    return this.read((_db, client) => {
-      const rows = client.exec(
-        `SELECT DISTINCT o.person_id, o.fingerprint
-          FROM face_observations o
-          WHERE o.person_id IS NOT NULL`,
-      )[0]?.values ?? [];
-      return rows.map((row) => ({ personId: stringValue(row[0]), fingerprint: stringValue(row[1]) }));
-    });
-  }
-
   async listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {
     return this.read((db, client) => {
       const root = input.root === null ? null : canonicalPath(input.root);
@@ -1420,6 +1410,22 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         return db.select().from(faceObservations).where(eq(faceObservations.personId, input.personId)).all().map(rowToFaceObservation);
       }
       return db.select().from(faceObservations).all().map(rowToFaceObservation);
+    });
+  }
+
+  async listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
+    return this.read((_db, client) => {
+      const rows = client.exec(
+        'SELECT obs_id, fingerprint, person_id, quality, crop_path, media FROM face_observations',
+      )[0]?.values ?? [];
+      return rows.map((row) => ({
+        obsId: stringValue(row[0]),
+        fingerprint: stringValue(row[1]),
+        personId: nullableStringValue(row[2]),
+        quality: nullableNumberValue(row[3]) ?? 0,
+        cropPath: nullableStringValue(row[4]),
+        media: row[5] === 'photo' ? 'photo' as const : 'video' as const,
+      }));
     });
   }
 
@@ -1769,6 +1775,10 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
   }
   if (currentVersion < 17) {
     for (const statement of migrateGlobalCatalogSchemaSqlV17) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 18) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV18) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {

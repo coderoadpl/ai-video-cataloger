@@ -25,8 +25,10 @@ import {
   planExemplarBackfill,
   selectExemplars,
   shouldMergePeople,
+  totalsByPerson,
   updateCentroid,
   type ExemplarCandidate,
+  type FaceObservationSummary,
   type ExemplarPlanObservation,
   type PreparedFaceClustering,
 } from './faces.js';
@@ -409,6 +411,59 @@ describe('selectExemplars', () => {
     expect(selectExemplars(candidates).map((observation) => observation.obsId)).toEqual(expected);
     const shuffled = [...candidates].reverse();
     expect(selectExemplars(shuffled).map((observation) => observation.obsId)).toEqual(expected);
+  });
+});
+
+describe('totalsByPerson', () => {
+  const summary = (overrides: Partial<FaceObservationSummary> & { obsId: string }): FaceObservationSummary => ({
+    fingerprint: 'fp-a',
+    personId: 'person-1',
+    quality: 0.5,
+    cropPath: null,
+    media: 'video',
+    ...overrides,
+  });
+
+  it('counts observations and distinct files per medium in a single pass', () => {
+    const totals = totalsByPerson([
+      summary({ obsId: 'a1', fingerprint: 'fp-a', media: 'video' }),
+      summary({ obsId: 'a2', fingerprint: 'fp-a', media: 'video' }),
+      summary({ obsId: 'b1', fingerprint: 'fp-b', media: 'video' }),
+      summary({ obsId: 'p1', fingerprint: 'ph-a', media: 'photo' }),
+      summary({ obsId: 'p2', fingerprint: 'ph-a', media: 'photo' }),
+      summary({ obsId: 'z1', fingerprint: 'fp-z', personId: 'person-2', media: 'photo' }),
+    ]);
+
+    expect(totals.get('person-1')).toMatchObject({
+      observationCount: 5,
+      videoCount: 3,
+      photoCount: 2,
+      videoFileCount: 2,
+      photoFileCount: 1,
+    });
+    expect(totals.get('person-2')).toMatchObject({
+      observationCount: 1,
+      videoCount: 0,
+      photoCount: 1,
+      videoFileCount: 0,
+      photoFileCount: 1,
+    });
+  });
+
+  it('drops unassigned observations and exposes the exemplar selection per person', () => {
+    const totals = totalsByPerson([
+      summary({ obsId: 'u1', personId: null }),
+      summary({ obsId: 'a1', fingerprint: 'fp-a', quality: 0.4, cropPath: 'a1.jpg' }),
+      summary({ obsId: 'a2', fingerprint: 'fp-a', quality: 0.9, cropPath: 'a2.jpg' }),
+      summary({ obsId: 'b1', fingerprint: 'fp-b', quality: 0.7, cropPath: 'b1.jpg' }),
+    ]);
+
+    expect([...totals.keys()]).toEqual(['person-1']);
+    expect(totals.get('person-1')?.exemplars.map((observation) => observation.obsId)).toEqual(['a2', 'b1']);
+  });
+
+  it('returns no entry for a person without observations', () => {
+    expect(totalsByPerson([]).get('person-1')).toBeUndefined();
   });
 });
 

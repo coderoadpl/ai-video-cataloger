@@ -23,6 +23,7 @@ import type {
   FaceBox,
   FaceLandmarks,
   FaceObservation,
+  FaceObservationSummary,
   FileArtifact,
   FileArtifactId,
   GeminiUsageAccounting,
@@ -232,11 +233,6 @@ export interface LibraryFacetPerson {
   personId: string;
   displayName: string | null;
   count: number;
-}
-
-export interface PersonFingerprint {
-  personId: string;
-  fingerprint: string;
 }
 
 export interface LibraryFacetPlace {
@@ -762,7 +758,6 @@ export interface GlobalCatalogStore {
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
   listFingerprintsForPeople(input: { personIds: readonly string[]; media: FaceObservation['media'] }):
     Promise<Result<string[], AppError>>;
-  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
@@ -786,6 +781,7 @@ export interface GlobalCatalogStore {
     fingerprint?: string | undefined;
     personId?: string | undefined;
   }): Promise<Result<FaceObservation[], AppError>>;
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>>;
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
   assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
   mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>>;

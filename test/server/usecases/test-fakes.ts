@@ -23,6 +23,7 @@ import {
   type ConfigKey,
   type ExifSummary,
   type FaceObservation,
+  type FaceObservationSummary,
   type FileArtifact,
   type GeminiUsageAccounting,
   type GpsSource,
@@ -70,7 +71,6 @@ import type {
   GlobalCatalogCounts,
   GlobalCatalogStore,
   LibraryFacets,
-  PersonFingerprint,
   ReconcileFolderInput,
   ReconcileFolderResult,
   SpendLedgerPort,
@@ -2029,17 +2029,15 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(rows));
   }
 
-  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
-    const seen = new Set<string>();
-    const rows: PersonFingerprint[] = [];
-    for (const observation of this.faceObservations.values()) {
-      if (observation.personId === null) continue;
-      const key = `${observation.personId}|${observation.fingerprint}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      rows.push({ personId: observation.personId, fingerprint: observation.fingerprint });
-    }
-    return Promise.resolve(ok(rows));
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
+    return Promise.resolve(ok([...this.faceObservations.values()].map((observation) => ({
+      obsId: observation.obsId,
+      fingerprint: observation.fingerprint,
+      personId: observation.personId,
+      quality: observation.quality,
+      cropPath: observation.cropPath,
+      media: observation.media,
+    }))));
   }
 
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {

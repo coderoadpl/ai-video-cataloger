@@ -33,6 +33,7 @@ import {
   type CredentialDeletion,
   type CredentialsBackendStatus,
   type FaceObservation,
+  type FaceObservationSummary,
   type FileArtifact,
   type Person,
   type Result,
@@ -115,7 +116,6 @@ import type {
   MediaPort,
   MediaProbe,
   ModelDownloadPort,
-  PersonFingerprint,
   PlacesPort,
   ProvidersPort,
   ProviderTestResult,
@@ -1313,17 +1313,15 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(observations));
   }
 
-  listPersonFingerprints(): Promise<Result<PersonFingerprint[], AppError>> {
-    const seen = new Set<string>();
-    const rows: PersonFingerprint[] = [];
-    for (const observation of this.faceObservations.values()) {
-      if (observation.personId === null) continue;
-      const key = `${observation.personId}|${observation.fingerprint}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      rows.push({ personId: observation.personId, fingerprint: observation.fingerprint });
-    }
-    return Promise.resolve(ok(rows));
+  listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
+    return Promise.resolve(ok([...this.faceObservations.values()].map((observation) => ({
+      obsId: observation.obsId,
+      fingerprint: observation.fingerprint,
+      personId: observation.personId,
+      quality: observation.quality,
+      cropPath: observation.cropPath,
+      media: observation.media,
+    }))));
   }
 
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {

@@ -283,7 +283,8 @@ test.describe('People across media', () => {
       await expect(session.page.getByTestId('people-media-video')).toContainText('(2)');
 
       const sharedCard = session.page.locator('[data-testid="people-card"][data-person-id="person-shared"]');
-      await sharedCard.getByTestId('people-card-body').click();
+      await sharedCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
+      await session.page.getByTestId('people-preview-files').click();
 
       const personMedia = session.page.getByTestId('person-media-panel');
       await expect(personMedia).toBeVisible({ timeout: 30_000 });
@@ -309,7 +310,7 @@ test.describe('People across media', () => {
     }
   });
 
-  test('filtering the collection by a person keeps that person\'s photos', async () => {
+  test('a person card click lands in the Collection behind a removable person chip', async () => {
     const workdir = makeEmptyWorkdir('people-media-collection');
     const { workspacePath } = await seedCatalog(workdir);
     const session = await launch(workdir);
@@ -319,16 +320,22 @@ test.describe('People across media', () => {
       await openPeopleSurface(session.page);
 
       const sharedCard = session.page.locator('[data-testid="people-card"][data-person-id="person-shared"]');
-      await sharedCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
-      await session.page.getByTestId('people-search-library').click();
+      await sharedCard.getByTestId('people-card-body').click();
 
       const grid = session.page.getByTestId('library-grid');
       await expect(grid).toBeVisible({ timeout: 30_000 });
+      await expect(session.page.getByTestId('person-media-panel')).toHaveCount(0);
+      const personChip = session.page.getByTestId('library-chip-person:person-shared');
+      await expect(personChip).toContainText('Shared Person');
       await expect(grid.locator('[data-testid="library-tile"]')).toHaveCount(2, { timeout: 30_000 });
       await expect(grid.locator('[data-testid="library-tile"][data-media="photo"]')).toHaveCount(1);
       await expect(grid.locator('[data-testid="library-tile"][data-media="video"]')).toHaveCount(1);
       await expect(session.page.getByTestId('library-video-only-filter-notice')).toHaveCount(0);
       await expect(session.page.getByTestId('library-media-photo')).toContainText('(1)');
+
+      await personChip.locator('.MuiChip-deleteIcon').click();
+      await expect(personChip).toHaveCount(0, { timeout: 15_000 });
+      await expect(grid.locator('[data-testid="library-tile"]')).toHaveCount(3, { timeout: 30_000 });
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(workdir, { recursive: true, force: true });

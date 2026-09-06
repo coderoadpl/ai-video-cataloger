@@ -62,6 +62,61 @@ export const selectExemplars = <T extends ExemplarCandidate>(observations: reado
   return selected;
 };
 
+export interface FaceObservationSummary extends ExemplarCandidate {
+  personId: string | null;
+  media: 'video' | 'photo';
+}
+
+export interface PersonObservationTotals {
+  observationCount: number;
+  videoCount: number;
+  photoCount: number;
+  videoFileCount: number;
+  photoFileCount: number;
+  exemplars: FaceObservationSummary[];
+}
+
+interface PersonObservationAccumulator {
+  videoCount: number;
+  photoCount: number;
+  videoFingerprints: Set<string>;
+  photoFingerprints: Set<string>;
+  candidates: FaceObservationSummary[];
+}
+
+export const totalsByPerson = (
+  observations: readonly FaceObservationSummary[],
+): Map<string, PersonObservationTotals> => {
+  const accumulators = new Map<string, PersonObservationAccumulator>();
+  for (const observation of observations) {
+    if (observation.personId === null) continue;
+    const accumulator = accumulators.get(observation.personId) ?? {
+      videoCount: 0,
+      photoCount: 0,
+      videoFingerprints: new Set<string>(),
+      photoFingerprints: new Set<string>(),
+      candidates: [],
+    };
+    if (observation.media === 'video') {
+      accumulator.videoCount += 1;
+      accumulator.videoFingerprints.add(observation.fingerprint);
+    } else {
+      accumulator.photoCount += 1;
+      accumulator.photoFingerprints.add(observation.fingerprint);
+    }
+    accumulator.candidates.push(observation);
+    accumulators.set(observation.personId, accumulator);
+  }
+  return new Map([...accumulators].map(([personId, accumulator]) => [personId, {
+    observationCount: accumulator.videoCount + accumulator.photoCount,
+    videoCount: accumulator.videoCount,
+    photoCount: accumulator.photoCount,
+    videoFileCount: accumulator.videoFingerprints.size,
+    photoFileCount: accumulator.photoFingerprints.size,
+    exemplars: selectExemplars(accumulator.candidates),
+  }]));
+};
+
 export interface FaceObsIdParts {
   fingerprint: string;
   frameIndex: number;
