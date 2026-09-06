@@ -267,6 +267,45 @@ describe('faces people management', () => {
     const people = await deps.globalCatalog.listPeople();
     expect(people.ok && people.value.map((person) => person.personId)).toEqual(['to']);
   });
+
+  it('carries the display name when the named person is the merge source', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'from', displayName: 'Alice' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'to' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'o1', fingerprint: 'fp-a', personId: 'from' }));
+
+    const result = await facesMerge(deps, { fromPersonId: 'from', toPersonId: 'to' });
+
+    expect(result.ok).toBe(true);
+    const people = await deps.globalCatalog.listPeople();
+    expect(people.ok && people.value.map((person) => person.displayName)).toEqual(['Alice']);
+  });
+
+  it('keeps the target name when both sides are named', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'from', displayName: 'Alice' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'to', displayName: 'Bob' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'o1', fingerprint: 'fp-a', personId: 'from' }));
+
+    await facesMerge(deps, { fromPersonId: 'from', toPersonId: 'to' });
+
+    const people = await deps.globalCatalog.listPeople();
+    expect(people.ok && people.value.map((person) => person.displayName)).toEqual(['Bob']);
+  });
+
+  it('persists the merge instead of leaving it to the auto-flush timer', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'from' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'to' }));
+    const flushesBefore = deps.globalCatalog.flushCount;
+
+    await facesMerge(deps, { fromPersonId: 'from', toPersonId: 'to' });
+
+    expect(deps.globalCatalog.flushCount).toBe(flushesBefore + 1);
+  });
 });
 
 describe('faces forget and purge delete crop files', () => {

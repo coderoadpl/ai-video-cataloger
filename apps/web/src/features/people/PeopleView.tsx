@@ -14,10 +14,14 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  FormControl,
   FormControlLabel,
+  FormLabel,
   IconButton,
   Menu,
   MenuItem,
+  Radio,
+  RadioGroup,
   Snackbar,
   Slider,
   TextField,
@@ -43,6 +47,9 @@ import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
 import {
+  defaultMergeTarget,
+  mergeNameChoices,
+  mergePlanFor,
   peopleForMedium,
   peopleMediaCounts,
   personCountForMedium,
@@ -94,6 +101,7 @@ const messageOf = (error: unknown): string => {
 const displayName = (dictionary: Dictionary, person: FacePerson): string =>
   person.displayName ?? dictionary.people.personName(person.fallbackIndex);
 
+const MERGE_HINT_ID = 'people-merge-hint';
 const PEOPLE_SORT_KEY = 'avc.people.sort';
 const PEOPLE_MIN_OBSERVATIONS_KEY = 'avc.people.minObservations';
 const PEOPLE_MIN_OBSERVATION_OPTIONS = [1, 2, 3, 5, 10, 20, 50] as const;
@@ -140,6 +148,7 @@ export const PeopleView = ({
   const [rename, setRename] = useState<RenameState | null>(null);
   const [forgetTarget, setForgetTarget] = useState<FacePerson | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [chosenNamePersonId, setChosenNamePersonId] = useState<string | null>(null);
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [reclusterOpen, setReclusterOpen] = useState(false);
   const [media, setMedia] = useState<PeopleMedia>('all');
@@ -185,9 +194,9 @@ export const PeopleView = ({
   const selected = people.selectedPersonIds
     .map((personId) => peopleById.get(personId))
     .filter((person): person is FacePerson => person !== undefined);
-  const mergeTarget = selected.length === 2 && selected[0] !== undefined && selected[1] !== undefined
-    ? { to: selected[0], from: selected[1] }
-    : null;
+  const nameChoices = mergeNameChoices(selected);
+  const mergeTargetId = chosenNamePersonId ?? defaultMergeTarget(selected)?.personId ?? null;
+  const mergePlan = mergeTargetId === null ? null : mergePlanFor(selected, mergeTargetId);
   const libraryActionScope = libraryAction === null
     ? { kind: 'person' as const, personId: 'preview-placeholder', skipSharedWithOtherPeople: false }
     : {
@@ -306,16 +315,28 @@ export const PeopleView = ({
               {dictionary.people.sortOrder}
             </ToggleButton>
           </ToggleButtonGroup>
-          <Button
-            variant="outlined"
-            size="small"
-            disabled={people.selectedPersonIds.length !== 2 || people.isBusy || mutationsBlocked}
-            title={lockReason}
-            onClick={() => setMergeOpen(true)}
-            data-testid="people-merge-selected"
-          >
-            {dictionary.people.mergeSelected}
-          </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={mergePlan === null || people.isBusy || mutationsBlocked}
+              title={lockReason}
+              {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
+              onClick={() => {
+                people.clearMergeError();
+                setChosenNamePersonId(null);
+                setMergeOpen(true);
+              }}
+              data-testid="people-merge-selected"
+            >
+              {dictionary.people.mergeSelected}
+            </Button>
+            {selected.length === 1 ? (
+              <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
+                {dictionary.people.mergeSelectHint}
+              </Typography>
+            ) : null}
+          </Box>
         </Box>
       </Box>
 
@@ -503,24 +524,60 @@ export const PeopleView = ({
         </DialogActions>
       </Dialog>
 
-      <ConfirmDialog
-        open={mergeOpen && mergeTarget !== null}
-        title={dictionary.people.mergeGroupings}
-        body={mergeTarget === null
-          ? ''
-          : dictionary.people.mergeBody(
-            displayName(dictionary, mergeTarget.from),
-            displayName(dictionary, mergeTarget.to),
+      <Dialog open={mergeOpen} onClose={() => setMergeOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>{dictionary.people.mergeGroupings}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {mergePlan === null ? null : (
+            <DialogContentText data-testid="people-merge-body">
+              {dictionary.people.mergeBody(selected.length, displayName(dictionary, mergePlan.target))}
+            </DialogContentText>
           )}
-        confirmLabel={dictionary.people.merge}
-        testId="people-merge-confirm"
-        disabled={people.isBusy || mutationsBlocked}
-        onClose={() => setMergeOpen(false)}
-        onConfirm={() => {
-          if (mergeTarget !== null) people.merge(mergeTarget.from.personId, mergeTarget.to.personId);
-          setMergeOpen(false);
-        }}
-      />
+          {nameChoices.length < 2 ? null : (
+            <FormControl>
+              <FormLabel id="people-merge-name-label">{dictionary.people.mergeNameChoice}</FormLabel>
+              <RadioGroup
+                aria-labelledby="people-merge-name-label"
+                value={mergeTargetId ?? ''}
+                onChange={(event) => setChosenNamePersonId(event.target.value)}
+              >
+                {nameChoices.map((person) => (
+                  <FormControlLabel
+                    key={person.personId}
+                    value={person.personId}
+                    label={displayName(dictionary, person)}
+                    control={<Radio />}
+                  />
+                ))}
+              </RadioGroup>
+            </FormControl>
+          )}
+          {people.mergeError === null ? null : (
+            <Alert severity="error" data-testid="people-merge-error">{people.mergeError}</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setMergeOpen(false)}>{dictionary.common.cancel}</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={mergePlan === null || people.isBusy || mutationsBlocked}
+            data-testid="people-merge-confirm"
+            onClick={() => {
+              if (mergePlan === null) return;
+              void people
+                .merge({
+                  toPersonId: mergePlan.target.personId,
+                  fromPersonIds: mergePlan.sources.map((person) => person.personId),
+                })
+                .then((merged) => {
+                  if (merged) setMergeOpen(false);
+                });
+            }}
+          >
+            {dictionary.people.merge}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmDialog
         open={forgetTarget !== null}

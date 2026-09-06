@@ -1444,6 +1444,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       db.update(people).set({
         centroid: embeddingToBlob(centroid),
         exemplarCount: embeddings.length,
+        ...(to.displayName === null && from.displayName !== null ? { displayName: from.displayName } : {}),
       }).where(eq(people.personId, input.toPersonId)).run();
       db.delete(people).where(eq(people.personId, input.fromPersonId)).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
