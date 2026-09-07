@@ -24,7 +24,7 @@ const scanRoutes = (source: string): Route[] => {
     return {
       method: match[1] ?? '',
       name: match[2] ?? '',
-      wrapped: body.includes('withCatalogWriteLock'),
+      wrapped: body.includes('withCatalogWriteLock') || body.includes('withFaceCatalogWriteLock'),
     };
   });
 };
