@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
   closeSync,
@@ -21,6 +21,10 @@ import { z } from 'zod';
 
 import {
   FACE_ENGINE_VERSION,
+  normalizePeoplePairDecision,
+  orderObservationPair,
+  peoplePairDecisionSchema,
+  type PeoplePairDecision,
   gridThumbnailStateSchema,
   type GridThumbnailState,
   updateCentroid,
@@ -109,6 +113,8 @@ import {
   migrateGlobalCatalogSchemaSqlV14,
   migrateGlobalCatalogSchemaSqlV17,
   migrateGlobalCatalogSchemaSqlV18,
+  migrateGlobalCatalogSchemaSqlV19,
+  peoplePairDecisions,
   schemaMeta,
   tagAliases,
   tags,
@@ -1532,6 +1538,39 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async listPeoplePairDecisions(): Promise<Result<PeoplePairDecision[], AppError>> {
+    return this.read((db) => peoplePairDecisionSchema.array().parse(db.select().from(peoplePairDecisions)
+      .orderBy(asc(peoplePairDecisions.obsAId), asc(peoplePairDecisions.obsBId)).all()));
+  }
+
+  async recordPeoplePairDecision(decision: PeoplePairDecision): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const row = normalizePeoplePairDecision(decision);
+      db.insert(peoplePairDecisions).values(row).onConflictDoUpdate({
+        target: [peoplePairDecisions.obsAId, peoplePairDecisions.obsBId], set: row,
+      }).run();
+    });
+  }
+
+  async deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const [a, b] = orderObservationPair(z.string().min(1).parse(obsAId), z.string().min(1).parse(obsBId));
+      db.delete(peoplePairDecisions).where(and(eq(peoplePairDecisions.obsAId, a), eq(peoplePairDecisions.obsBId, b))).run();
+    });
+  }
+
+  async latestUserPeoplePairDecision(): Promise<Result<PeoplePairDecision | null, AppError>> {
+    return this.read((db) => {
+      const row = db.select().from(peoplePairDecisions).where(eq(peoplePairDecisions.source, 'user'))
+        .orderBy(desc(peoplePairDecisions.decidedAt), asc(peoplePairDecisions.obsAId), asc(peoplePairDecisions.obsBId)).get();
+      return row === undefined ? null : peoplePairDecisionSchema.parse(row);
+    });
+  }
+
+  async deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+    return this.write((db) => deleteDecisionsAnchoredOnObservations(db, obsIds));
+  }
+
   async listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
     return this.read((_db, client) => {
       const rows = client.exec(
@@ -1922,6 +1961,10 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
     client.run('CREATE INDEX IF NOT EXISTS idx_face_observations_person_fingerprint ON face_observations(person_id, fingerprint)');
     client.run('CREATE TABLE IF NOT EXISTS grid_thumbnail_state (output_path TEXT PRIMARY KEY, generation_version INTEGER NOT NULL, source_path TEXT NOT NULL, source_kind TEXT NOT NULL, is_primary INTEGER NOT NULL)');
     client.run('CREATE TABLE IF NOT EXISTS pending_face_crop_cleanup (crop_path TEXT PRIMARY KEY, person_id TEXT)');
+    migrated = true;
+  }
+  if (currentVersion < 19 || client.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'people_pair_decisions'").length === 0) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV19) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -2959,4 +3002,10 @@ const pendingCropPaths = (client: Database, personId?: string): string[] => {
   } finally {
     statement.free();
   }
+};
+
+const deleteDecisionsAnchoredOnObservations = (db: GlobalDrizzle, obsIds: readonly string[]): void => {
+  const ids = z.array(z.string().min(1)).parse(obsIds);
+  if (ids.length === 0) return;
+  db.delete(peoplePairDecisions).where(or(inArray(peoplePairDecisions.obsAId, ids), inArray(peoplePairDecisions.obsBId, ids))).run();
 };

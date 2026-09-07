@@ -96,6 +96,52 @@ describe('SqlJsGlobalCatalogStore', () => {
     tempRoots.length = 0;
   });
 
+  it.each([18, 19])('W99 A1 upgrades v%s losslessly and opens twice', async (version) => {
+    const home = await tempHome();
+    const seed = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await seed.upsertFolder(folder);
+    await seed.upsertFile(file);
+    const databasePath = seed.databasePath();
+    await seed.dispose();
+    const SQL = await initSqlJs();
+    const before = new SQL.Database(await readFile(databasePath));
+    before.run('DROP TABLE IF EXISTS people_pair_decisions');
+    before.run('UPDATE schema_meta SET version = ?', [version]);
+    const tables = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_observations', 'face_index_state'];
+    const snapshot = snapshotAllTables(before, tables);
+    await writeFile(databasePath, before.export());
+    before.close();
+    for (let opening = 0; opening < 2; opening += 1) {
+      const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+      expect((await store.counts()).ok).toBe(true);
+      expect((await store.dispose()).ok).toBe(true);
+      const after = new SQL.Database(await readFile(databasePath));
+      try {
+        expect(after.exec('SELECT * FROM people_pair_decisions')).toEqual([]);
+        expect(after.exec('SELECT version FROM schema_meta')[0]?.values).toEqual([[19]]);
+        expect(snapshotAllTables(after, tables)).toEqual(snapshot);
+      } finally { after.close(); }
+    }
+  });
+
+  it('W99 A1 normalizes upserts, selects the latest user row and deletes either anchor', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const row = { obsAId: 'a', obsBId: 'b', personAId: 'pa', personBId: null, decision: 'different' as const, decidedAt: '2026-01-01T00:00:00.000Z', source: 'user' as const };
+    expect((await store.recordPeoplePairDecision(row)).ok).toBe(true);
+    expect((await store.recordPeoplePairDecision({ ...row, obsAId: 'b', obsBId: 'a', personAId: null, personBId: 'pa', decision: 'skip' })).ok).toBe(true);
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([{ ...row, decision: 'skip' }]));
+    await store.recordPeoplePairDecision({ ...row, obsAId: 'c', obsBId: 'd', source: 'import', decidedAt: '2026-02-01T00:00:00.000Z' });
+    expect(await store.latestUserPeoplePairDecision()).toEqual(ok({ ...row, decision: 'skip' }));
+    await store.deletePeoplePairDecisionsForObservations(['b']);
+    expect(await store.latestUserPeoplePairDecision()).toEqual(ok(null));
+    await store.deletePeoplePairDecisionsForObservations(['c']);
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.recordPeoplePairDecision(row);
+    await store.deletePeoplePairDecision('b', 'a');
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.dispose();
+  });
+
   it('PE03 defers competing flushes and serializes unrelated batches', async () => {
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
     await store.upsertFolder(folder);

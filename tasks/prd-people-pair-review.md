@@ -5,6 +5,14 @@ quoted below — file, symbol, prop list, schema version — was re-read at that
 commit. A later change to any quoted site is a change to this document: re-read
 the anchor before implementing, and fix the quote in the same PR.
 
+Implementation anchor update: the current base already uses catalog V19 for
+thumbnail state and pending crop cleanup. W99 retains V19 and those existing
+additions; its additive, idempotent migration also installs the decision table
+when opening an existing V19 catalog that lacks it. Both V18 and existing-V19
+upgrade paths are covered by lossless migration probes. The current store also
+serializes batches and defers competing flushes; W99 still issues no flush
+inside a batch.
+
 Decision record: [ADR-0018](../docs/decisions/0018-unified-people.md) and its
 amendment "Pairwise decisions as clustering constraints".
 Design: [docs/architecture.md](../docs/architecture.md), "People — pairwise

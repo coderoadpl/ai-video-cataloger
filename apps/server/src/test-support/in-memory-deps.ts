@@ -1,3 +1,4 @@
+import { normalizePeoplePairDecision, orderObservationPair, type PeoplePairDecision } from '@core/domain/index.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { access, constants, rm, writeFile } from 'node:fs/promises';
@@ -1380,6 +1381,37 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       (input.fingerprint === undefined || observation.fingerprint === input.fingerprint)
       && (input.personId === undefined || observation.personId === input.personId));
     return Promise.resolve(ok(observations));
+  }
+
+  peoplePairDecisions: PeoplePairDecision[] = [];
+
+  listPeoplePairDecisions(): Promise<Result<PeoplePairDecision[], AppError>> {
+    return Promise.resolve(ok([...this.peoplePairDecisions]));
+  }
+
+  recordPeoplePairDecision(input: PeoplePairDecision): Promise<Result<void, AppError>> {
+    const row = normalizePeoplePairDecision(input);
+    this.peoplePairDecisions = this.peoplePairDecisions.filter((existing) => existing.obsAId !== row.obsAId || existing.obsBId !== row.obsBId);
+    this.peoplePairDecisions.push(row);
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>> {
+    const [a, b] = orderObservationPair(obsAId, obsBId);
+    this.peoplePairDecisions = this.peoplePairDecisions.filter((row) => row.obsAId !== a || row.obsBId !== b);
+    return Promise.resolve(ok(undefined));
+  }
+
+  latestUserPeoplePairDecision(): Promise<Result<PeoplePairDecision | null, AppError>> {
+    const rows = this.peoplePairDecisions.filter((row) => row.source === 'user').sort((a, b) =>
+      b.decidedAt.localeCompare(a.decidedAt) || a.obsAId.localeCompare(b.obsAId) || a.obsBId.localeCompare(b.obsBId));
+    return Promise.resolve(ok(rows[0] ?? null));
+  }
+
+  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+    const ids = new Set(obsIds);
+    this.peoplePairDecisions = this.peoplePairDecisions.filter((row) => !ids.has(row.obsAId) && !ids.has(row.obsBId));
+    return Promise.resolve(ok(undefined));
   }
 
   listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
