@@ -11,6 +11,8 @@ import { extractTarZstd, writeTarZstd } from './tar.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 const createdAt = '2026-09-02T12:34:56.000Z';
+const memoryBench = process.env.AVC_TAR_MEMORY_BENCH === '1';
+const sparseInputGiB = memoryBench ? 5 : 1;
 
 describe('deterministic tar and zstd archive', () => {
   it('round-trips a fixture tree and is byte deterministic', async () => {
@@ -76,11 +78,11 @@ describe('deterministic tar and zstd archive', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed' } });
   });
 
-  it('keeps RSS growth bounded while streaming a 5 GB sparse input', async () => {
+  it(`keeps RSS growth bounded while streaming a ${sparseInputGiB} GB sparse input`, async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'avc-tar-memory-'));
     const source = path.join(root, 'large.bin');
     writeFileSync(source, '');
-    truncateSync(source, 5 * 1024 * 1024 * 1024);
+    truncateSync(source, sparseInputGiB * 1024 * 1024 * 1024);
     const baseline = process.memoryUsage().rss;
     let peak = baseline;
     const sampler = setInterval(() => {
