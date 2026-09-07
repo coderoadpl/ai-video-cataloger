@@ -2,6 +2,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { access, constants, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 import packageJson from '../../../../package.json' with { type: 'json' };
 import { z } from 'zod';
 
@@ -156,6 +157,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
   const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
   const backupDestination = new MemoryBackupDestination();
   seedMemoryBackups(backupDestination, process.env.AVC_TEST_MEMORY_BACKUPS);
+  const uploadHoldPath = process.env.AVC_TEST_BACKUP_UPLOAD_HOLD;
   const secrets = new InMemorySecrets();
   const backupState = new InMemoryBackupState();
   const backupEnablement: BackupEnablementDeps = {
@@ -168,6 +170,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     enqueueBackup: (input) => enqueueSimulatedBackup(jobs, backupDestination, backupState, secrets, {
       ...input,
       appVersion: config.version ?? packageJson.version,
+      uploadHoldPath,
     }),
     recoveryKey: () => ensureBackupRecoveryKey(secrets),
     parseRecoveryKey,
@@ -285,7 +288,7 @@ const enqueueSimulatedBackup = (
   destination: MemoryBackupDestination,
   state: BackupStatePort,
   secrets: SecretsStore,
-  input: { tier: BackupTier; manual: boolean; appVersion: string },
+  input: { tier: BackupTier; manual: boolean; appVersion: string; uploadHoldPath: string | undefined },
 ): Promise<Result<{ jobId: string }, AppError>> => jobs.enqueue({
   kind: 'backup',
   payload: { tier: input.tier, manual: input.manual },
@@ -296,6 +299,7 @@ const enqueueSimulatedBackup = (
       const reported = await context.reportProgress({ step, percentage });
       if (!reported.ok) return reported;
     }
+    await waitWhileHeld(input.uploadHoldPath, context.signal);
     const storedKey = await secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
     if (!storedKey.ok) return storedKey;
     const archivePath = path.join(tmpdir(), `avc-memory-backup-${randomUUID()}.avcbak`);
@@ -376,6 +380,22 @@ const memoryBackupSeedSchema = z.array(z.object({
   }).strict(),
   base64: z.string(),
 }).strict());
+
+// A memory-driver backup finishes in milliseconds, so an e2e run has no window in which to
+// observe the running state; the hold file lets a spec pin the job open and release it.
+const waitWhileHeld = async (holdPath: string | undefined, signal: AbortSignal): Promise<void> => {
+  if (holdPath === undefined || holdPath.length === 0) return;
+  while (!signal.aborted && await pathExists(holdPath)) await delay(25);
+};
+
+const pathExists = async (target: string): Promise<boolean> => {
+  try {
+    await access(target, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const seedMemoryBackups = (
   destination: MemoryBackupDestination,

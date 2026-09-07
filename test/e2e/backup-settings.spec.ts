@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,7 @@ interface Session {
   app: ElectronApplication;
   page: Page;
   recoveryKeyPath: string;
+  uploadHoldPath: string;
 }
 
 const SERVICE_ACCOUNT_KEY = JSON.stringify({
@@ -22,6 +23,7 @@ const SERVICE_ACCOUNT_KEY = JSON.stringify({
 async function launch(workdir: string): Promise<Session> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'avc-backup-userdata-'));
   const recoveryKeyPath = join(workdir, 'recovery-key.txt');
+  const uploadHoldPath = join(workdir, 'backup-upload.hold');
   mkdirSync(userDataDir, { recursive: true });
 
   const app = await electron.launch({
@@ -33,6 +35,7 @@ async function launch(workdir: string): Promise<Session> {
       DB_DRIVER: 'memory',
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
+      AVC_TEST_BACKUP_UPLOAD_HOLD: uploadHoldPath,
     },
   });
 
@@ -52,7 +55,7 @@ async function launch(workdir: string): Promise<Session> {
 
   await dismissSetupWizard(page);
 
-  return { app, page, recoveryKeyPath };
+  return { app, page, recoveryKeyPath, uploadHoldPath };
 }
 
 async function openBackupSettings(page: Page): Promise<void> {
@@ -111,10 +114,20 @@ test.describe('Settings > Backup end to end', () => {
       const archives = session.page.locator('[data-testid^="backup-row-"]');
       await expect(archives).toHaveCount(1, { timeout: 20_000 });
 
+      writeFileSync(session.uploadHoldPath, '');
       await session.page.getByTestId('backup-run-now').click();
       await expect(session.page.getByTestId('backup-run-now')).toBeDisabled({ timeout: 15_000 });
+      await expect(session.page.getByTestId('backup-run-now')).toContainText(/backing up|trwa kopia/i);
+      await expect(session.page.getByTestId('backup-indicator')).toHaveAttribute('data-state', 'running', {
+        timeout: 15_000,
+      });
+
+      rmSync(session.uploadHoldPath);
       await expect(session.page.getByTestId('backup-run-now')).toBeEnabled({ timeout: 30_000 });
       await expect(archives).toHaveCount(2, { timeout: 20_000 });
+      await expect(session.page.getByTestId('backup-indicator')).toHaveAttribute('data-state', 'idle', {
+        timeout: 20_000,
+      });
 
       const restoreButton = session.page.getByTestId('backup-list').getByRole('button', { name: /restore|przywróć/i }).first();
       await expect(restoreButton).toBeVisible({ timeout: 20_000 });
