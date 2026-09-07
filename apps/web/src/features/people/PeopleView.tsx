@@ -43,6 +43,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
@@ -143,6 +144,8 @@ export const PeopleView = ({
 }: PeopleViewProps) => {
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const people = usePeople({ active, folder, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const mutationsBlocked = lockReason !== undefined;
   const [rename, setRename] = useState<RenameState | null>(null);
@@ -250,11 +253,12 @@ export const PeopleView = ({
     void (async () => {
       try {
         await hideMutation.mutateAsync({ scope: libraryActionScope });
-        addLine(dictionary.people.hiddenPersonFilesLog(libraryAction.name), 'success');
+        if (!guard.isMounted()) return;
+        log(dictionary.people.hiddenPersonFilesLog(libraryAction.name), 'success');
         await invalidateLibraryVisibilityConsumers(queryClient);
         closeLibraryAction();
       } catch (error) {
-        setLibraryActionError(`${dictionary.people.hidePersonFilesFailedLog}: ${messageOf(error)}`);
+        if (guard.isMounted()) setLibraryActionError(`${dictionary.people.hidePersonFilesFailedLog}: ${messageOf(error)}`);
       }
     })();
   };
@@ -269,21 +273,24 @@ export const PeopleView = ({
             delay: sleep,
             fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
             isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-            onSnapshot: () => undefined,
+            shouldStop: () => !guard.isMounted(),
+            signal: guard.signal(),
           });
           if (final.status !== 'completed') {
             throw new ApiError(final.error ?? { code: 'internal', message: dictionary.people.trashPersonFilesFailedLog });
           }
         }
-        addLine(dictionary.people.trashPersonFilesLog(libraryAction.name), 'success');
+        if (!guard.isMounted()) return;
+        log(dictionary.people.trashPersonFilesLog(libraryAction.name), 'success');
         closeLibraryAction();
       } catch (error) {
+        if (!guard.isMounted()) return;
         const summary = error instanceof ApiError ? libraryTrashSummaryOfDetails(error.appError.details) : null;
         setLibraryActionError(summary === null
           ? `${dictionary.people.trashPersonFilesFailedLog}: ${messageOf(error)}`
           : `${dictionary.people.trashPersonFilesFailedLog}: ${dictionary.library.trashIncompleteCounts(summary.filesTrashed, summary.filesFailed, summary.filesNotAttempted)}`);
       } finally {
-        await invalidateLibraryVisibilityConsumers(queryClient);
+        if (guard.isMounted()) await invalidateLibraryVisibilityConsumers(queryClient);
       }
     })();
   };

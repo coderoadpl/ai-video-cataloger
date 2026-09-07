@@ -8,6 +8,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 
 const enabledValue = (value: string | undefined): boolean | null => {
   if (value === undefined) return null;
@@ -44,6 +45,8 @@ export const useFacesIndex = ({
   addLine,
   intervalMs = 1000,
 }: UseFacesIndexOptions): FacesIndexState => {
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
   const config = useQuery({ ...actions.config({}), enabled: active });
@@ -59,7 +62,7 @@ export const useFacesIndex = ({
     if (folder === null || activeJobLabel !== null) return;
     setActiveJobLabel(dictionary.people.indexingFacesLog);
     setActionError(null);
-    addLine(dictionary.people.indexingFacesLog, 'info');
+    log(dictionary.people.indexingFacesLog, 'info');
     void (async () => {
       try {
         const job = await indexMutation.mutateAsync({ root: folder });
@@ -68,29 +71,33 @@ export const useFacesIndex = ({
           delay: sleep,
           fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-          onSnapshot: () => undefined,
+          shouldStop: () => !guard.isMounted(),
+          signal: guard.signal(),
         });
         if (final.status === 'completed') {
-          addLine(dictionary.people.indexUpdatedLog, 'success');
+          if (!guard.isMounted()) return;
+          log(dictionary.people.indexUpdatedLog, 'success');
           await queryClient.invalidateQueries();
-        } else {
+        } else if (guard.isMounted()) {
           const failure = formatAnalyzerError(final.error?.message ?? '', dictionary.errors);
           const message = failure.length === 0
             ? dictionary.people.indexFacesFailedLog
             : `${dictionary.people.indexFacesFailedLog}: ${failure}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setActionError(message);
         }
       } catch (error) {
-        const failure = formatAnalyzerError(messageOf(error), dictionary.errors);
-        const message = `${dictionary.people.indexFacesFailedLog}: ${failure}`;
-        addLine(message, 'error');
-        setActionError(message);
+        if (guard.isMounted()) {
+          const failure = formatAnalyzerError(messageOf(error), dictionary.errors);
+          const message = `${dictionary.people.indexFacesFailedLog}: ${failure}`;
+          log(message, 'error');
+          setActionError(message);
+        }
       } finally {
-        setActiveJobLabel(null);
+        if (guard.isMounted()) setActiveJobLabel(null);
       }
     })();
-  }, [activeJobLabel, addLine, dictionary, folder, indexMutation, intervalMs, queryClient]);
+  }, [activeJobLabel, log, dictionary, folder, indexMutation, intervalMs, queryClient, guard]);
 
   const error = config.error !== null
     ? messageOf(config.error)
