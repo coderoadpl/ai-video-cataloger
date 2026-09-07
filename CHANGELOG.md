@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Settings shows the app-global backup section with no folder selected and while folder settings are loading or failed to load.
 - Face naming, merging, forgetting and purging share the indexing resource, and centroid updates preserve names and deleted identities.
 - Catalog batches suspend snapshot exports and defer competing flushes until the transaction settles.
 - Forget and purge retain pending face-crop cleanup across failures and restarts for retry.
