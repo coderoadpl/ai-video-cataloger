@@ -1,4 +1,10 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, type ReporterDescription } from '@playwright/test';
+
+const jsonReportFile = process.env.AVC_E2E_JSON_REPORT;
+const jsonReporter: ReporterDescription[] =
+  jsonReportFile === undefined || jsonReportFile === ''
+    ? []
+    : [['json', { outputFile: jsonReportFile }]];
 
 export default defineConfig({
   testDir: '.',
@@ -7,7 +13,7 @@ export default defineConfig({
   workers: 1,
   timeout: 600_000,
   expect: { timeout: 15_000 },
-  reporter: [['list'], ['./matrix-reporter.ts']],
+  reporter: [['list'], ['./matrix-reporter.ts'], ...jsonReporter],
   projects: [
     { name: 'cli', testMatch: /scenarios\.spec\.ts/ },
     { name: 'gui', testMatch: /scenarios\.spec\.ts/ },

@@ -36,9 +36,11 @@ export default defineConfig({
         // screenshot suite, rendered by `pnpm run visual`, never by vitest.
         'apps/web/src/visual/**',
         // Gate-orchestration scripts (top-level programs that boot the real app /
-        // scan docs and process.exit()): run by `pnpm run smoke` / `pnpm run
-        // doc-lint`, never by vitest, so counting them 0% would depress the floor.
+        // scan docs / spawn the e2e legs and process.exit()): run by `pnpm run
+        // smoke` / `pnpm run doc-lint` / `pnpm run test:e2e:prerelease`, never by
+        // vitest, so counting them 0% would depress the floor.
         'scripts/smoke.ts',
+        'scripts/e2e-prerelease.ts',
         // Hand-run scale bench (`pnpm run bench:library`): a top-level program that
         // seeds a synthetic catalog and prints route timings, never driven by vitest.
         'scripts/bench/library-search-bench.ts',
