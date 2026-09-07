@@ -34,8 +34,8 @@ interface TileMenuProps {
   controller: TileMenuController;
   onOpenInAnalysis: (item: LibraryItem) => void;
   hiddenView: boolean;
-  onHideItem: (item: LibraryItem) => void;
-  onRestoreItem: (item: LibraryItem) => void;
+  onHideItem?: ((item: LibraryItem) => void) | undefined;
+  onRestoreItem?: ((item: LibraryItem) => void) | undefined;
 }
 
 export const TileMenu = ({
@@ -52,6 +52,7 @@ export const TileMenu = ({
   const [copyFailed, setCopyFailed] = useState(false);
   const dismissRevealFailed = useCallback(() => setRevealFailed(false), []);
   const dismissCopyFailed = useCallback(() => setCopyFailed(false), []);
+  const visibilityAction = hiddenView ? onRestoreItem : onHideItem;
 
   return (
     <>
@@ -62,21 +63,18 @@ export const TileMenu = ({
         anchorPosition={anchor === null ? undefined : { top: anchor.y, left: anchor.x }}
         data-testid="library-tile-menu"
       >
-        <MenuItem
-          data-testid={hiddenView ? 'library-tile-menu-restore' : 'library-tile-menu-hide'}
-          onClick={() => {
-            close();
-            if (item === null) return;
-            if (hiddenView) {
-              onRestoreItem(item);
-            } else {
-              onHideItem(item);
-            }
-          }}
-        >
-          {hiddenView ? dictionary.library.restoreItem : dictionary.library.hideItem}
-        </MenuItem>
-        <Divider />
+        {visibilityAction === undefined ? null : (
+          <MenuItem
+            data-testid={hiddenView ? 'library-tile-menu-restore' : 'library-tile-menu-hide'}
+            onClick={() => {
+              close();
+              if (item !== null) visibilityAction(item);
+            }}
+          >
+            {hiddenView ? dictionary.library.restoreItem : dictionary.library.hideItem}
+          </MenuItem>
+        )}
+        {visibilityAction === undefined ? null : <Divider />}
         <MenuItem
           data-testid="library-tile-menu-open-analysis"
           onClick={() => {

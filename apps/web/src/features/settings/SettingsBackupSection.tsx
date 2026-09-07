@@ -50,7 +50,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="settings-backup">
-      <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.backup.sectionTitle}</Typography>
+      <Typography variant="subtitle2">{dictionary.backup.sectionTitle}</Typography>
       <Typography variant="caption">{dictionary.backup.sectionHelper}</Typography>
 
       {backup.error === null ? null : <Alert severity="error" data-testid="backup-error">{backup.error}</Alert>}
@@ -141,11 +141,12 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
           <Typography variant="caption">{dictionary.backup.retentionHelper}</Typography>
 
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.backup.listTitle}</Typography>
+            <Typography variant="subtitle2">{dictionary.backup.listTitle}</Typography>
             <Select
               size="small"
               value={backup.tierFilter ?? 'all'}
               data-testid="backup-tier-filter"
+              inputProps={{ 'aria-label': dictionary.backup.tierFilterLabel }}
               onChange={(event) => backup.setTierFilter(parseTierFilter(event.target.value))}
             >
               <MenuItem value="all">{dictionary.backup.tierFilterAll}</MenuItem>

@@ -1,10 +1,12 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 
 import type { photoListItemSchema } from '@core/contract/index.js';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import { PhotosWorkspace } from './PhotosWorkspace.js';
@@ -197,6 +199,29 @@ describe('PhotosWorkspace', () => {
     expect(strip.getAttribute('role')).not.toBe('alert');
     expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze');
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
+  });
+
+  it('opens the enlarged photo viewer from the keyboard through a named button', async () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001', proxyPath: '/artifacts/proxies/a.jpg' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({ items, selectedFingerprint: 'ph_0000000000000001', detail: detailFor(firstItem) })}
+    />);
+
+    const opener = screen.getByTestId('photos-open-viewer');
+    expect(opener.getAttribute('aria-label')).toBe(en.photos.openPreview);
+
+    opener.focus();
+    await userEvent.keyboard('{Enter}');
+
+    const viewer = await screen.findByTestId('photos-viewer');
+    expect(viewer.getAttribute('role')).toBe('dialog');
+    expect(viewer.getAttribute('aria-modal')).toBe('true');
+    const titleId = viewer.getAttribute('aria-labelledby');
+    expect(titleId).not.toBeNull();
+    expect(document.getElementById(titleId ?? '')?.textContent).toBe('ph_0000000000000001.jpg');
   });
 
   it('renders a sanitized persisted analysis error card with a retry action', () => {

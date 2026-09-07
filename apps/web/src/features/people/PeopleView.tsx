@@ -1,13 +1,13 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Card,
   CardContent,
   Checkbox,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -23,7 +23,6 @@ import {
   Radio,
   RadioGroup,
   Snackbar,
-  Slider,
   TextField,
   Typography,
   ToggleButton,
@@ -34,8 +33,15 @@ import { ApiError, invalidateLibraryVisibilityConsumers, isTerminalJobStatus } f
 import { libraryTrashSummaryOfDetails } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
+import { CardGridSkeleton } from '../../components/ui/CardGridSkeleton.js';
+import { ConfirmDialog } from '../../components/ui/dialogs/ConfirmDialog.js';
+import { EmptyState } from '../../components/ui/EmptyState.js';
 import { MoreVertIcon } from '../../components/ui/icons.js';
 import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
+import { NoticePanel } from '../../components/ui/NoticePanel.js';
+import { PageHeader } from '../../components/ui/PageHeader.js';
+import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
+import { SliderField } from '../../components/ui/SliderField.js';
 import { TrashConfirmationDialog, type TrashConfirmationCounts, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
@@ -45,8 +51,6 @@ import { mediaUrl } from '../../lib/media-url.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.js';
-import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
-import { placeholderGradients } from '../../theme.js';
 import {
   defaultMergeTarget,
   mergeNameChoices,
@@ -143,6 +147,7 @@ export const PeopleView = ({
   intervalMs,
 }: PeopleViewProps) => {
   const dictionary = useDictionary();
+  const focusOnMount = useCallback((node: HTMLInputElement | null) => node?.focus(), []);
   const queryClient = useQueryClient();
   const guard = useMountGuard();
   const log = useGuardedCallback(guard, addLine);
@@ -198,8 +203,10 @@ export const PeopleView = ({
     .map((personId) => peopleById.get(personId))
     .filter((person): person is FacePerson => person !== undefined);
   const nameChoices = mergeNameChoices(selected);
-  const mergeTargetId = chosenNamePersonId ?? defaultMergeTarget(selected)?.personId ?? null;
+  const defaultTargetId = defaultMergeTarget(selected)?.personId ?? null;
+  const mergeTargetId = mergeOpen ? chosenNamePersonId ?? defaultTargetId : defaultTargetId;
   const mergePlan = mergeTargetId === null ? null : mergePlanFor(selected, mergeTargetId);
+  const canMerge = defaultTargetId !== null && mergePlanFor(selected, defaultTargetId) !== null;
   const libraryActionScope = libraryAction === null
     ? { kind: 'person' as const, personId: 'preview-placeholder', skipSharedWithOtherPeople: false }
     : {
@@ -207,11 +214,15 @@ export const PeopleView = ({
       personId: libraryAction.personId,
       skipSharedWithOtherPeople: libraryAction.skipSharedWithOtherPeople,
     };
-  const libraryActionPreviewScope = libraryAction === null
+  const libraryActionSharedScope = libraryAction === null
     ? libraryActionScope
     : { kind: 'person' as const, personId: libraryAction.personId, skipSharedWithOtherPeople: false };
   const libraryActionPreview = useQuery({
-    ...actions.librarySelectionPreview({ scope: libraryActionPreviewScope }),
+    ...actions.librarySelectionPreview({ scope: libraryActionScope }),
+    enabled: active && libraryAction !== null,
+  });
+  const libraryActionSharedPreview = useQuery({
+    ...actions.librarySelectionPreview({ scope: libraryActionSharedScope }),
     enabled: active && libraryAction !== null,
   });
   const libraryActionCounts: TrashConfirmationCounts | null = libraryActionPreview.data === undefined ? null : {
@@ -226,7 +237,7 @@ export const PeopleView = ({
     ? ''
     : dictionary.people.personSelectionSummary(
       libraryActionPreview.data.total,
-      libraryActionPreview.data.sharedWithOtherPeople,
+      libraryActionSharedPreview.data?.sharedWithOtherPeople ?? libraryActionPreview.data.sharedWithOtherPeople,
     );
   const closeLibraryAction = (): void => {
     setLibraryAction(null);
@@ -295,68 +306,142 @@ export const PeopleView = ({
     })();
   };
 
+  const visibleSelectedCount = selected.filter(
+    (person) => gridPeople.some((visible) => visible.personId === person.personId),
+  ).length;
+  const hiddenSelectedCount = selected.length - visibleSelectedCount;
+  const hasCachedPeople = people.people.length > 0;
+  const initialError = people.error !== null && !hasCachedPeople
+    ? formatAnalyzerError(people.error, dictionary.errors)
+    : null;
+  const refreshError = people.error !== null && hasCachedPeople
+    ? formatAnalyzerError(people.error, dictionary.errors)
+    : null;
+  const mediumEmpty = hasCachedPeople && gridPeople.length === 0 && !foldedOpen && media !== 'all';
+
   if (!active) return null;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', p: 3, gap: 2.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-        <Box>
-          <Typography variant="h1">{dictionary.people.title}</Typography>
-          <Typography variant="caption" data-testid={foldedOpen ? 'people-scope' : undefined}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <PageHeader
+        testId="people-header"
+        title={dictionary.people.title}
+        subtitle={(
+          <Box component="span" data-testid={foldedOpen ? 'people-scope' : undefined}>
             {foldedOpen ? dictionary.people.otherPeopleScope : dictionary.people.subtitle}
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <ThresholdControl value={minObservations} onChange={setMinObservations} />
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={sort}
-            onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
-            data-testid="people-sort"
-          >
-            <ToggleButton value="frequent" data-testid="people-sort-frequency">
-              {dictionary.people.sortFrequent}
-            </ToggleButton>
-            <ToggleButton value="order" data-testid="people-sort-order">
-              {dictionary.people.sortOrder}
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              disabled={mergePlan === null || people.isBusy || mutationsBlocked}
-              title={lockReason}
-              {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
-              onClick={() => {
-                people.clearMergeError();
-                setChosenNamePersonId(null);
-                setMergeOpen(true);
-              }}
-              data-testid="people-merge-selected"
-            >
-              {dictionary.people.mergeSelected}
-            </Button>
-            {selected.length === 1 ? (
-              <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
-                {dictionary.people.mergeSelectHint}
-              </Typography>
-            ) : null}
           </Box>
-        </Box>
-      </Box>
+        )}
+        actions={(
+          <>
+            <Box sx={{ width: { xs: '100%', sm: 220 } }}>
+              <SliderField
+                label={dictionary.people.minObservationThresholdAria}
+                valueLabel={String(minObservations)}
+                testId="people-threshold-slider"
+                min={0}
+                max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
+                step={1}
+                marks={peopleMinObservationSliderMarks}
+                value={peopleMinObservationIndex(minObservations)}
+                valueLabelFormat={(current) => String(peopleMinObservationAtIndex(current) ?? '')}
+                getAriaValueText={(current) => {
+                  const threshold = peopleMinObservationAtIndex(current);
+                  return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
+                }}
+                onChange={(next) => {
+                  const threshold = peopleMinObservationAtIndex(next);
+                  if (threshold !== null) setMinObservations(threshold);
+                }}
+              />
+            </Box>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={sort}
+              onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
+              data-testid="people-sort"
+            >
+              <ToggleButton value="frequent" data-testid="people-sort-frequency">
+                {dictionary.people.sortFrequent}
+              </ToggleButton>
+              <ToggleButton value="order" data-testid="people-sort-order">
+                {dictionary.people.sortOrder}
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={!canMerge || people.isBusy || mutationsBlocked}
+                title={lockReason}
+                {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
+                onClick={() => {
+                  people.clearMergeError();
+                  setChosenNamePersonId(null);
+                  setMergeOpen(true);
+                }}
+                data-testid="people-merge-selected"
+              >
+                {dictionary.people.mergeSelected}
+              </Button>
+              {selected.length === 1 ? (
+                <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
+                  {dictionary.people.mergeSelectHint}
+                </Typography>
+              ) : null}
+            </Box>
+          </>
+        )}
+      >
+        {selected.length === 0 ? null : (
+          <Box
+            data-testid="people-selection-bar"
+            sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+          >
+            <Typography variant="subtitle2" data-testid="people-selection-count">
+              {dictionary.people.selectionCount(selected.length)}
+            </Typography>
+            {hiddenSelectedCount === 0 ? null : (
+              <Typography variant="caption" data-testid="people-selection-hidden-count">
+                {dictionary.people.hiddenSelectionCount(hiddenSelectedCount)}
+              </Typography>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={people.clearSelected}
+              data-testid="people-clear-selection"
+            >
+              {dictionary.people.clearSelection}
+            </Button>
+          </Box>
+        )}
+      </PageHeader>
 
-      {people.error === null ? null : <Alert severity="error">{formatAnalyzerError(people.error, dictionary.errors)}</Alert>}
-      {people.activeJobLabel === null ? null : (
-        <Alert severity="info" data-testid="people-active-job">{people.activeJobLabel}</Alert>
+      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, p: 3, gap: 2.5 }}>
+      {refreshError === null ? null : (
+        <NoticePanel testId="people-refresh-error" message={refreshError} />
       )}
-      {mutationsBlocked ? (
-        <Alert severity="warning" data-testid="people-read-only">{lockReason}</Alert>
+      {people.activeJobLabel === null ? null : (
+        <NoticePanel testId="people-active-job" message={people.activeJobLabel} />
+      )}
+      {mutationsBlocked && lockReason !== undefined ? (
+        <NoticePanel testId="people-read-only" message={lockReason} />
       ) : null}
 
       {people.isLoading ? (
-        <LoadingState />
+        <CardGridSkeleton testId="people-loading" label={dictionary.people.loadingPeople} />
+      ) : initialError !== null ? (
+        <EmptyState
+          testId="people-error-state"
+          title={dictionary.people.loadFailedTitle}
+          body={initialError}
+          action={(
+            <Button variant="outlined" onClick={people.refresh} data-testid="people-retry">
+              {dictionary.common.retry}
+            </Button>
+          )}
+        />
       ) : people.facesEnabled === false ? (
         <EmptyState
           title={dictionary.people.localFaceGroupingOffTitle}
@@ -463,9 +548,21 @@ export const PeopleView = ({
               />
             )}
           </Box>
+          {mediumEmpty ? (
+            <EmptyState
+              testId="people-media-empty"
+              title={dictionary.people.mediaEmptyTitle}
+              body={dictionary.people.mediaEmptyBody}
+              action={(
+                <Button variant="outlined" onClick={() => setMedia('all')} data-testid="people-media-empty-show-all">
+                  {dictionary.people.showAllMedia}
+                </Button>
+              )}
+            />
+          ) : null}
           <Divider />
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="people-danger-area">
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.people.dangerArea}</Typography>
+            <Typography variant="subtitle2">{dictionary.people.dangerArea}</Typography>
             <Typography variant="caption">
               {dictionary.people.dangerBody}
             </Typography>
@@ -499,45 +596,59 @@ export const PeopleView = ({
       )}
 
       <Dialog open={rename !== null} onClose={() => setRename(null)} fullWidth maxWidth="xs">
-        <DialogTitle>{dictionary.people.renameGrouping}</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            size="small"
-            label={dictionary.people.displayName}
-            value={rename?.value ?? ''}
-            onChange={(event) => {
-              const current = rename;
-              if (current !== null) setRename({ ...current, value: event.target.value });
-            }}
-            slotProps={{ htmlInput: { 'data-testid': 'people-rename-input' } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button color="inherit" onClick={() => setRename(null)}>{dictionary.common.cancel}</Button>
-          <Button
-            variant="contained"
-            disabled={rename === null || rename.value.trim().length === 0 || people.isBusy || mutationsBlocked}
-            title={lockReason}
-            onClick={() => {
-              if (rename === null) return;
-              people.rename(rename.person.personId, rename.value.trim());
-              setRename(null);
-            }}
-            data-testid="people-rename-save"
-          >
-            {dictionary.common.save}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (rename === null || rename.value.trim().length === 0) return;
+            people.rename(rename.person.personId, rename.value.trim());
+            setRename(null);
+          }}
+        >
+          <DialogTitle>{dictionary.people.renameGrouping}</DialogTitle>
+          <DialogContent>
+            <TextField
+              inputRef={focusOnMount}
+              fullWidth
+              size="small"
+              label={dictionary.people.displayName}
+              value={rename?.value ?? ''}
+              onChange={(event) => {
+                const current = rename;
+                if (current !== null) setRename({ ...current, value: event.target.value });
+              }}
+              slotProps={{ htmlInput: { 'data-testid': 'people-rename-input' } }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button variant="outlined" type="button" onClick={() => setRename(null)}>{dictionary.common.cancel}</Button>
+            <Button
+              variant="contained"
+              type="submit"
+              disabled={rename === null || rename.value.trim().length === 0 || people.isBusy || mutationsBlocked}
+              title={lockReason}
+              data-testid="people-rename-save"
+            >
+              {dictionary.common.save}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Dialog open={mergeOpen} onClose={() => setMergeOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>{dictionary.people.mergeGroupings}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {mergePlan === null ? null : (
-            <DialogContentText data-testid="people-merge-body">
-              {dictionary.people.mergeBody(selected.length, displayName(dictionary, mergePlan.target))}
-            </DialogContentText>
+            <>
+              <DialogContentText data-testid="people-merge-body">
+                {dictionary.people.mergeBody(selected.length, displayName(dictionary, mergePlan.target))}
+              </DialogContentText>
+              <DialogContentText data-testid="people-merge-selected-names">
+                {dictionary.people.mergeSelectedNames(
+                  selected.map((person) => displayName(dictionary, person)).join(', '),
+                )}
+              </DialogContentText>
+            </>
           )}
           {nameChoices.length < 2 ? null : (
             <FormControl>
@@ -563,7 +674,7 @@ export const PeopleView = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button color="inherit" onClick={() => setMergeOpen(false)}>{dictionary.common.cancel}</Button>
+          <Button variant="outlined" onClick={() => setMergeOpen(false)}>{dictionary.common.cancel}</Button>
           <Button
             color="error"
             variant="contained"
@@ -619,7 +730,7 @@ export const PeopleView = ({
         </DialogContent>
         <DialogActions>
           <Button
-            color="inherit"
+            variant="outlined"
             onClick={() => {
               setReclusterOpen(false);
               people.clearReclusterReport();
@@ -683,7 +794,7 @@ export const PeopleView = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button color="inherit" onClick={closeLibraryAction}>{dictionary.common.cancel}</Button>
+          <Button variant="outlined" onClick={closeLibraryAction}>{dictionary.common.cancel}</Button>
           <Button
             variant="contained"
             disabled={libraryActionCounts === null || hideMutation.isPending}
@@ -724,6 +835,8 @@ export const PeopleView = ({
           onClose: () => setOpenPerson(null),
         })}
 
+      </Box>
+
       <Snackbar
         open={people.mutationError !== null}
         onClose={people.dismissMutationError}
@@ -762,67 +875,6 @@ const ReportMetric = ({ label, value }: { label: string; value: number }) => (
     <Typography variant="body2">{value}</Typography>
   </Box>
 );
-
-const LoadingState = () => {
-  const dictionary = useDictionary();
-
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
-      <CircularProgress size={20} />
-      <Typography variant="body2">{dictionary.people.loadingPeople}</Typography>
-    </Box>
-  );
-};
-
-const ThresholdControl = ({
-  value,
-  onChange,
-}: {
-  value: PeopleMinObservations;
-  onChange: (value: PeopleMinObservations) => void;
-}) => {
-  const dictionary = useDictionary();
-
-  return (
-    <Box
-      data-testid="people-threshold-control"
-      sx={{
-        width: { xs: '100%', sm: 220 },
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 0.25,
-      }}
-    >
-      <Typography variant="caption">
-        {dictionary.people.minObservationThreshold(value)}
-      </Typography>
-      <Slider
-        size="small"
-        min={0}
-        max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
-        step={1}
-        marks={peopleMinObservationSliderMarks}
-        value={peopleMinObservationIndex(value)}
-        valueLabelDisplay="auto"
-        valueLabelFormat={(current) => {
-          const threshold = peopleMinObservationAtIndex(current);
-          return threshold === null ? '' : String(threshold);
-        }}
-        getAriaValueText={(current) => {
-          const threshold = peopleMinObservationAtIndex(current);
-          return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
-        }}
-        aria-label={dictionary.people.minObservationThresholdAria}
-        onChange={(_event, next) => {
-          if (typeof next !== 'number' || !Number.isInteger(next)) return;
-          const threshold = peopleMinObservationAtIndex(next);
-          if (threshold !== null) onChange(threshold);
-        }}
-        data-testid="people-threshold-slider"
-      />
-    </Box>
-  );
-};
 
 const OtherPeopleTile = ({
   peopleCount,
@@ -870,34 +922,6 @@ const OtherPeopleTile = ({
   );
 };
 
-interface EmptyStateProps {
-  title: string;
-  body: string;
-  action: ReactNode;
-  testId: string;
-}
-
-const EmptyState = ({ title, body, action, testId }: EmptyStateProps) => (
-  <Box
-    sx={{
-      flex: 1,
-      minHeight: 260,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      textAlign: 'center',
-      gap: 1,
-      color: 'text.secondary',
-    }}
-    data-testid={testId}
-  >
-    <Typography variant="h2" color="text.primary">{title}</Typography>
-    <Typography variant="body2" sx={{ maxWidth: 420 }}>{body}</Typography>
-    {action === null ? null : <Box sx={{ mt: 1 }}>{action}</Box>}
-  </Box>
-);
-
 interface PersonCardProps {
   person: FacePerson;
   name: string;
@@ -916,7 +940,7 @@ interface PersonCardProps {
   onTrashPersonFiles: () => void;
 }
 
-const PersonCard = ({
+const PersonCardView = ({
   person,
   name,
   media,
@@ -934,13 +958,17 @@ const PersonCard = ({
   onTrashPersonFiles,
 }: PersonCardProps) => {
   const dictionary = useDictionary();
-  const [imageFailed, setImageFailed] = useState(false);
+  const exemplarUrl = person.exemplarCropPath === null
+    ? null
+    : mediaUrl(person.exemplarCropPath, person.exemplarCount);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const cropPath = imageFailed ? null : person.exemplarCropPath;
+  const cropUrl = exemplarUrl === failedUrl ? null : exemplarUrl;
 
   return (
   <Card
     variant="outlined"
+    className="people-card"
     data-testid="people-card"
     data-person-id={person.personId}
     sx={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
@@ -955,30 +983,48 @@ const PersonCard = ({
         position: 'relative',
       }}
     >
+      <ButtonBase
+        data-testid="people-card-media"
+        aria-label={dictionary.people.previewFiles}
+        onClick={onPreviewFiles}
+        sx={{ width: '100%', height: '100%', display: 'block' }}
+      >
+        {cropUrl === null ? (
+          <PlaceholderTile
+            testId="people-card-fallback"
+            name={person.personId}
+            glyph={fallbackGlyph}
+          />
+        ) : (
+          <Box
+            component="img"
+            loading="lazy"
+            alt={name}
+            src={cropUrl}
+            onError={() => setFailedUrl(exemplarUrl)}
+            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+      </ButtonBase>
       <Checkbox
         checked={selected}
         disabled={disabled}
         onChange={onToggle}
         slotProps={{ input: { 'aria-label': dictionary.people.selectPerson(name) } }}
-        sx={{ position: 'absolute', top: 4, left: 4, bgcolor: 'background.paper', borderRadius: 1 }}
+        sx={{
+          position: 'absolute',
+          top: 4,
+          left: 4,
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          opacity: selected ? 1 : 0,
+          pointerEvents: selected ? 'auto' : 'none',
+          transition: 'opacity 120ms ease',
+          '&:hover': { bgcolor: 'background.paper' },
+          '.people-card:hover &': { opacity: 1, pointerEvents: 'auto' },
+          '.people-card:focus-within &': { opacity: 1, pointerEvents: 'auto' },
+        }}
       />
-      {cropPath === null ? (
-        <Box
-          data-testid="people-card-fallback"
-          style={{ background: placeholderGradients.dark[gradientIndexFor(person.personId)] }}
-          sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Typography variant="h4" sx={{ color: 'common.white' }}>{fallbackGlyph}</Typography>
-        </Box>
-      ) : (
-        <Box
-          component="img"
-          alt={name}
-          src={mediaUrl(cropPath, person.exemplarCount)}
-          onError={() => setImageFailed(true)}
-          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-      )}
       <IconButton
         size="small"
         aria-label={dictionary.people.moreActions(name)}
@@ -1004,12 +1050,6 @@ const PersonCard = ({
           sx={{ color: 'error.main' }}
         >
           {dictionary.people.delete}
-        </MenuItem>
-        <MenuItem
-          onClick={() => { setMenuAnchor(null); onPreviewFiles(); }}
-          data-testid="people-preview-files"
-        >
-          {dictionary.people.previewFiles}
         </MenuItem>
         <MenuItem
           onClick={() => { setMenuAnchor(null); onOpenInCollection(); }}
@@ -1054,48 +1094,12 @@ const PersonCard = ({
       onClick={onOpenInCollection}
       data-testid="people-card-body"
     >
-      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
+      <Typography variant="subtitle2" noWrap title={name}>{name}</Typography>
       <Typography variant="caption">{personFileCountLabel(dictionary.people, person, media)}</Typography>
     </CardContent>
   </Card>
   );
 };
 
-interface ConfirmDialogProps {
-  open: boolean;
-  title: string;
-  body: string;
-  confirmLabel: string;
-  testId: string;
-  disabled: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}
+const PersonCard = memo(PersonCardView);
 
-const ConfirmDialog = ({
-  open,
-  title,
-  body,
-  confirmLabel,
-  testId,
-  disabled,
-  onClose,
-  onConfirm,
-}: ConfirmDialogProps) => {
-  const dictionary = useDictionary();
-
-  return (
-  <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
-    <DialogTitle>{title}</DialogTitle>
-    <DialogContent>
-      <DialogContentText>{body}</DialogContentText>
-    </DialogContent>
-    <DialogActions>
-      <Button color="inherit" onClick={onClose}>{dictionary.common.cancel}</Button>
-      <Button color="error" variant="contained" onClick={onConfirm} disabled={disabled} data-testid={testId}>
-        {confirmLabel}
-      </Button>
-    </DialogActions>
-  </Dialog>
-  );
-};

@@ -31,6 +31,7 @@ export interface PeopleState {
   activeJobLabel: string | null;
   toggleSelected: (personId: string) => void;
   clearSelected: () => void;
+  refresh: () => void;
   installArtifacts: () => void;
   indexFaces: () => void;
   rename: (personId: string, displayName: string) => void;
@@ -317,6 +318,10 @@ export const usePeople = ({
     activeJobLabel,
     toggleSelected,
     clearSelected: () => setSelectedPersonIds([]),
+    refresh: () => {
+      void status.refetch();
+      void people.refetch();
+    },
     installArtifacts,
     indexFaces: facesIndex.indexFaces,
     rename,

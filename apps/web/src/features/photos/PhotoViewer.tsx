@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Box, IconButton, Modal, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
-import { ArrowBackIcon, CancelIcon, SkipNextIcon } from '../../components/ui/icons.js';
+import { MediaViewerShell } from '../../components/ui/MediaViewerShell.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
@@ -22,79 +22,34 @@ export const PhotoViewer = ({ item, proxyPath, onClose, onPrevious, onNext }: Ph
 
   useEffect(() => setAttempt(0), [item.fingerprint]);
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key === 'ArrowLeft' && onPrevious !== null) onPrevious();
-      if (event.key === 'ArrowRight' && onNext !== null) onNext();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose, onNext, onPrevious]);
-
   const source = candidates[attempt] ?? null;
+  const capturedAt = item.capturedAt === null ? null : formatCapturedAt(item.capturedAt, dictionary.locale);
 
   return (
-    <Modal open onClose={onClose} data-testid="photos-viewer">
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '5%',
-          left: '5%',
-          right: '5%',
-          bottom: '5%',
-          bgcolor: 'background.paper',
-          display: 'flex',
-          flexDirection: 'column',
-          outline: 'none',
-        }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1 }}>
-          <IconButton aria-label={dictionary.photos.viewerClose} onClick={onClose} data-testid="photos-viewer-close">
-            <CancelIcon />
-          </IconButton>
-        </Box>
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          {onPrevious !== null ? (
-            <IconButton
-              aria-label={dictionary.photos.viewerPrevious}
-              onClick={onPrevious}
-              data-testid="photos-viewer-previous"
-              sx={{ position: 'absolute', left: 8 }}
-            >
-              <ArrowBackIcon />
-            </IconButton>
-          ) : null}
-          {source === null ? (
-            <Typography>{dictionary.photos.noProxyYet}</Typography>
-          ) : (
-            <Box
-              component="img"
-              alt={item.fileName}
-              src={mediaUrl(source, item.fingerprint)}
-              onError={() => setAttempt((current) => current + 1)}
-              sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-            />
-          )}
-          {onNext !== null ? (
-            <IconButton
-              aria-label={dictionary.photos.viewerNext}
-              onClick={onNext}
-              data-testid="photos-viewer-next"
-              sx={{ position: 'absolute', right: 8 }}
-            >
-              <SkipNextIcon />
-            </IconButton>
-          ) : null}
-        </Box>
-        <Box sx={{ p: 1, textAlign: 'center' }}>
-          <Typography variant="body2">
-            {item.fileName}
-            {item.capturedAt === null ? '' : ` · ${formatCapturedAt(item.capturedAt, dictionary.locale) ?? ''}`}
-          </Typography>
-        </Box>
-      </Box>
-    </Modal>
+    <MediaViewerShell
+      testId="photos-viewer"
+      title={item.fileName}
+      caption={capturedAt === null ? item.fileName : `${item.fileName} · ${capturedAt}`}
+      onClose={onClose}
+      closeLabel={dictionary.photos.viewerClose}
+      closeTestId="photos-viewer-close"
+      previousLabel={dictionary.photos.viewerPrevious}
+      nextLabel={dictionary.photos.viewerNext}
+      previousTestId="photos-viewer-previous"
+      nextTestId="photos-viewer-next"
+      onPrevious={onPrevious}
+      onNext={onNext}
+      stage={source === null ? (
+        <Typography>{dictionary.photos.noProxyYet}</Typography>
+      ) : (
+        <Box
+          component="img"
+          alt={item.fileName}
+          src={mediaUrl(source, item.fingerprint)}
+          onError={() => setAttempt((current) => current + 1)}
+          sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+        />
+      )}
+    />
   );
 };
-

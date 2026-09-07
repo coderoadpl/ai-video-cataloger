@@ -3,18 +3,15 @@ import {
   Box,
   Button,
   Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   List,
   ListItem,
   Typography,
 } from '@mui/material';
 
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
+import { ConfirmDialog } from '../../components/ui/dialogs/ConfirmDialog.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDate } from '../../lib/format.js';
 import { folderName } from '../../lib/format.js';
 import { type CatalogTreeNode } from './core/index.js';
@@ -27,7 +24,7 @@ const nameOf = (entry: AbsentFileEntry): string => entry.finalName ?? entry.file
 export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null }) => {
   const dictionary = useDictionary();
   const [open, setOpen] = useState(false);
-  const { groups, total, forget, isForgetting } = useTreeAbsentFiles(root?.path ?? null, root !== null);
+  const { groups, total, forget, isForgetting, error } = useTreeAbsentFiles(root?.path ?? null, root !== null);
   const { disabledReason: lockReason } = useCatalogLock();
   const mutationsBlocked = lockReason !== undefined;
   const [pending, setPending] = useState<{ fingerprint: string; name: string } | null>(null);
@@ -103,32 +100,24 @@ export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null 
           ))}
         </Box>
       </Collapse>
-      <Dialog open={pending !== null} onClose={() => setPending(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>{dictionary.catalog.forgetEntryConfirmTitle}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button color="inherit" onClick={() => setPending(null)}>
-            {dictionary.common.cancel}
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={isForgetting || mutationsBlocked}
-            title={lockReason}
-            data-testid="tree-absent-file-forget-confirm"
-            onClick={() => {
-              if (pending !== null) forget(pending.fingerprint);
-              setPending(null);
-            }}
-          >
-            {dictionary.catalog.forgetEntryConfirm}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={pending !== null}
+        title={dictionary.catalog.forgetEntryConfirmTitle}
+        body={pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
+        confirmLabel={dictionary.catalog.forgetEntryConfirm}
+        testId="tree-absent-file-forget-confirm"
+        busy={isForgetting}
+        disabled={mutationsBlocked}
+        error={error === null ? null : formatAnalyzerError(error, dictionary.errors)}
+        onClose={() => setPending(null)}
+        onConfirm={() => {
+          if (pending === null) return;
+          void (async () => {
+            const forgotten = await forget(pending.fingerprint);
+            if (forgotten) setPending(null);
+          })();
+        }}
+      />
     </Box>
   );
 };

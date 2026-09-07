@@ -9,11 +9,20 @@ export { isLibraryMedia, type LibraryMedia } from './media.js';
 export {
   buildRows,
   columnsForWidth,
+  rowBounds,
   visibleRowRange,
   type LibraryGridRow,
+  type LibraryRowBound,
   type LibrarySectionLike,
   type LibraryVisibleRowRange,
 } from './grid-rows.js';
+export {
+  gridTileRows,
+  moveGridFocus,
+  tileRowIndexOf,
+  type GridMove,
+  type GridTileRow,
+} from './grid-navigation.js';
 export {
   groupByFolder,
   isLibrarySort,

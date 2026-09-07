@@ -21,6 +21,7 @@ import {
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
 
+import { ApiCostNotice } from '../../components/ui/ApiCostNotice.js';
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { CredentialNotice, LocalAiTier, SettingsDraft } from './settings-model.js';
@@ -230,9 +231,10 @@ export const SettingsAnalyzerSection = ({
             value={provider.pricePerMTokensOutput ?? ''}
             onChange={(event) => onProviderChange(withOutputPrice(provider, event.target.value))}
           />
-          <Typography variant="caption" data-testid="api-cost-signal">
-            {apiCostSignal(provider, estimateApiTokens({ transcriptCharacters: 0, frameCount })).message}
-          </Typography>
+          <ApiCostNotice
+            estimatedCostUsd={apiCostSignal(provider, estimateApiTokens({ transcriptCharacters: 0, frameCount })).estimatedCostUsd}
+            testId="api-cost-signal"
+          />
         </Box>
       ) : null}
 

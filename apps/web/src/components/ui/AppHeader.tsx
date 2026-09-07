@@ -53,10 +53,10 @@ export const AppHeader = ({
         >
           {dictionary.appHeader.settings}
         </Button>
-        <Button variant="outlined" size="small" color="inherit" onClick={onShowModelManager}>
+        <Button variant="outlined" size="small" color="inherit" onClick={onShowModelManager} data-testid="open-models-button">
           {dictionary.appHeader.models}
         </Button>
-        <Button variant="outlined" size="small" color="inherit" onClick={onShowPrerequisites}>
+        <Button variant="outlined" size="small" color="inherit" onClick={onShowPrerequisites} data-testid="open-prerequisites-button">
           {dictionary.appHeader.prerequisites}
         </Button>
       </Box>

@@ -2,18 +2,26 @@ import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogTitle, IconButton, Typography } from '@mui/material';
 
-import type { CollectionInput } from '@core/client/index.js';
+import { ApiError, type CollectionInput } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { CancelIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { labelWithCount } from '../../lib/format.js';
+import { EmptyState } from '../../components/ui/EmptyState.js';
 import { adjacentFingerprint, ownerPhotoRootFor, type LibraryItem, type LibraryMedia } from './core/index.js';
 import { LibraryGrid } from './LibraryGrid.js';
+import { LibraryGridSkeleton } from './LibraryGridSkeleton.js';
 import { LibraryMediaViewer } from './LibraryMediaViewer.js';
 import { usePhotoRoots } from './use-photo-roots.js';
 
 const PAGE_LIMIT = 200;
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof ApiError) return error.appError.message;
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
 
 export interface PersonMediaPanelProps {
   personId: string;
@@ -94,25 +102,39 @@ export const PersonMediaPanel = ({
       </DialogTitle>
       <Box sx={{ height: 520, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {page.isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }} data-testid="person-media-loading">
-            <CircularProgress size={24} />
+          <Box data-testid="person-media-loading" sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <LibraryGridSkeleton />
           </Box>
+        ) : page.isError && items.length === 0 ? (
+          <EmptyState
+            testId="person-media-error"
+            title={dictionary.library.personMediaLoadFailed}
+            body={messageOf(page.error)}
+            action={(
+              <Button variant="outlined" onClick={() => { void page.refetch(); }} data-testid="person-media-retry">
+                {dictionary.common.retry}
+              </Button>
+            )}
+          />
         ) : items.length === 0 ? (
-          <Alert severity="info" sx={{ m: 2 }} data-testid="person-media-empty">
-            {dictionary.people.personMediaEmpty}
-          </Alert>
+          <EmptyState
+            testId="person-media-empty"
+            title={dictionary.people.personMediaEmpty}
+            body={dictionary.people.personMediaSection}
+          />
         ) : (
           <>
             <LibraryGrid
               sections={[{ key: personId, label: dictionary.people.personMediaSection, offline: false, offlineReason: null, items }]}
               onOpen={(item) => setViewerFingerprint(item.fingerprint)}
-              onSelect={() => undefined}
               onOpenInAnalysis={openInAnalysis}
-              selectedFingerprints={new Set()}
-              hiddenView={false}
-              onHideItem={() => undefined}
-              onRestoreItem={() => undefined}
+              selectable={false}
             />
+            {page.isError ? (
+              <Alert severity="error" sx={{ mx: 2 }} data-testid="person-media-page-error">
+                {messageOf(page.error)}
+              </Alert>
+            ) : null}
             {page.hasNextPage ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
                 <Button

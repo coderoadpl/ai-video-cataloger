@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -377,7 +377,7 @@ describe('PeopleView', () => {
     expect(fallbacks).toHaveLength(2);
     expect(fallbacks[0]?.textContent).toBe('A');
     expect(fallbacks[1]?.textContent).toBe('2');
-    expect(getComputedStyle(screen.getByText('A')).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(screen.getByText('A')).color).toBe('rgb(29, 29, 31)');
     expect(screen.queryByAltText('Alex')).toBeNull();
   });
 
@@ -572,8 +572,6 @@ describe('PeopleView', () => {
     renderThemed(
       <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
-    const user = userEvent.setup();
-
     await screen.findByTestId('people-grid');
     fireEvent.click(screen.getByLabelText('More actions for Alex'));
     fireEvent.click(await screen.findByTestId('people-rename'));
@@ -581,8 +579,8 @@ describe('PeopleView', () => {
     fireEvent.click(screen.getByTestId('people-rename-save'));
 
     await waitFor(() => expect(bodies).toContainEqual({ personId: 'p1', displayName: 'Taylor' }));
-    await user.click(screen.getByLabelText('Select Alex'));
-    await user.click(screen.getByLabelText('Select Person 2'));
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Person 2'));
     await waitFor(() => expect(screen.getByTestId('people-merge-selected').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-merge-selected'));
     fireEvent.click(await screen.findByTestId('people-merge-confirm'));
@@ -628,14 +626,13 @@ describe('PeopleView', () => {
     renderThemed(
       <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
-    const user = userEvent.setup();
     await screen.findByTestId('people-grid');
 
-    await user.click(screen.getByLabelText('Select Person 1'));
+    fireEvent.click(screen.getByLabelText('Select Person 1'));
     expect(screen.getByTestId('people-merge-hint').textContent).toBe('Select at least two people.');
 
-    await user.click(screen.getByLabelText('Select Alex'));
-    await user.click(screen.getByLabelText('Select Person 3'));
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Person 3'));
     expect(screen.queryByTestId('people-merge-hint')).toBeNull();
 
     await waitFor(() => expect(screen.getByTestId('people-merge-selected').getAttribute('disabled')).toBeNull());
@@ -664,11 +661,10 @@ describe('PeopleView', () => {
     renderThemed(
       <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
-    const user = userEvent.setup();
     await screen.findByTestId('people-grid');
 
-    await user.click(screen.getByLabelText('Select Person 1'));
-    await user.click(screen.getByLabelText('Select Person 2'));
+    fireEvent.click(screen.getByLabelText('Select Person 1'));
+    fireEvent.click(screen.getByLabelText('Select Person 2'));
     fireEvent.click(screen.getByTestId('people-merge-selected'));
 
     expect((await screen.findByTestId('people-merge-body')).textContent)
@@ -702,8 +698,8 @@ describe('PeopleView', () => {
     const user = userEvent.setup();
     await screen.findByTestId('people-grid');
 
-    await user.click(screen.getByLabelText('Select Alex'));
-    await user.click(screen.getByLabelText('Select Blake'));
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Blake'));
     fireEvent.click(screen.getByTestId('people-merge-selected'));
 
     expect((await screen.findByTestId('people-merge-body')).textContent)
@@ -714,6 +710,69 @@ describe('PeopleView', () => {
 
     fireEvent.click(screen.getByTestId('people-merge-confirm'));
     await waitFor(() => expect(bodies).toEqual([{ fromPersonId: 'p2', toPersonId: 'p1' }]));
+  }, scaledTimeout(30_000));
+
+  it('scopes a chosen merge name to the open dialog so a later pair stays mergeable', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 30,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 12 }),
+        person({ personId: 'p2', displayName: 'Blake', observationCount: 10 }),
+        person({ personId: 'p3', fallbackIndex: 2, observationCount: 11 }),
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+    await screen.findByTestId('people-grid');
+
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Blake'));
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+    await user.click(await screen.findByRole('radio', { name: 'Alex' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Blake'));
+    fireEvent.click(screen.getByLabelText('Select Blake'));
+    fireEvent.click(screen.getByLabelText('Select Person 3'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('people-merge-selected').getAttribute('disabled')).toBeNull());
+    fireEvent.click(screen.getByTestId('people-merge-selected'));
+    expect((await screen.findByTestId('people-merge-body')).textContent).toContain('Blake');
+  }, scaledTimeout(30_000));
+
+  it('keeps a persistent selection bar that counts hidden selections and clears them', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 30,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 12 }),
+        person({ personId: 'p2', displayName: 'Blake', observationCount: 10 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+    await screen.findByTestId('people-grid');
+
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Blake'));
+    expect((await screen.findByTestId('people-selection-count')).textContent).toBe('2 selected');
+
+    fireEvent.click(screen.getByTestId('people-media-photo'));
+    await waitFor(() =>
+      expect(screen.getByTestId('people-selection-hidden-count').textContent).toBe('2 outside the current view'));
+
+    fireEvent.click(screen.getByTestId('people-clear-selection'));
+    await waitFor(() => expect(screen.queryByTestId('people-selection-bar')).toBeNull());
   }, scaledTimeout(30_000));
 
   it('keeps the merge dialog, the selection and the server error when a merge fails', async () => {
@@ -736,11 +795,10 @@ describe('PeopleView', () => {
     renderThemed(
       <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
     );
-    const user = userEvent.setup();
     await screen.findByTestId('people-grid');
 
-    await user.click(screen.getByLabelText('Select Alex'));
-    await user.click(screen.getByLabelText('Select Person 2'));
+    fireEvent.click(screen.getByLabelText('Select Alex'));
+    fireEvent.click(screen.getByLabelText('Select Person 2'));
     fireEvent.click(screen.getByTestId('people-merge-selected'));
     fireEvent.click(await screen.findByTestId('people-merge-confirm'));
 
@@ -984,8 +1042,10 @@ describe('PeopleView media chips', () => {
     fireEvent.click(screen.getByTestId('people-media-photo'));
     await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
 
-    fireEvent.click(screen.getByLabelText('More actions for PhotoOnly'));
-    fireEvent.click(await screen.findByTestId('people-preview-files'));
+    const photoCard = screen.getAllByTestId('people-card')
+      .find((card) => card.getAttribute('data-person-id') === 'p-photo');
+    if (photoCard === undefined) throw new Error('missing photo-only person card');
+    fireEvent.click(within(photoCard).getByTestId('people-card-media'));
 
     const panel = await screen.findByTestId('people-person-media');
     expect(panel.getAttribute('data-person-id')).toBe('p-photo');
@@ -1047,7 +1107,7 @@ describe('PeopleView media chips', () => {
     );
 
     await screen.findByTestId('people-grid');
-    expect(screen.getByTestId('people-threshold-control').textContent).toContain('Show people with at least 10 observations');
+    expect(screen.getByTestId('people-threshold-slider-field').textContent).toContain('Minimum observations');
     expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-main']);
     expect(screen.getByTestId('people-other-tile').textContent).toContain('Other — 2 people · 9 observations');
     expect(screen.queryByText('Person 2')).toBeNull();

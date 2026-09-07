@@ -35,7 +35,7 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenPreview, onOp
               sx={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 1 }}
             />
           )}
-          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={location.finalName ?? location.fileName}>
+          <Typography variant="subtitle2" noWrap title={location.finalName ?? location.fileName}>
             {location.finalName ?? location.fileName}
           </Typography>
           <Typography variant="caption" noWrap title={location.folder.displayName}>

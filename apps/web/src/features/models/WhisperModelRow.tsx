@@ -65,7 +65,7 @@ export const WhisperModelRow = ({
         )}
         <Box sx={{ minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+            <Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
               {model.name}
             </Typography>
             {model.active ? <Chip size="small" color="primary" label={dictionary.models.active} /> : null}

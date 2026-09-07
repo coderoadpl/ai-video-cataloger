@@ -1,14 +1,30 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Box, Checkbox, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { AspectRatioIndicator } from '../../components/ui/AspectRatioIndicator.js';
-import { FilmIcon } from '../../components/ui/icons.js';
+import { CloudOffIcon, FilmIcon, ImageIcon, WarningIcon } from '../../components/ui/icons.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
-import { buildRows, columnsForWidth, visibleRowRange, type LibraryItem, type LibraryOfflineReason } from './core/index.js';
+import { TileBadge } from '../../components/ui/TileBadge.js';
+import {
+  buildRows,
+  columnsForWidth,
+  gridTileRows,
+  moveGridFocus,
+  rowBounds,
+  tileRowIndexOf,
+  visibleRowRange,
+  type GridMove,
+  type LibraryItem,
+  type LibraryOfflineReason,
+} from './core/index.js';
 import { LibraryTileThumbnail } from './LibraryTileThumbnail.js';
-import { LIBRARY_SECTION_HEADER_HEIGHT, LIBRARY_TILE_GAP, LIBRARY_TILE_SIZE } from './tile-metrics.js';
+import {
+  LIBRARY_SECTION_HEADER_HEIGHT,
+  LIBRARY_TILE_GAP,
+  LIBRARY_TILE_SIZE,
+} from '../../theme.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 
@@ -24,19 +40,33 @@ export interface LibraryGridSection {
   items: LibraryItem[];
 }
 
+export interface LibrarySelectionModifiers {
+  shiftKey: boolean;
+}
+
 const offlineLabel = (dictionary: Dictionary, offlineReason: LibraryOfflineReason): string =>
   offlineReason === 'file-missing' ? dictionary.library.missingBadge : dictionary.library.offlineFolderBadge;
+
+const MOVE_FOR_KEY: Record<string, GridMove> = {
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  Home: 'home',
+  End: 'end',
+};
 
 interface LibraryGridProps {
   sections: LibraryGridSection[];
   onOpen: (item: LibraryItem) => void;
-  onSelect?: ((item: LibraryItem, event: MouseEvent) => void) | undefined;
+  onSelect?: ((item: LibraryItem, modifiers: LibrarySelectionModifiers) => void) | undefined;
   onSelectAll?: (() => void) | undefined;
   onOpenInAnalysis: (item: LibraryItem) => void;
   selectedFingerprints?: ReadonlySet<string> | undefined;
   hiddenView?: boolean | undefined;
   onHideItem?: ((item: LibraryItem) => void) | undefined;
   onRestoreItem?: ((item: LibraryItem) => void) | undefined;
+  selectable?: boolean;
 }
 
 const NO_SELECT = (): void => undefined;
@@ -49,15 +79,18 @@ const LibraryGridView = ({
   onOpenInAnalysis,
   selectedFingerprints = EMPTY_SELECTION,
   hiddenView = false,
-  onHideItem = NO_SELECT,
-  onRestoreItem = NO_SELECT,
+  onHideItem,
+  onRestoreItem,
+  selectable = true,
 }: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(INITIAL_WIDTH);
   const [viewportHeight, setViewportHeight] = useState(INITIAL_HEIGHT);
   const [scrollTop, setScrollTop] = useState(0);
+  const [activeFingerprint, setActiveFingerprint] = useState<string | null>(null);
   const tileMenu = useTileMenu();
+  const tileIdPrefix = useId();
 
   useEffect(() => {
     const element = containerRef.current;
@@ -75,82 +108,174 @@ const LibraryGridView = ({
   const columns = columnsForWidth(containerWidth - 32, LIBRARY_TILE_SIZE, LIBRARY_TILE_GAP);
   const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
   const rowHeight = LIBRARY_TILE_SIZE + LIBRARY_TILE_GAP;
+  const bounds = useMemo(
+    () => rowBounds(rows, rowHeight, LIBRARY_SECTION_HEADER_HEIGHT),
+    [rowHeight, rows],
+  );
   const range = useMemo(
     () => visibleRowRange(scrollTop, viewportHeight, rowHeight, LIBRARY_SECTION_HEADER_HEIGHT, rows),
     [rowHeight, rows, scrollTop, viewportHeight],
   );
+  const tileRows = useMemo(() => gridTileRows(rows, sections), [rows, sections]);
+  const activeRowIndex = useMemo(() => tileRowIndexOf(tileRows, activeFingerprint), [tileRows, activeFingerprint]);
+  const itemByFingerprint = useMemo(
+    () => new Map(sections.flatMap((section) => section.items.map((item) => [item.fingerprint, item]))),
+    [sections],
+  );
+  const tileDomId = useCallback(
+    (fingerprint: string) => `${tileIdPrefix}-${fingerprint}`,
+    [tileIdPrefix],
+  );
+
+  useEffect(() => {
+    if (activeRowIndex === null) return;
+    const container = containerRef.current;
+    const bound = bounds[activeRowIndex];
+    if (container === null || bound === undefined) return;
+    if (bound.offset < container.scrollTop) container.scrollTop = bound.offset;
+    else if (bound.bottom > container.scrollTop + container.clientHeight) {
+      container.scrollTop = bound.bottom - container.clientHeight;
+    }
+  }, [activeRowIndex, bounds]);
+
+  const move = (key: string, shiftKey: boolean): void => {
+    const direction = MOVE_FOR_KEY[key];
+    if (direction === undefined) return;
+    const next = moveGridFocus(tileRows, activeFingerprint, direction);
+    if (next === null) return;
+    setActiveFingerprint(next);
+    if (!shiftKey || !selectable) return;
+    const item = itemByFingerprint.get(next);
+    if (item !== undefined) onSelect(item, { shiftKey: true });
+  };
+
   const onGridKeyDown = (event: KeyboardEvent): void => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       onSelectAll();
+      return;
     }
+    if (event.key in MOVE_FOR_KEY) {
+      event.preventDefault();
+      move(event.key, event.shiftKey);
+      return;
+    }
+    const item = activeFingerprint === null ? undefined : itemByFingerprint.get(activeFingerprint);
+    if (item === undefined) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      onOpen(item);
+      return;
+    }
+    if (event.key !== ' ') return;
+    event.preventDefault();
+    if (event.metaKey || event.ctrlKey) {
+      if (selectable) onSelect(item, { shiftKey: false });
+      return;
+    }
+    onOpen(item);
   };
+
   const tileMenuOpen = tileMenu.open;
   const openTileMenu = useCallback(
     (event: MouseEvent, item: LibraryItem) => tileMenuOpen(event, item),
     [tileMenuOpen],
   );
+  const selectTile = useCallback(
+    (item: LibraryItem, modifiers: LibrarySelectionModifiers) => {
+      setActiveFingerprint(item.fingerprint);
+      onSelect(item, modifiers);
+    },
+    [onSelect],
+  );
+
+  const first = activeRowIndex === null ? range.first : Math.min(range.first, activeRowIndex);
+  const last = activeRowIndex === null ? range.last : Math.max(range.last, activeRowIndex);
 
   return (
     <Box
       ref={containerRef}
       data-testid="library-grid"
       role="listbox"
-      aria-multiselectable="true"
+      aria-multiselectable={selectable}
+      aria-label={dictionary.library.gridLabel}
       tabIndex={0}
+      {...(activeFingerprint === null || activeRowIndex === null
+        ? {}
+        : { 'aria-activedescendant': tileDomId(activeFingerprint) })}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       onKeyDown={onGridKeyDown}
       sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ position: 'relative', height: range.totalHeight }}>
-        <Box sx={{ position: 'absolute', top: range.topOffset, left: 0, right: 0 }}>
-          {rows.slice(range.first, range.last + 1).map((row) => {
-            const section = sections[row.section];
-            if (section === undefined) return null;
-            if (row.kind === 'header') {
-              return (
-                <Box
-                  key={`header-${String(row.section)}`}
-                  sx={{ height: LIBRARY_SECTION_HEADER_HEIGHT, display: 'flex', alignItems: 'center', gap: 1 }}
-                >
-                  <Typography variant="subtitle2" data-testid="library-section-header">
-                    {section.label}
-                  </Typography>
-                  {section.offline ? (
-                    <Typography variant="caption" data-testid="library-section-offline-badge" color="text.secondary">
-                      {offlineLabel(dictionary, section.offlineReason)}
-                    </Typography>
-                  ) : null}
-                </Box>
-              );
-            }
-            const tiles = section.items.slice(row.start, row.start + row.count);
+        {rows.slice(first, last + 1).map((row, offsetIndex) => {
+          const rowIndex = first + offsetIndex;
+          const section = sections[row.section];
+          const bound = bounds[rowIndex];
+          if (section === undefined || bound === undefined) return null;
+          if (row.kind === 'header') {
             return (
               <Box
-                key={`tiles-${String(row.section)}-${String(row.start)}`}
-                sx={{ display: 'flex', gap: `${String(LIBRARY_TILE_GAP)}px`, height: rowHeight }}
+                key={`header-${String(row.section)}`}
+                sx={{
+                  position: 'absolute',
+                  top: bound.offset,
+                  left: 0,
+                  right: 0,
+                  height: LIBRARY_SECTION_HEADER_HEIGHT,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
               >
-                {tiles.map((item) => (
-                  <LibraryTile
-                    key={item.fingerprint}
-                    item={item}
-                    onOpen={onOpen}
-                    onSelect={onSelect}
-                    onContextMenu={openTileMenu}
-                    selected={selectedFingerprints.has(item.fingerprint)}
-                  />
-                ))}
+                <Typography variant="subtitle2" data-testid="library-section-header">
+                  {section.label}
+                </Typography>
+                {section.offline ? (
+                  <Typography variant="caption" data-testid="library-section-offline-badge" color="text.secondary">
+                    {offlineLabel(dictionary, section.offlineReason)}
+                  </Typography>
+                ) : null}
               </Box>
             );
-          })}
-        </Box>
+          }
+          const tiles = section.items.slice(row.start, row.start + row.count);
+          return (
+            <Box
+              key={`tiles-${String(row.section)}-${String(row.start)}`}
+              sx={{
+                position: 'absolute',
+                top: bound.offset,
+                left: 0,
+                right: 0,
+                display: 'flex',
+                gap: `${String(LIBRARY_TILE_GAP)}px`,
+                height: rowHeight,
+              }}
+            >
+              {tiles.map((item) => (
+                <LibraryTile
+                  key={item.fingerprint}
+                  domId={tileDomId(item.fingerprint)}
+                  item={item}
+                  onOpen={onOpen}
+                  onSelect={selectTile}
+                  onContextMenu={openTileMenu}
+                  selected={selectedFingerprints.has(item.fingerprint)}
+                  active={item.fingerprint === activeFingerprint}
+                  selectable={selectable}
+                />
+              ))}
+            </Box>
+          );
+        })}
       </Box>
       <TileMenu
         controller={tileMenu}
         onOpenInAnalysis={onOpenInAnalysis}
         hiddenView={hiddenView}
-        onHideItem={onHideItem}
-        onRestoreItem={onRestoreItem}
+        {...(onHideItem === undefined ? {} : { onHideItem })}
+        {...(onRestoreItem === undefined ? {} : { onRestoreItem })}
       />
     </Box>
   );
@@ -159,14 +284,26 @@ const LibraryGridView = ({
 export const LibraryGrid = memo(LibraryGridView);
 
 interface LibraryTileProps {
+  domId: string;
   item: LibraryItem;
   onOpen: (item: LibraryItem) => void;
-  onSelect: (item: LibraryItem, event: MouseEvent) => void;
+  onSelect: (item: LibraryItem, modifiers: LibrarySelectionModifiers) => void;
   onContextMenu: (event: MouseEvent, item: LibraryItem) => void;
   selected: boolean;
+  active: boolean;
+  selectable: boolean;
 }
 
-const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: LibraryTileProps) => {
+const LibraryTileView = ({
+  domId,
+  item,
+  onOpen,
+  onSelect,
+  onContextMenu,
+  selected,
+  active,
+  selectable,
+}: LibraryTileProps) => {
   const dictionary = useDictionary();
   const isVideo = item.media === 'video';
   const imagePath = isVideo ? (item.gridThumbnailPath ?? item.thumbnailPath) : (item.gridThumbPath ?? item.thumbPath);
@@ -188,17 +325,19 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
 
   return (
     <Box
+      id={domId}
       data-testid="library-tile"
       className="library-tile"
       data-fingerprint={item.fingerprint}
       data-media={item.media}
+      data-tile-active={active ? 'true' : 'false'}
       role="option"
       aria-selected={selected}
       aria-label={name}
       tabIndex={-1}
       onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey) {
-          onSelect(item, event);
+        if (selectable && (event.metaKey || event.ctrlKey || event.shiftKey)) {
+          onSelect(item, { shiftKey: event.shiftKey });
           return;
         }
         onOpen(item);
@@ -214,6 +353,7 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
         cursor: 'pointer',
         bgcolor: 'library.tileBackground',
         '&:hover': { outline: '2px solid', outlineColor: 'primary.main' },
+        ...(active ? { outline: '2px dashed', outlineColor: 'primary.main', outlineOffset: -2 } : {}),
         ...(selected ? {
           outline: '3px solid',
           outlineColor: 'library.selectionOutline',
@@ -232,67 +372,58 @@ const LibraryTileView = ({ item, onOpen, onSelect, onContextMenu, selected }: Li
         />
       )}
       {showOfflineBadge ? (
-        <Box
-          data-testid="library-offline-badge"
-          sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}
-        >
-          <Typography variant="caption">{offlineLabel(dictionary, offlineReason)}</Typography>
-        </Box>
+        <TileBadge
+          testId="library-offline-badge"
+          placement="top-right"
+          token="notTracked"
+          icon={<CloudOffIcon />}
+          label={offlineLabel(dictionary, offlineReason)}
+        />
+      ) : showMissingBadge ? (
+        <TileBadge
+          testId="library-missing-badge"
+          placement="top-right"
+          token="error"
+          icon={<WarningIcon />}
+          label={dictionary.library.missingBadge}
+        />
       ) : null}
       <AspectRatioIndicator width={width} height={height} testId="library-aspect-indicator" />
-      {isVideo && !showMissingBadge ? (
-        <Box
-          data-testid="library-tile-video-badge"
-          role="img"
-          aria-label={dictionary.library.videoBadge}
+      <TileBadge
+        testId={isVideo ? 'library-tile-video-badge' : 'library-tile-photo-badge'}
+        placement="bottom-left"
+        token="notTracked"
+        iconOnly
+        icon={isVideo ? <FilmIcon /> : <ImageIcon />}
+        label={isVideo ? dictionary.library.videoBadge : dictionary.library.photoBadge}
+      />
+      {selectable ? (
+        <Checkbox
+          checked={selected}
+          slotProps={{ input: { 'aria-label': name } }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(item, { shiftKey: event.shiftKey });
+          }}
           sx={{
             position: 'absolute',
-            bottom: 4,
+            top: 4,
             left: 4,
-            width: 20,
-            height: 20,
-            borderRadius: '50%',
+            zIndex: 2,
+            width: 32,
+            height: 32,
             bgcolor: 'background.paper',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            borderRadius: 1,
+            opacity: selected ? 1 : 0,
+            pointerEvents: selected ? 'auto' : 'none',
+            transition: 'opacity 120ms ease',
+            '.MuiSvgIcon-root': { fontSize: 20 },
+            '&:hover': { bgcolor: 'background.paper' },
+            '.library-tile:hover &': { opacity: 1, pointerEvents: 'auto' },
+            '.library-tile[data-tile-active="true"] &': { opacity: 1, pointerEvents: 'auto' },
           }}
-        >
-          <FilmIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-        </Box>
+        />
       ) : null}
-      {showMissingBadge ? (
-        <Box
-          data-testid="library-missing-badge"
-          sx={{ position: 'absolute', bottom: 4, left: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}
-        >
-          <Typography variant="caption">{dictionary.library.missingBadge}</Typography>
-        </Box>
-      ) : null}
-      <Checkbox
-        checked={selected}
-        slotProps={{ input: { 'aria-label': name } }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect(item, event);
-        }}
-        sx={{
-          position: 'absolute',
-          top: 4,
-          left: 4,
-          zIndex: 2,
-          width: 32,
-          height: 32,
-          bgcolor: 'background.paper',
-          borderRadius: 1,
-          opacity: selected ? 1 : 0,
-          pointerEvents: selected ? 'auto' : 'none',
-          transition: 'opacity 120ms ease',
-          '.MuiSvgIcon-root': { fontSize: 20 },
-          '&:hover': { bgcolor: 'background.paper' },
-          '.library-tile:hover &': { opacity: 1, pointerEvents: 'auto' },
-        }}
-      />
       {selected ? (
         <Box
           data-testid="library-tile-selected"

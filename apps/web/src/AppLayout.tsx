@@ -18,7 +18,7 @@ import { BackupIndicator } from './features/settings/BackupIndicator.js';
 import { DurabilityIndicator } from './features/settings/DurabilityIndicator.js';
 import { useMenuEvents } from './features/shell/use-menu-events.js';
 import { type ShellState } from './features/shell/use-shell.js';
-import { useDictionary } from './i18n/use-dictionary.js';
+import { useDictionary, useDocumentLanguage } from './i18n/use-dictionary.js';
 
 export type ShellModal = 'settings' | 'models' | 'prerequisites' | 'setup';
 
@@ -102,6 +102,7 @@ export const AppLayout = ({
   onAutoOpenSetupConsumed,
 }: AppLayoutProps) => {
   const dictionary = useDictionary();
+  useDocumentLanguage();
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [rawMode, setRawMode] = useState<TerminalViewMode>(readTerminalRawMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

@@ -45,6 +45,7 @@ export const SidebarFolderPanel = ({
       onSelectRecentFolder={onSelectRecentFolder}
       onClearRecentFolders={onClearRecentFolders}
       secondaryAction={secondaryAction}
+      variant={folder === null ? 'contained' : 'outlined'}
       fullWidth
     />
     {folder === null ? (

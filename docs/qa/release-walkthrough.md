@@ -421,7 +421,7 @@ Read every screenshot against the sensitivities that have burned us before:
   and the `search`/`select-video` shots taken later for the videos the
   `analyze` step never touched?
 - **Completed analysis (the `analyze` step's hard evidence, W54)** — in the
-  `analyze` screenshot, does the selected video show the **Ukończony** badge
+  `analyze` screenshot, does the selected video show the **Przeanalizowane** badge
   (not Błąd, not still-processing) next to the error/duplicate slot; a real
   decoded frame thumbnail (never a placeholder or broken image) for that
   video; and a description with tags visible in the details panel?

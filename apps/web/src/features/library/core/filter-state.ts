@@ -31,6 +31,7 @@ export type LibraryFilterAction =
   | { type: 'setDateRange'; from: string | null; to: string | null }
   | { type: 'setHasGps'; hasGps: boolean | null }
   | { type: 'setFolder'; folderId: string | null; displayName: string | null }
+  | { type: 'openPerson'; personId: string; displayName: string }
   | { type: 'clearAll' };
 
 export const libraryFilterReducer = (state: LibraryFilterState, action: LibraryFilterAction): LibraryFilterState => {
@@ -40,9 +41,11 @@ export const libraryFilterReducer = (state: LibraryFilterState, action: LibraryF
     case 'removeTag':
       return { ...state, tags: state.tags.filter((tag) => tag !== action.tag) };
     case 'addPerson':
-      return state.personIds.includes(action.personId) ? state : {
+      return {
         ...state,
-        personIds: [...state.personIds, action.personId],
+        personIds: state.personIds.includes(action.personId)
+          ? state.personIds
+          : [...state.personIds, action.personId],
         personLabels: { ...state.personLabels, [action.personId]: action.displayName },
       };
     case 'removePerson': {
@@ -59,6 +62,12 @@ export const libraryFilterReducer = (state: LibraryFilterState, action: LibraryF
       return { ...state, hasGps: action.hasGps };
     case 'setFolder':
       return { ...state, folderId: action.folderId, folderLabel: action.folderId === null ? null : action.displayName };
+    case 'openPerson':
+      return {
+        ...EMPTY_LIBRARY_FILTERS,
+        personIds: [action.personId],
+        personLabels: { [action.personId]: action.displayName },
+      };
     case 'clearAll':
       return EMPTY_LIBRARY_FILTERS;
     default:
@@ -80,12 +89,14 @@ export interface LibraryFilterChipLabels {
   dateRange: (from: string, to: string) => string;
   dateFrom: (from: string) => string;
   dateTo: (to: string) => string;
+  formatDay: (day: string) => string;
+  personDisplayName?: ((personId: string) => string | null) | undefined;
 }
 
 const dateChipLabel = (from: string | null, to: string | null, labels: LibraryFilterChipLabels): string => {
-  if (from !== null && to !== null) return labels.dateRange(from, to);
-  if (from !== null) return labels.dateFrom(from);
-  return labels.dateTo(to ?? '');
+  if (from !== null && to !== null) return labels.dateRange(labels.formatDay(from), labels.formatDay(to));
+  if (from !== null) return labels.dateFrom(labels.formatDay(from));
+  return labels.dateTo(to === null ? '' : labels.formatDay(to));
 };
 
 export const libraryFilterChips = (state: LibraryFilterState, labels: LibraryFilterChipLabels): LibraryFilterChip[] => {
@@ -94,9 +105,10 @@ export const libraryFilterChips = (state: LibraryFilterState, labels: LibraryFil
     chips.push({ id: `tag:${tag}`, label: `#${tag}`, remove: { type: 'removeTag', tag } });
   }
   for (const personId of state.personIds) {
+    const current = labels.personDisplayName?.(personId) ?? null;
     chips.push({
       id: `person:${personId}`,
-      label: labels.person(state.personLabels[personId] ?? personId),
+      label: labels.person(current ?? state.personLabels[personId] ?? personId),
       remove: { type: 'removePerson', personId },
     });
   }

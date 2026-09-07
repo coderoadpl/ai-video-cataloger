@@ -1,10 +1,8 @@
-import type { LibraryItem } from './day-groups.js';
-
 export const columnsForWidth = (containerWidth: number, minTile = 168, gap = 8): number =>
   Math.max(1, Math.floor((containerWidth + gap) / (minTile + gap)));
 
 export interface LibrarySectionLike {
-  items: readonly LibraryItem[];
+  items: readonly { fingerprint: string }[];
 }
 
 export type LibraryGridRow =
@@ -34,6 +32,24 @@ export interface LibraryVisibleRowRange {
   totalHeight: number;
 }
 
+export interface LibraryRowBound {
+  offset: number;
+  bottom: number;
+}
+
+export const rowBounds = (
+  rows: readonly LibraryGridRow[],
+  rowHeight: number,
+  headerHeight: number,
+): LibraryRowBound[] => {
+  let cursor = 0;
+  return rows.map((row) => {
+    const offset = cursor;
+    cursor += row.kind === 'header' ? headerHeight : rowHeight;
+    return { offset, bottom: cursor };
+  });
+};
+
 export const visibleRowRange = (
   scrollTop: number,
   viewportHeight: number,
@@ -44,14 +60,8 @@ export const visibleRowRange = (
 ): LibraryVisibleRowRange => {
   if (rows.length === 0) return { first: 0, last: 0, topOffset: 0, totalHeight: 0 };
 
-  const heightOf = (row: LibraryGridRow): number => (row.kind === 'header' ? headerHeight : rowHeight);
-  let cursor = 0;
-  const bounds: { offset: number; bottom: number }[] = rows.map((row) => {
-    const offset = cursor;
-    cursor += heightOf(row);
-    return { offset, bottom: cursor };
-  });
-  const totalHeight = cursor;
+  const bounds = rowBounds(rows, rowHeight, headerHeight);
+  const totalHeight = bounds[bounds.length - 1]?.bottom ?? 0;
 
   const lastIndex = rows.length - 1;
   const firstVisibleIndex = bounds.findIndex((bound) => bound.bottom > scrollTop);

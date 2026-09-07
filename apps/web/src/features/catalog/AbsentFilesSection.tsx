@@ -1,20 +1,15 @@
 import { useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   List,
   ListItem,
   Typography,
 } from '@mui/material';
 
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
+import { ConfirmDialog } from '../../components/ui/dialogs/ConfirmDialog.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDate } from '../../lib/format.js';
@@ -98,36 +93,24 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
           ))}
         </List>
       </Collapse>
-      <Dialog open={pending !== null} onClose={() => setPending(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>{dictionary.catalog.forgetEntryConfirmTitle}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
-          </DialogContentText>
-          {error === null ? null : <Alert severity="error">{formatAnalyzerError(error, dictionary.errors)}</Alert>}
-        </DialogContent>
-        <DialogActions>
-          <Button color="inherit" onClick={() => setPending(null)}>
-            {dictionary.common.cancel}
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            disabled={isForgetting || mutationsBlocked}
-            title={lockReason}
-            data-testid="absent-file-forget-confirm"
-            onClick={() => {
-              if (pending === null) return;
-              void (async () => {
-                const ok = await forget(pending.fingerprint);
-                if (ok) setPending(null);
-              })();
-            }}
-          >
-            {dictionary.catalog.forgetEntryConfirm}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={pending !== null}
+        title={dictionary.catalog.forgetEntryConfirmTitle}
+        body={pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
+        confirmLabel={dictionary.catalog.forgetEntryConfirm}
+        testId="absent-file-forget-confirm"
+        busy={isForgetting}
+        disabled={mutationsBlocked}
+        error={error === null ? null : formatAnalyzerError(error, dictionary.errors)}
+        onClose={() => setPending(null)}
+        onConfirm={() => {
+          if (pending === null) return;
+          void (async () => {
+            const forgotten = await forget(pending.fingerprint);
+            if (forgotten) setPending(null);
+          })();
+        }}
+      />
     </Box>
   );
 };

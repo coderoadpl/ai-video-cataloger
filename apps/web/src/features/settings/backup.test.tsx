@@ -355,6 +355,14 @@ describe('Settings > Backup interactions', () => {
       expect(screen.getByTestId('backup-error').textContent).toBe(en.backup.errorMessages.backup_quota_exceeded));
   });
 
+  it('names the backup tier filter so assistive technology can identify it', async () => {
+    server.use(statusHandler(), http.get('/api/backup/list', () => respondOk({ backups: [] })));
+    renderThemed(<SettingsBackupSection open />);
+
+    const filter = await screen.findByTestId('backup-tier-filter');
+    expect(filter.querySelector('[role="combobox"]')?.getAttribute('aria-label')).toBe(en.backup.tierFilterLabel);
+  });
+
   it('filters the backup list by tier', async () => {
     const tiers: Array<string | null> = [];
     server.use(

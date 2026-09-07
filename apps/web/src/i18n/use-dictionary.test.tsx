@@ -5,12 +5,32 @@ import { describe, expect, it } from 'vitest';
 import { configResponse } from '../test/config-response.js';
 import { renderWithProviders } from '../test/render.js';
 import { server } from '../test/server.js';
-import { useDictionary } from './use-dictionary.js';
+import { useDictionary, useDocumentLanguage } from './use-dictionary.js';
 
 const Probe = () => {
   const dictionary = useDictionary();
   return <span data-testid="probe">{dictionary.common.save}</span>;
 };
+
+const LanguageProbe = () => {
+  useDocumentLanguage();
+  return <span data-testid="language-probe" />;
+};
+
+describe('useDocumentLanguage', () => {
+  it('publishes the UI locale on the document element so screen readers and date inputs follow it', async () => {
+    let language = 'en';
+    server.use(http.get('/api/config', () => HttpResponse.json(configResponse(language))));
+    const { queryClient } = renderWithProviders(<LanguageProbe />);
+
+    await waitFor(() => expect(document.documentElement.lang).toBe('en'));
+
+    language = 'pl';
+    await queryClient.invalidateQueries();
+
+    await waitFor(() => expect(document.documentElement.lang).toBe('pl'));
+  });
+});
 
 describe('useDictionary', () => {
   it('defaults to English before config resolves', () => {

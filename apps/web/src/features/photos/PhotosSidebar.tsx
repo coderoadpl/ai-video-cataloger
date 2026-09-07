@@ -1,7 +1,9 @@
 import { type ReactNode } from 'react';
 import { Alert, Box, Button, CircularProgress, LinearProgress, List, Typography } from '@mui/material';
 
+import { bridge } from '../../api.js';
 import { type AnalysisMedia, AnalysisMediaToggle } from '../../components/ui/AnalysisMediaToggle.js';
+import { RevealContextMenu, useRevealContextMenu } from '../../components/ui/RevealContextMenu.js';
 import { SidebarFolderPanel } from '../../components/ui/SidebarFolderPanel.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
@@ -41,6 +43,7 @@ export const PhotosSidebar = ({
   onAnalysisMediaChange = () => undefined,
 }: PhotosSidebarProps) => {
   const dictionary = useDictionary();
+  const revealMenu = useRevealContextMenu();
 
   const folderPanel = state.folderState !== 'scanned' ? state.folderState : null;
   const currentFolder = state.folder;
@@ -134,6 +137,7 @@ export const PhotosSidebar = ({
               selectedFingerprint={state.selectedFingerprint}
               processingFingerprints={state.processingFingerprints}
               onSelect={state.selectFingerprint}
+              onContextMenu={revealMenu.open}
             />
           )
         ) : sections.length === 0 ? (
@@ -156,6 +160,7 @@ export const PhotosSidebar = ({
                     selected={item.fingerprint === state.selectedFingerprint}
                     isProcessing={state.processingFingerprints.has(item.fingerprint)}
                     onSelect={() => state.selectFingerprint(item.fingerprint)}
+                    onContextMenu={revealMenu.open}
                     dictionary={dictionary}
                   />
                 ))}
@@ -171,6 +176,7 @@ export const PhotosSidebar = ({
           </Box>
         ) : null}
       </Box>
+      <RevealContextMenu controller={revealMenu} onReveal={bridge.revealInFinder} />
     </Box>
   );
 };

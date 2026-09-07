@@ -66,7 +66,7 @@ const treeFor = (folders: FolderFixture[], root = '/media/photos') => {
 };
 
 const renderTree = (folders: FolderFixture[], root = '/media/photos') =>
-  renderThemed(<PhotosTree root={treeFor(folders, root)} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={vi.fn()} />);
+  renderThemed(<PhotosTree root={treeFor(folders, root)} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={vi.fn()} onContextMenu={() => undefined} />);
 
 describe('PhotosTree', () => {
   it('renders only the current root expanded by default with its subfolders collapsed and exact counts', async () => {
@@ -123,7 +123,7 @@ describe('PhotosTree', () => {
       '/media/photos': [photoFixture('ph_0000000000000003', 'c.jpg')],
     });
     const onSelect = vi.fn();
-    renderThemed(<PhotosTree root={root} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={onSelect} />);
+    renderThemed(<PhotosTree root={root} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={onSelect} onContextMenu={() => undefined} />);
 
     const row = await screen.findByText('c.jpg');
     await userEvent.click(row);
@@ -137,7 +137,7 @@ describe('PhotosTree', () => {
     ]);
     stubFolderContents({ '/media/photos': [photoFixture('ph_0000000000000004', 'd.jpg')] });
     const rendered = renderThemed(
-      <PhotosTree root={first} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={vi.fn()} />,
+      <PhotosTree root={first} selectedFingerprint={null} processingFingerprints={new Set()} onSelect={vi.fn()} onContextMenu={() => undefined} />,
     );
 
     const rootRow = await screen.findByTestId('photos-tree-root-row');
@@ -150,7 +150,7 @@ describe('PhotosTree', () => {
     ]);
     rendered.rerender(
       <ThemeProvider theme={theme}>
-        <PhotosTree root={refreshed} selectedFingerprint="ph_0000000000000004" processingFingerprints={new Set()} onSelect={vi.fn()} />
+        <PhotosTree root={refreshed} selectedFingerprint="ph_0000000000000004" processingFingerprints={new Set()} onSelect={vi.fn()} onContextMenu={() => undefined} />
       </ThemeProvider>,
     );
 
@@ -170,6 +170,7 @@ describe('PhotosTree', () => {
         selectedFingerprint={null}
         processingFingerprints={new Set()}
         onSelect={vi.fn()}
+        onContextMenu={() => undefined}
       />,
       queryClient,
     );
@@ -199,6 +200,7 @@ describe('PhotosTree', () => {
           selectedFingerprint={null}
           processingFingerprints={new Set()}
           onSelect={vi.fn()}
+        onContextMenu={() => undefined}
         />
       </ThemeProvider>,
     );

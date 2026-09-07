@@ -22,6 +22,11 @@ export interface Dictionary {
     copyToClipboard: string;
     copied: string;
     copyFailed: string;
+    retry: string;
+    autocompleteClear: string;
+    autocompleteOpen: string;
+    autocompleteClose: string;
+    autocompleteNoOptions: string;
   };
   language: {
     stepTitle: string;
@@ -50,8 +55,6 @@ export interface Dictionary {
     subnavCollection: string;
     subnavPeople: string;
     subnavMap: string;
-    mediaVideos: string;
-    mediaPhotos: string;
     modeSwitcherLabel: string;
     subnavLabel: string;
     mediaToggleLabel: string;
@@ -520,6 +523,14 @@ export interface Dictionary {
     mergeBody: (count: number, target: string) => string;
     mergeNameChoice: string;
     mergeSelectHint: string;
+    selectionCount: (count: number) => string;
+    hiddenSelectionCount: (count: number) => string;
+    clearSelection: string;
+    mergeSelectedNames: (names: string) => string;
+    mediaEmptyTitle: string;
+    mediaEmptyBody: string;
+    showAllMedia: string;
+    loadFailedTitle: string;
     merge: string;
     deleteFaceGrouping: string;
     deleteFaceGroupingBody: string;
@@ -600,15 +611,14 @@ export interface Dictionary {
     };
     accuracy: (meters: number) => string;
     place: string;
-    filter: {
-      all: string;
-      videos: string;
-      photos: string;
-    };
+    mediaFilterLabel: string;
+    mediaEmptyTitle: string;
+    mediaEmptyBody: string;
   };
   settingsModal: {
     title: string;
     selectFolderFirst: string;
+    loadFailed: string;
     loading: string;
     secondsValue: (seconds: number) => string;
     frameCount: string;
@@ -627,6 +637,11 @@ export interface Dictionary {
     analyzerTimeout: string;
     analyzerTimeoutHelper: string;
     facesSectionTitle: string;
+    analyzerSectionTitle: string;
+    renameSectionTitle: string;
+    renameHelper: string;
+    apiCostUsageCharged: string;
+    apiCostEstimate: (cost: string) => string;
     facesEnableLabel: string;
     facesHelper: string;
     geminiBatchSectionTitle: string;
@@ -636,7 +651,7 @@ export interface Dictionary {
     geminiBudgetLabel: string;
     geminiBudgetHelper: string;
     geminiBudgetInvalid: string;
-    geminiSpendReadout: (month: string, estimatedCostUsd: number, entries: number) => string;
+    geminiSpendReadout: (month: string, estimatedCostUsd: string, entries: number) => string;
     geminiSpendUnknown: string;
     skipAutoRename: string;
     runSetupWizard: string;
@@ -736,6 +751,7 @@ export interface Dictionary {
     acknowledgeUnreadableArchives: string;
     finish: string;
     listTitle: string;
+    tierFilterLabel: string;
     listEmpty: string;
     listLoading: string;
     tierFilterAll: string;
@@ -773,10 +789,10 @@ export interface Dictionary {
     folderActions: string;
     clearRecent: string;
   };
-  videoStatus: {
+  mediaStatus: {
     incomplete: string;
-    completed: string;
-    error: string;
+    analyzed: string;
+    failed: string;
     pending: string;
     notTracked: string;
     processing: string;
@@ -841,6 +857,7 @@ export interface Dictionary {
     missingBadge: string;
     proxyFailedTooltip: string;
     noProxyYet: string;
+    openPreview: string;
     viewerClose: string;
     viewerPrevious: string;
     viewerNext: string;
@@ -910,10 +927,6 @@ export interface Dictionary {
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
-    badgeAnalyzing: string;
-    badgePending: string;
-    badgeAnalyzed: string;
-    badgeAnalysisFailed: string;
     loadMore: string;
     treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
@@ -939,6 +952,13 @@ export interface Dictionary {
     missingBadge: string;
     thumbnailUnavailable: string;
     videoBadge: string;
+    photoBadge: string;
+    gridLabel: string;
+    mediaEmptyTitle: string;
+    mediaEmptyBody: string;
+    showAllMedia: string;
+    filterDatePresetCustom: string;
+    personMediaLoadFailed: string;
     refreshingResults: string;
     openInAnalysis: string;
     copyPath: string;
@@ -1038,6 +1058,11 @@ export const en: Dictionary = {
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied',
     copyFailed: 'Could not copy to the clipboard',
+    retry: 'Retry',
+    autocompleteClear: 'Clear',
+    autocompleteOpen: 'Open',
+    autocompleteClose: 'Close',
+    autocompleteNoOptions: 'No options',
   },
   language: {
     stepTitle: 'Language',
@@ -1066,8 +1091,6 @@ export const en: Dictionary = {
     subnavCollection: 'Collection',
     subnavPeople: 'People',
     subnavMap: 'Map',
-    mediaVideos: 'Videos',
-    mediaPhotos: 'Photos',
     modeSwitcherLabel: 'App mode',
     subnavLabel: 'Library surface',
     mediaToggleLabel: 'Analysis media',
@@ -1597,12 +1620,20 @@ export const en: Dictionary = {
     mergeBody: (count, target) => `Merge ${count} people into "${target}"? The other groupings disappear. This cannot be undone.`,
     mergeNameChoice: 'Which name should be kept?',
     mergeSelectHint: 'Select at least two people.',
+    selectionCount: (count) => `${count} selected`,
+    hiddenSelectionCount: (count) => `${count} outside the current view`,
+    clearSelection: 'Clear selection',
+    mergeSelectedNames: (names) => `Selected: ${names}`,
+    mediaEmptyTitle: 'No people for this medium',
+    mediaEmptyBody: 'None of the grouped people appear in files of the selected medium.',
+    showAllMedia: 'Show all media',
+    loadFailedTitle: 'Could not load people',
     merge: 'Merge',
     deleteFaceGrouping: 'Delete face grouping',
     deleteFaceGroupingBody: "This permanently deletes this person's grouping, face observations (including embeddings), and exemplar crops. It cannot be undone.",
     deleteAllFaceDataBody: 'This permanently deletes all local face grouping data and exemplar crops. It cannot be undone.',
     deleteAll: 'Delete all',
-    loadingPeople: 'Loading people...',
+    loadingPeople: 'Loading people…',
     selectPerson: (name) => `Select ${name}`,
     observationCount: (count) => `${count} ${count === 1 ? 'observation' : 'observations'}`,
     videoObservationCount: (count) => `${count} in videos`,
@@ -1629,10 +1660,10 @@ export const en: Dictionary = {
     personMediaSection: 'Photos and videos',
     personMediaEmpty: 'No photos or videos for this person yet.',
     moreActions: (name) => `More actions for ${name}`,
-    installingModelsLog: 'Installing face grouping models...',
+    installingModelsLog: 'Installing face grouping models…',
     modelsInstalledLog: 'Face grouping models are installed',
     installModelsFailedLog: 'Failed to install face grouping models',
-    indexingFacesLog: 'Indexing faces in the current folder...',
+    indexingFacesLog: 'Indexing faces in the current folder…',
     indexUpdatedLog: 'Face grouping index is updated',
     indexFacesFailedLog: 'Failed to index faces',
     renamedGroupingLog: (name) => `Renamed grouping to ${name}`,
@@ -1643,10 +1674,10 @@ export const en: Dictionary = {
     deleteGroupingFailedLog: 'Failed to delete face grouping',
     deletedAllFaceDataLog: 'Deleted all face data',
     deleteAllFaceDataFailedLog: 'Failed to delete all face data',
-    reclusterDryRunLog: 'Running people recluster dry run...',
+    reclusterDryRunLog: 'Running people recluster dry run…',
     reclusterDryRunReadyLog: 'People recluster dry-run report is ready',
     reclusterDryRunFailedLog: 'Failed to dry-run people recluster',
-    reclusterLog: 'Reclustering people...',
+    reclusterLog: 'Reclustering people…',
     reclusteredLog: 'People were reclustered',
     reclusterFailedLog: 'Failed to recluster people',
     reclusterReportUnavailable: 'dry-run report was unavailable',
@@ -1658,7 +1689,7 @@ export const en: Dictionary = {
     coverage: (located, total) => `${located} of ${total} catalogued files have location`,
     coveragePhotos: (located, total) => `${located} of ${total} catalogued photos have location`,
     emptyTitle: 'No files with location yet',
-    emptyBody: 'Location comes from GPS metadata the camera wrote into the file. Analyze a folder to add its files to the catalog; files without GPS metadata never appear here.',
+    emptyBody: 'Locations come from camera GPS metadata, from an imported timeline, or from coordinates you set by hand. Analyze a folder to add its files to the catalog, then add a location to any file that has none.',
     canvasLabel: 'Map of catalogued files',
     clusterLabel: (count) => `${count} ${count === 1 ? 'item' : 'items'} in this area`,
     zoomIn: 'Zoom in',
@@ -1679,15 +1710,14 @@ export const en: Dictionary = {
     },
     accuracy: (meters) => `±${meters} m`,
     place: 'Place',
-    filter: {
-      all: 'All',
-      videos: 'Videos',
-      photos: 'Photos',
-    },
+    mediaFilterLabel: 'Map media filter',
+    mediaEmptyTitle: 'No locations for this medium',
+    mediaEmptyBody: 'Files of the selected medium have no stored location yet.',
   },
   settingsModal: {
     title: 'Settings',
     selectFolderFirst: 'Please select a folder first to configure settings.',
+    loadFailed: 'Could not load settings.',
     loading: 'Loading settings…',
     secondsValue: (seconds) => `${String(seconds)} seconds`,
     frameCount: 'Frame Count',
@@ -1706,6 +1736,11 @@ export const en: Dictionary = {
     analyzerTimeout: 'Analyzer timeout',
     analyzerTimeoutHelper: 'How long to wait for the AI analyzer before giving up.',
     facesSectionTitle: 'Local face grouping (experimental)',
+    analyzerSectionTitle: 'Analyzer',
+    renameSectionTitle: 'File renaming',
+    renameHelper: 'Keep the original filenames instead of the names the analyzer proposes.',
+    apiCostUsageCharged: 'Usage will be charged by your API provider.',
+    apiCostEstimate: (cost) => `About ${cost} per video (rough estimate).`,
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
     geminiBatchSectionTitle: 'Gemini batch mode (whole-tree runs)',
@@ -1719,7 +1754,7 @@ export const en: Dictionary = {
       + 'Leave blank for no cap. The figure is a local estimate from token counts, not a Google invoice.',
     geminiBudgetInvalid: 'Enter an amount above 0, or leave the field blank.',
     geminiSpendReadout: (month, estimatedCostUsd, entries) =>
-      `Estimated spend for ${month}: $${estimatedCostUsd.toFixed(4)} USD across ${String(entries)} ${entries === 1 ? 'analysis' : 'analyses'}.`,
+      `Estimated spend for ${month}: ${estimatedCostUsd} across ${String(entries)} ${entries === 1 ? 'analysis' : 'analyses'}.`,
     geminiSpendUnknown: 'Estimated spend for this month is not available yet.',
     skipAutoRename: 'Skip Auto-Rename',
     runSetupWizard: 'Run Setup Wizard',
@@ -1819,6 +1854,7 @@ export const en: Dictionary = {
     acknowledgeUnreadableArchives: 'I understand the existing backups will stay unreadable',
     finish: 'Finish',
     listTitle: 'Backups',
+    tierFilterLabel: 'Backup type',
     listEmpty: 'No backups yet.',
     listLoading: 'Loading backups…',
     tierFilterAll: 'All',
@@ -1898,10 +1934,10 @@ export const en: Dictionary = {
     folderActions: 'folder actions',
     clearRecent: 'Clear recent',
   },
-  videoStatus: {
+  mediaStatus: {
     incomplete: 'Incomplete',
-    completed: 'Completed',
-    error: 'Error',
+    analyzed: 'Analyzed',
+    failed: 'Analysis failed',
     pending: 'Pending',
     notTracked: 'Not Tracked',
     processing: 'Analyzing…',
@@ -1966,6 +2002,7 @@ export const en: Dictionary = {
     missingBadge: 'Missing',
     proxyFailedTooltip: 'Proxy generation failed for this photo',
     noProxyYet: 'No proxy yet',
+    openPreview: 'Open photo preview',
     viewerClose: 'Close viewer',
     viewerPrevious: 'Previous photo',
     viewerNext: 'Next photo',
@@ -2038,17 +2075,15 @@ export const en: Dictionary = {
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
-    badgeAnalyzing: 'Analyzing…',
-    badgePending: 'Not analyzed',
-    badgeAnalyzed: 'Analyzed',
-    badgeAnalysisFailed: 'Analysis failed',
     loadMore: 'Load more',
     treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analyzed`,
   },
   library: {
-    title: 'Library',
+    title: 'Collection',
     subtitle: 'Browse everything ever analyzed, across every catalogued folder.',
-    countHeader: (shown, total) => shown === total ? `${total} files` : `${shown} of ${total} files`,
+    countHeader: (shown, total) => shown === total
+      ? `${total} ${total === 1 ? 'file' : 'files'}`
+      : `${shown} of ${total} ${total === 1 ? 'file' : 'files'}`,
     searchPlaceholder: 'Search the library…',
     recentSearches: 'Recent searches',
     topTags: 'Top tags',
@@ -2067,6 +2102,13 @@ export const en: Dictionary = {
     missingBadge: 'Missing',
     thumbnailUnavailable: 'Thumbnail unavailable',
     videoBadge: 'Video',
+    photoBadge: 'Photo',
+    gridLabel: 'Collection results',
+    mediaEmptyTitle: 'Nothing here for this medium',
+    mediaEmptyBody: 'The collection has files, but none of them match the selected medium.',
+    showAllMedia: 'Show all media',
+    filterDatePresetCustom: 'Custom range',
+    personMediaLoadFailed: 'Could not load this person\u2019s media.',
     refreshingResults: 'Refreshing results…',
     openInAnalysis: 'Open in Analysis',
     copyPath: 'Copy path',
@@ -2126,7 +2168,7 @@ export const en: Dictionary = {
     trashDialogReadOnlyBody: 'Move to Trash is unavailable because at least one affected root is read-only.',
     trashDialogOfflineTitle: 'Offline root',
     trashDialogOfflineBody: 'Move to Trash is unavailable because at least one affected root is not connected.',
-    trashDialogLoading: 'Preparing trash plan...',
+    trashDialogLoading: 'Preparing trash plan…',
     trashDialogNoPreview: 'The trash plan is not available.',
     trashStarted: 'Move to Trash started',
     trashFailed: 'Move to Trash failed',
@@ -2175,6 +2217,11 @@ export const pl: Dictionary = {
     copyToClipboard: 'Kopiuj do schowka',
     copied: 'Skopiowano',
     copyFailed: 'Nie udało się skopiować do schowka',
+    retry: 'Ponów',
+    autocompleteClear: 'Wyczyść',
+    autocompleteOpen: 'Otwórz',
+    autocompleteClose: 'Zamknij',
+    autocompleteNoOptions: 'Brak opcji',
   },
   language: {
     stepTitle: 'Język',
@@ -2203,8 +2250,6 @@ export const pl: Dictionary = {
     subnavCollection: 'Kolekcja',
     subnavPeople: 'Osoby',
     subnavMap: 'Mapa',
-    mediaVideos: 'Filmy',
-    mediaPhotos: 'Zdjęcia',
     modeSwitcherLabel: 'Tryb aplikacji',
     subnavLabel: 'Sekcja biblioteki',
     mediaToggleLabel: 'Rodzaj mediów w analizie',
@@ -2737,15 +2782,23 @@ export const pl: Dictionary = {
     displayName: 'Nazwa wyświetlana',
     personName: (index) => `Osoba ${String(index + 1)}`,
     mergeGroupings: 'Scal grupy',
-    mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w «${target}»? Pozostałe grupy znikną. Tego nie można cofnąć.`,
+    mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w „${target}”? Pozostałe grupy znikną. Tego nie można cofnąć.`,
     mergeNameChoice: 'Które imię zachować?',
     mergeSelectHint: 'Zaznacz co najmniej dwie osoby.',
+    selectionCount: (count) => `Zaznaczono: ${count}`,
+    hiddenSelectionCount: (count) => `${count} poza bieżącym widokiem`,
+    clearSelection: 'Wyczyść zaznaczenie',
+    mergeSelectedNames: (names) => `Zaznaczone: ${names}`,
+    mediaEmptyTitle: 'Brak osób dla tego rodzaju mediów',
+    mediaEmptyBody: 'Żadna z pogrupowanych osób nie występuje w plikach wybranego rodzaju mediów.',
+    showAllMedia: 'Pokaż wszystkie media',
+    loadFailedTitle: 'Nie udało się wczytać osób',
     merge: 'Scal',
     deleteFaceGrouping: 'Usuń grupę twarzy',
     deleteFaceGroupingBody: 'To trwale usuwa grupę tej osoby, obserwacje twarzy (w tym embeddingi) i przykładowe wycinki. Tego nie można cofnąć.',
     deleteAllFaceDataBody: 'To trwale usuwa wszystkie lokalne dane grupowania twarzy i przykładowe wycinki. Tego nie można cofnąć.',
     deleteAll: 'Usuń wszystko',
-    loadingPeople: 'Ładowanie osób...',
+    loadingPeople: 'Ładowanie osób…',
     selectPerson: (name) => `Wybierz ${name}`,
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
     videoObservationCount: (count) => `${count} w filmach`,
@@ -2772,10 +2825,10 @@ export const pl: Dictionary = {
     personMediaSection: 'Zdjęcia i filmy',
     personMediaEmpty: 'Brak zdjęć i filmów dla tej osoby.',
     moreActions: (name) => `Więcej działań dla ${name}`,
-    installingModelsLog: 'Instalowanie modeli grupowania twarzy...',
+    installingModelsLog: 'Instalowanie modeli grupowania twarzy…',
     modelsInstalledLog: 'Modele grupowania twarzy zostały zainstalowane',
     installModelsFailedLog: 'Nie udało się zainstalować modeli grupowania twarzy',
-    indexingFacesLog: 'Indeksowanie twarzy w bieżącym folderze...',
+    indexingFacesLog: 'Indeksowanie twarzy w bieżącym folderze…',
     indexUpdatedLog: 'Indeks grupowania twarzy został zaktualizowany',
     indexFacesFailedLog: 'Nie udało się zindeksować twarzy',
     renamedGroupingLog: (name) => `Zmieniono nazwę grupy na ${name}`,
@@ -2786,10 +2839,10 @@ export const pl: Dictionary = {
     deleteGroupingFailedLog: 'Nie udało się usunąć grupy twarzy',
     deletedAllFaceDataLog: 'Usunięto wszystkie dane twarzy',
     deleteAllFaceDataFailedLog: 'Nie udało się usunąć wszystkich danych twarzy',
-    reclusterDryRunLog: 'Uruchamianie próby przebudowy osób bez zapisu...',
+    reclusterDryRunLog: 'Uruchamianie próby przebudowy osób bez zapisu…',
     reclusterDryRunReadyLog: 'Raport próby przebudowy osób jest gotowy',
     reclusterDryRunFailedLog: 'Nie udało się wykonać próby przebudowy osób',
-    reclusterLog: 'Przebudowywanie osób...',
+    reclusterLog: 'Przebudowywanie osób…',
     reclusteredLog: 'Przebudowano osoby',
     reclusterFailedLog: 'Nie udało się przebudować osób',
     reclusterReportUnavailable: 'raport próby bez zapisu jest niedostępny',
@@ -2801,7 +2854,7 @@ export const pl: Dictionary = {
     coverage: (located, total) => `${located} z ${total} skatalogowanych plików ma lokalizację`,
     coveragePhotos: (located, total) => `${located} z ${total} skatalogowanych zdjęć ma lokalizację`,
     emptyTitle: 'Brak plików z lokalizacją',
-    emptyBody: 'Lokalizacja pochodzi z metadanych GPS zapisanych przez aparat. Przeanalizuj folder, aby dodać jego pliki do katalogu; pliki bez metadanych GPS nigdy się tu nie pojawią.',
+    emptyBody: 'Lokalizacje pochodzą z metadanych GPS aparatu, z zaimportowanej osi czasu lub ze współrzędnych ustawionych ręcznie. Przeanalizuj folder, aby dodać jego pliki do katalogu, a następnie uzupełnij lokalizację plików, które jej nie mają.',
     canvasLabel: 'Mapa skatalogowanych plików',
     clusterLabel: (count) => `${count} ${plPlural(count, 'plik', 'pliki', 'plików')} w tym obszarze`,
     zoomIn: 'Przybliż',
@@ -2822,15 +2875,14 @@ export const pl: Dictionary = {
     },
     accuracy: (meters) => `±${meters} m`,
     place: 'Miejsce',
-    filter: {
-      all: 'Wszystko',
-      videos: 'Filmy',
-      photos: 'Zdjęcia',
-    },
+    mediaFilterLabel: 'Filtr mediów na mapie',
+    mediaEmptyTitle: 'Brak lokalizacji dla tego rodzaju mediów',
+    mediaEmptyBody: 'Pliki wybranego rodzaju mediów nie mają jeszcze zapisanej lokalizacji.',
   },
   settingsModal: {
     title: 'Ustawienia',
     selectFolderFirst: 'Najpierw wybierz folder, aby skonfigurować ustawienia.',
+    loadFailed: 'Nie udało się wczytać ustawień.',
     loading: 'Ładowanie ustawień…',
     secondsValue: (seconds) => `${String(seconds)} s`,
     frameCount: 'Liczba klatek',
@@ -2849,6 +2901,11 @@ export const pl: Dictionary = {
     analyzerTimeout: 'Limit czasu analizatora',
     analyzerTimeoutHelper: 'Jak długo czekać na analizator AI, zanim zostanie przerwany.',
     facesSectionTitle: 'Lokalne grupowanie twarzy (eksperymentalne)',
+    analyzerSectionTitle: 'Analizator',
+    renameSectionTitle: 'Zmiana nazw plików',
+    renameHelper: 'Zachowaj oryginalne nazwy plików zamiast nazw proponowanych przez analizator.',
+    apiCostUsageCharged: 'Za użycie naliczy opłatę Twój dostawca API.',
+    apiCostEstimate: (cost) => `Około ${cost} za film (szacunek orientacyjny).`,
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
     geminiBatchSectionTitle: 'Tryb wsadowy Gemini (analiza drzewa folderów)',
@@ -2862,7 +2919,7 @@ export const pl: Dictionary = {
       + 'Puste pole oznacza brak limitu. Kwota to lokalny szacunek z liczby tokenów, a nie faktura od Google.',
     geminiBudgetInvalid: 'Podaj kwotę większą od 0 albo zostaw pole puste.',
     geminiSpendReadout: (month, estimatedCostUsd, entries) =>
-      `Szacowane wydatki za ${month}: ${estimatedCostUsd.toFixed(4)} USD w ${String(entries)} ${plPlural(entries, 'analizie', 'analizach', 'analizach')}.`,
+      `Szacowane wydatki za ${month}: ${estimatedCostUsd} w ${String(entries)} ${plPlural(entries, 'analizie', 'analizach', 'analizach')}.`,
     geminiSpendUnknown: 'Szacowane wydatki za ten miesiąc nie są jeszcze dostępne.',
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
     runSetupWizard: 'Uruchom kreatora konfiguracji',
@@ -2962,6 +3019,7 @@ export const pl: Dictionary = {
     acknowledgeUnreadableArchives: 'Rozumiem, że stare kopie pozostaną nieczytelne',
     finish: 'Zakończ',
     listTitle: 'Kopie zapasowe',
+    tierFilterLabel: 'Rodzaj kopii',
     listEmpty: 'Nie ma jeszcze żadnej kopii.',
     listLoading: 'Wczytywanie kopii…',
     tierFilterAll: 'Wszystkie',
@@ -3041,12 +3099,12 @@ export const pl: Dictionary = {
     folderActions: 'akcje folderu',
     clearRecent: 'Wyczyść ostatnie',
   },
-  videoStatus: {
+  mediaStatus: {
     incomplete: 'Nieukończony',
-    completed: 'Ukończony',
-    error: 'Błąd',
+    analyzed: 'Przeanalizowane',
+    failed: 'Błąd analizy',
     pending: 'Oczekuje',
-    notTracked: 'Nieśledzony',
+    notTracked: 'Nieśledzone',
     processing: 'Analizowanie…',
   },
   nestedDbDialog: {
@@ -3110,6 +3168,7 @@ export const pl: Dictionary = {
     missingBadge: 'Brak pliku',
     proxyFailedTooltip: 'Nie udało się wygenerować podglądu dla tego zdjęcia',
     noProxyYet: 'Podgląd jeszcze niedostępny',
+    openPreview: 'Otwórz podgląd zdjęcia',
     viewerClose: 'Zamknij podgląd',
     viewerPrevious: 'Poprzednie zdjęcie',
     viewerNext: 'Następne zdjęcie',
@@ -3182,16 +3241,12 @@ export const pl: Dictionary = {
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
-    badgeAnalyzing: 'Analizowanie…',
-    badgePending: 'Nieprzeanalizowane',
-    badgeAnalyzed: 'Przeanalizowane',
-    badgeAnalysisFailed: 'Błąd analizy',
     loadMore: 'Wczytaj więcej',
     treeFolderCounts: (photoCount, analysedCount) =>
       `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} ${plPlural(analysedCount, 'przeanalizowane', 'przeanalizowane', 'przeanalizowanych')}`,
   },
   library: {
-    title: 'Biblioteka',
+    title: 'Kolekcja',
     subtitle: 'Przeglądaj wszystko, co kiedykolwiek przeanalizowano, ze wszystkich skatalogowanych folderów.',
     countHeader: (shown, total) => shown === total
       ? `${total} ${plPlural(total, 'plik', 'pliki', 'plików')}`
@@ -3214,6 +3269,13 @@ export const pl: Dictionary = {
     missingBadge: 'Brak pliku',
     thumbnailUnavailable: 'Miniatura niedostępna',
     videoBadge: 'Wideo',
+    photoBadge: 'Zdjęcie',
+    gridLabel: 'Wyniki kolekcji',
+    mediaEmptyTitle: 'Brak plików dla tego rodzaju mediów',
+    mediaEmptyBody: 'Kolekcja zawiera pliki, ale żaden nie pasuje do wybranego rodzaju mediów.',
+    showAllMedia: 'Pokaż wszystkie media',
+    filterDatePresetCustom: 'Zakres własny',
+    personMediaLoadFailed: 'Nie udało się wczytać mediów tej osoby.',
     refreshingResults: 'Odświeżanie wyników…',
     openInAnalysis: 'Otwórz w Analizie',
     copyPath: 'Kopiuj ścieżkę',
@@ -3274,7 +3336,7 @@ export const pl: Dictionary = {
     trashDialogReadOnlyBody: 'Przeniesienie do Kosza jest niedostępne, ponieważ co najmniej jeden dotknięty folder jest tylko do odczytu.',
     trashDialogOfflineTitle: 'Folder offline',
     trashDialogOfflineBody: 'Przeniesienie do Kosza jest niedostępne, ponieważ co najmniej jeden dotknięty folder nie jest podłączony.',
-    trashDialogLoading: 'Przygotowywanie planu przeniesienia do Kosza...',
+    trashDialogLoading: 'Przygotowywanie planu przeniesienia do Kosza…',
     trashDialogNoPreview: 'Plan przeniesienia do Kosza jest niedostępny.',
     trashStarted: 'Rozpoczęto przenoszenie do Kosza',
     trashFailed: 'Przeniesienie do Kosza nie powiodło się',

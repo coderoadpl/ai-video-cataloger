@@ -34,6 +34,28 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Kolekcja relevance count-only requests skip match ranking and row hydration.
 - Map location totals count visible videos and photos in SQL, and location responses share folder metadata instead of repeating it on every pin.
 - Photo search ranks matches before hydrating snippets and variant counts for the selected page.
+- The Kolekcja grid is fully operable from the keyboard: arrow keys, Home/End, Enter to open, Ctrl/Cmd+Space to select, Shift+Arrow to extend, with an announced active tile.
+- The document language follows the interface language, so screen readers and native date fields match the visible copy.
+- Viewer arrow keys no longer seek the file list while a video control, text field or select has focus, and both media viewers are announced as named modal dialogs.
+- The enlarged photo preview in Analiza is reachable and activatable from the keyboard.
+- Ustawienia reports a failed initial configuration load with a retry instead of an endless spinner, gives the analyzer and file-renaming groups the section titles their siblings have, and loads the backup section with the rest of the dialog.
+- The person media preview omits selection checkboxes and the Hide action it cannot perform, and reports a failed load with a retry instead of claiming the person has no media.
+- Osoby keeps a persistent selection bar with the selected count, the count outside the current view and Clear, and the merge confirmation lists every selected person.
+- The Osoby trash preview counts the files the confirmed action will touch, with the shared-file total shown as separate explanatory data.
+- A chosen merge name no longer outlives its dialog, so a later two-person selection stays mergeable.
+- Opening a person from Osoby establishes a person-only collection scope instead of stacking a second person onto the existing filters.
+- Collection person chips follow the current person name and show localized dates instead of raw ISO days.
+- Person cards reuse the theme-aware placeholder tile, retry a repaired exemplar crop, open the media preview from the card face and reveal their checkbox on hover or focus.
+- Kolekcja treats a medium with no results as a filtered empty state offering a switch to all media, instead of the first-use empty state.
+- The Kolekcja date preset is derived from the applied dates and reads as a custom range when they match no preset.
+- The people, tag, place and folder filters cap the options they mount and carry localized clear, open, close and no-options copy.
+- Mapa uses the shared media toggle with counts and a localized group name, and explains a medium with no located files instead of rendering a pinless map.
+- Videos and photos share one status vocabulary, and duplicate badges render through the same status chip on both media.
+- Library tiles render media kind independently of availability, so a missing video keeps its film marker, and photos carry their own marker.
+- Photo rows in Analiza render the shared thumbnail states and offer Reveal in Finder.
+- The Kolekcja, Osoby and Mapa page headers, empty states, confirm dialogs, tag rows and slider fields come from one shared component each.
+- The header Models and Prerequisites buttons carry stable test ids.
+- The Polish copy uses one ellipsis character and Polish quotation marks, the English collection header has a singular form, and the map empty state describes camera, timeline and manual locations.
 
 ## [0.6.30] - 2026-09-07
 

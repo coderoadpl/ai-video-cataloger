@@ -59,10 +59,10 @@ describe('AppHeader actions', () => {
     fireEvent.click(screen.getByTestId('open-settings-button'));
     expect(onShowSettings).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText(en.appHeader.models));
+    fireEvent.click(screen.getByTestId('open-models-button'));
     expect(onShowModelManager).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText(en.appHeader.prerequisites));
+    fireEvent.click(screen.getByTestId('open-prerequisites-button'));
     expect(onShowPrerequisites).toHaveBeenCalled();
   });
 });

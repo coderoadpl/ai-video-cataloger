@@ -32,3 +32,15 @@ export const formatDayLabel = (day: string, locale: FormatLocale): string => {
     new Date(Number(year), Number(month) - 1, Number(date)),
   );
 };
+
+export const formatNumber = (value: number, locale: FormatLocale): string =>
+  new Intl.NumberFormat(INTL_LOCALE_TAG[locale]).format(value);
+
+export const formatUsd = (amount: number, locale: FormatLocale, fractionDigits = 2): string =>
+  new Intl.NumberFormat(INTL_LOCALE_TAG[locale], {
+    style: 'currency',
+    currency: 'USD',
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(amount);

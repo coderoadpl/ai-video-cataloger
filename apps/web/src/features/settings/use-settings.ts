@@ -30,6 +30,8 @@ type MonthlySpend = IndexStatusOutput['currentMonthSpend'];
 export interface SettingsState {
   isLoading: boolean;
   error: string | null;
+  loadError: string | null;
+  retry: () => void;
   draft: SettingsDraft | null;
   hasChanges: boolean;
   canSave: boolean;
@@ -226,7 +228,9 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
 
   return {
     isLoading: enabled && draft === null && configQuery.error === null,
-    error: saveError ?? (configQuery.error === null ? null : apiErrorMessage(configQuery.error, dictionary)),
+    error: saveError,
+    loadError: configQuery.error === null ? null : apiErrorMessage(configQuery.error, dictionary),
+    retry: () => { void configQuery.refetch(); },
     draft,
     hasChanges,
     canSave: hasChanges && !isBudgetInvalid,

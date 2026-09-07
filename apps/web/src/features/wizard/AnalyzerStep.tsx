@@ -13,13 +13,13 @@ import {
 } from '@mui/material';
 
 import {
-  API_USAGE_CHARGE_NOTICE,
   apiCostSignal,
   curatedHarnessModels,
   estimateApiTokens,
   geminiNativeModelIds,
 } from '@core/domain/index.js';
 
+import { ApiCostNotice } from '../../components/ui/ApiCostNotice.js';
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -150,9 +150,7 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
               onChange={(event) => controller.setApiDraft({ pricePerMTokensOutput: event.target.value })}
             />
           </Box>
-          <Alert severity="info" data-testid="api-cost-notice">
-            {costSignal.kind === 'estimate' ? costSignal.message : API_USAGE_CHARGE_NOTICE}
-          </Alert>
+          <ApiCostNotice estimatedCostUsd={costSignal.estimatedCostUsd} testId="api-cost-notice" />
         </Box>
       ) : null}
 

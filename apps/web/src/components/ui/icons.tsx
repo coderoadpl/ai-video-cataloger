@@ -192,3 +192,15 @@ export const OpenInNewIcon = (props: SvgIconProps) => (
     <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
   </SvgIcon>
 );
+
+export const CloudOffIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46A5.5 5.5 0 0 1 17.5 11H19a3 3 0 0 1 1.86 5.36l1.42 1.42A5 5 0 0 0 19.35 10.04zM3.71 3.16 2.3 4.57l2.4 2.4A5.5 5.5 0 0 0 6 18h11.73l2 2 1.41-1.41L3.71 3.16z" />
+  </SvgIcon>
+);
+
+export const InfoIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+  </SvgIcon>
+);

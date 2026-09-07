@@ -1,9 +1,10 @@
-import { Box, Button, Chip, Paper, Typography } from '@mui/material';
+import { Box, Button, Paper, Typography } from '@mui/material';
 
 import { MediaDetailLayout } from '../../components/layout/MediaDetailLayout.js';
 import { CodeSnippetField } from '../../components/ui/CodeSnippetField.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { ContentCopyIcon } from '../../components/ui/icons.js';
+import { TagChipRow } from '../../components/ui/TagChipRow.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -147,7 +148,7 @@ export const VideoDetails = ({
 
           <VariantSwitcher state={variants} />
 
-          <TagRow tags={previewTags} onTagSearch={onTagSearch} label={dictionary.details.videoTags} />
+          <TagChipRow tags={previewTags} onTagSearch={onTagSearch} label={dictionary.details.videoTags} testId="video-tag-chip" />
 
           {duplicate === null ? (
             <>
@@ -184,25 +185,3 @@ export const VideoDetails = ({
   );
 };
 
-const TagRow = ({
-  tags,
-  onTagSearch,
-  label,
-}: {
-  tags: readonly string[];
-  onTagSearch?: ((tag: string) => void) | undefined;
-  label: string;
-}) =>
-  tags.length === 0 ? null : (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }} aria-label={label}>
-      {tags.map((tag) => (
-        <Chip
-          key={tag}
-          label={tag}
-          size="small"
-          clickable={onTagSearch !== undefined}
-          onClick={onTagSearch === undefined ? undefined : () => onTagSearch(tag)}
-        />
-      ))}
-    </Box>
-  );

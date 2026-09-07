@@ -29,7 +29,7 @@ const ChecklistItem = ({
     >
       <StatusIcon status={row.status} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        <Typography variant="subtitle2">
           {row.name}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>

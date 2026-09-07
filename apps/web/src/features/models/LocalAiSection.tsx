@@ -92,7 +92,7 @@ const LocalAiTierRow = ({
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+          <Typography variant="subtitle2" noWrap>
             {tier.tag}
             {tier.recommended ? (
               <Typography component="span" variant="caption" sx={{ ml: 1, color: 'status.completed.main' }}>

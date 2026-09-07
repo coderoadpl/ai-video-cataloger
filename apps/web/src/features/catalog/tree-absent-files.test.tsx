@@ -74,6 +74,38 @@ describe('tree absent files section', () => {
     expect(requestCount).toBe(1);
   }, scaledTimeout(30_000));
 
+  it('keeps the row and shows the failure when forgetting a tree entry fails', async () => {
+    server.use(
+      http.get('/api/catalog-tree/absent', () => HttpResponse.json({
+        ok: true,
+        data: {
+          groups: [
+            {
+              folderPath: '/drive/sub',
+              entries: [
+                { fingerprint: 'fp-gone', fileName: 'gone.mp4', finalName: null, missing: true, missingAt: 1738368000000 },
+              ],
+            },
+          ],
+        },
+      })),
+      http.post('/api/index/forget', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'catalog is locked' } },
+        { status: 500 },
+      )),
+    );
+
+    renderThemed(<TreeAbsentFilesSection root={root} />);
+
+    fireEvent.click(await screen.findByTestId('tree-absent-files-toggle'));
+    fireEvent.click(await screen.findByTestId('tree-absent-file-forget'));
+    fireEvent.click(await screen.findByTestId('tree-absent-file-forget-confirm'));
+
+    expect((await screen.findByTestId('tree-absent-file-forget-confirm-error')).textContent)
+      .toContain('catalog is locked');
+    expect(screen.getByTestId('tree-absent-file-item')).toBeDefined();
+  }, scaledTimeout(30_000));
+
   it('is absent from the DOM when the tree has no absent files', async () => {
     server.use(
       http.get('/api/catalog-tree/absent', () => HttpResponse.json({ ok: true, data: { groups: [] } })),

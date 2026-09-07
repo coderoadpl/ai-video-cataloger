@@ -1,5 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
@@ -13,8 +15,15 @@ export interface TreeAbsentFilesState {
   groups: AbsentFolderGroup[];
   total: number;
   isForgetting: boolean;
-  forget: (fingerprint: string) => void;
+  error: string | null;
+  forget: (fingerprint: string) => Promise<boolean>;
 }
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof ApiError) return error.appError.message;
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
 
 // Without this the whole-tree scope is gated on files that are still on disk, so a subtree whose
 // videos are all gone hides the only place the catalog offers to forget them.
@@ -31,6 +40,7 @@ export const useTreeScopeAvailability = (root: string | null, subfolderVideoCoun
 export const useTreeAbsentFiles = (root: string | null, enabled: boolean): TreeAbsentFilesState => {
   const queryClient = useQueryClient();
   const forgetMutation = useMutation(actions.indexForget);
+  const [error, setError] = useState<string | null>(null);
   const query = useQuery({
     ...actions.catalogTreeAbsent({ folder: root ?? ' ' }),
     enabled: enabled && root !== null,
@@ -43,14 +53,19 @@ export const useTreeAbsentFiles = (root: string | null, enabled: boolean): TreeA
   const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
 
   const forget = useCallback(
-    (fingerprint: string) => {
-      void (async () => {
+    async (fingerprint: string): Promise<boolean> => {
+      setError(null);
+      try {
         await forgetMutation.mutateAsync({ fingerprint });
         await queryClient.invalidateQueries();
-      })();
+        return true;
+      } catch (caught) {
+        setError(messageOf(caught));
+        return false;
+      }
     },
     [forgetMutation, queryClient],
   );
 
-  return { groups, total, isForgetting: forgetMutation.isPending, forget };
+  return { groups, total, isForgetting: forgetMutation.isPending, error, forget };
 };

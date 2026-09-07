@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { uiLanguageSchema } from '@core/domain/index.js';
@@ -14,3 +15,10 @@ export const useUiLanguage = (): Locale => {
 };
 
 export const useDictionary = (): Dictionary => getDict(useUiLanguage());
+
+export const useDocumentLanguage = (): void => {
+  const locale = useUiLanguage();
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+};
