@@ -378,11 +378,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               <Typography variant="caption">{dictionary.settingsModal.renameHelper}</Typography>
             </Box>
 
-            <Box sx={{ pt: 1 }}>
-              <SettingsBackupSection open={open} />
-            </Box>
           </Box>
         )}
+        <Box sx={{ pt: 3 }}>
+          <SettingsBackupSection open={open} />
+        </Box>
       </DialogContent>
       <DialogActions>
         {onRunWizard === undefined ? null : (

@@ -218,6 +218,33 @@ describe('settings modal', () => {
     expect(screen.getByTestId('settings-no-folder')).toBeDefined();
   });
 
+  it('keeps the app-global backup section reachable with no folder selected', () => {
+    renderThemed(<SettingsModal open folder={null} onClose={vi.fn()} />);
+    expect(screen.getByTestId('settings-backup')).toBeDefined();
+  });
+
+  it('keeps the backup section reachable while the folder settings are still loading', async () => {
+    server.use(http.get('/api/config', () => new Promise(() => {})));
+
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    expect(await screen.findByTestId('settings-loading')).toBeDefined();
+    expect(screen.getByTestId('settings-backup')).toBeDefined();
+  });
+
+  it('keeps the backup section reachable when the folder settings fail to load', async () => {
+    server.use(
+      http.get('/api/config', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'config unreadable' } }, { status: 500 }),
+      ),
+    );
+
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    expect(await screen.findByTestId('settings-load-error')).toBeDefined();
+    expect(screen.getByTestId('settings-backup')).toBeDefined();
+  });
+
   it('reports a failed initial config load with a retry instead of spinning forever', async () => {
     let attempts = 0;
     server.use(
