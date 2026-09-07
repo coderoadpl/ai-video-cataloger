@@ -29,7 +29,7 @@ scale together.
 | Step | Command | Pass condition |
 |---|---|---|
 | Parity e2e | `pnpm run test:e2e:parity` | the CLI and GUI projects agree on the parity scenarios |
-| Mandatory pre-DMG e2e | `pnpm run test:e2e:prerelease` | every included e2e suite green before `pnpm run electron:package` |
+| Mandatory pre-DMG e2e | `pnpm run test:e2e:prerelease` | every included e2e suite green before `pnpm run electron:package`, with no skipped test outside the runner's allowlist (the people legs need `E2E_FACES_SAMPLE_PHOTOS` and `E2E_FACES_PAIR_SAMPLES`) |
 | Real-provider matrix | `pnpm run test:e2e:matrix` | every leg green. Run it from a **normal, unsandboxed shell** (`hdiutil` fails under an agent sandbox) and in a low-load window |
 
 Under the flake doctrine, a red suite is a P1 bug, never rerun-to-green.

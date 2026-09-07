@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- `pnpm run test:e2e:prerelease` now runs its legs through a TypeScript runner that collects a per-leg Playwright JSON report, prints a leg/passed/failed/skipped summary and fails when a test self-skips outside the runner's allowlist, so a missing face-fixture environment variable can no longer pass as a green pre-release run
+
 ## [0.6.34] - 2026-09-07
 
 ### Fixed
