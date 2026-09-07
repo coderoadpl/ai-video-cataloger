@@ -194,6 +194,7 @@ const stubPeople = (input: {
       const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
       return HttpResponse.json({ ok: true, data: terminalJob(jobId, 'faces_index') });
     }),
+    http.get('/api/jobs', () => HttpResponse.json({ ok: true, data: { jobs: [] } })),
   );
 };
 
@@ -361,6 +362,31 @@ describe('PeopleView', () => {
     expect(screen.getByText('2 videos')).toBeDefined();
     const crop = screen.getByAltText('Alex');
     expect(crop.getAttribute('src')).toContain('media://local/');
+  });
+
+  it('picks up people from a faces index job started outside the view', async () => {
+    let indexedPeople: FacePerson[] = [];
+    let jobStatus = 'running';
+    stubPeople({ facesEnabled: true, artifactsReady: true, observations: 0, people: [] });
+    server.use(
+      http.get('/api/faces/people', () => HttpResponse.json({ ok: true, data: { people: indexedPeople } })),
+      http.get('/api/jobs', () => HttpResponse.json({
+        ok: true,
+        data: { jobs: [{ ...terminalJob('faces-index-1', 'faces_index'), status: jobStatus }] },
+      })),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={20} />,
+    );
+
+    expect(await screen.findByTestId('people-active-job')).toBeDefined();
+
+    indexedPeople = [person({ personId: 'p1', displayName: 'Alex', observationCount: 12 })];
+    jobStatus = 'completed';
+
+    expect(await screen.findByTestId('people-card', {}, { timeout: scaledTimeout(5_000) })).toBeDefined();
+    await waitFor(() => expect(screen.queryByTestId('people-active-job')).toBeNull());
   });
 
   it('shows a fallback avatar instead of a bare gray box when a person has no exemplar crop', async () => {

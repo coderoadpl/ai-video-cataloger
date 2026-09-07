@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Osoby now follows a face indexing run started anywhere else in the app: the view watches the running job, refreshes while it works and once more when it ends, instead of staying on the state it read the moment it was opened.
+
 - Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process.
 
 ### Added

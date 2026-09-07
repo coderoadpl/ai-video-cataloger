@@ -137,6 +137,14 @@ no Dock icon and never steals keyboard focus from whoever is at the keyboard;
   GUI drivers use) to prove the picked folder lands in the analysis view on the
   medium already in use — videos from a fresh install, photos from a
   photos-analysis session; outside `check` and `smoke`.
+- `pnpm run test:e2e:people` = builds Electron and drives the real faces
+  switch, a real indexing pass and a rename through the card menu. Its
+  real-indexing leg needs `E2E_FACES_SAMPLE_PHOTOS` pointing at a folder with
+  at least two photos of the same person — a single photo can never produce a
+  person, because founding an identity takes two observations
+  ([ADR-0012](docs/decisions/0012-face-clustering-symmetry-and-recluster.md)); without the
+  variable the leg self-skips. The merge leg runs from seeded fixtures and
+  needs no photos; outside `check` and `smoke`.
 - `pnpm run test:e2e:people-pairs` = builds Electron and drives the real
   "Ta sama osoba?" review surface over a real faces pass: it needs a folder of
   photos in `E2E_FACES_PAIR_SAMPLES` that the conservative cut splits into at

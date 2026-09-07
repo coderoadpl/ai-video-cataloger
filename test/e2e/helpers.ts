@@ -422,6 +422,12 @@ export function makeEmptyWorkdir(tag: string): string {
   return dir;
 }
 
+export function copyPhotoFixtures(source: string, target: string): number {
+  const files = readdirSync(source).filter((name) => statSync(join(source, name)).isFile() && !name.startsWith('.'));
+  for (const name of files) copyFileSync(join(source, name), join(target, name));
+  return files.length;
+}
+
 export async function addSampleTo(dir: string, sample: VideoSample): Promise<string> {
   const fixture = await ensureFixture(sample);
   copyFileSync(fixture, join(dir, sample.file));

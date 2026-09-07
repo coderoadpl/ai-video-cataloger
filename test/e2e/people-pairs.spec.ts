@@ -1,12 +1,12 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import initSqlJs from 'sql.js';
 import { z } from 'zod';
 
 import { ensureE2eFaceModels } from './face-models.js';
-import { awaitPeopleGridUnfolded, dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { awaitPeopleGridUnfolded, copyPhotoFixtures, dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -77,12 +77,6 @@ const decisionCounts = async (homeDirectory: string): Promise<Record<string, num
   }
 };
 
-const copyFixtures = (source: string, target: string): number => {
-  const files = readdirSync(source).filter((name) => statSync(join(source, name)).isFile() && !name.startsWith('.'));
-  for (const name of files) copyFileSync(join(source, name), join(target, name));
-  return files.length;
-};
-
 const runPhotosAnalysis = async (session: Session, folder: string): Promise<void> => {
   await session.page.getByTestId('mode-analysis').click();
   await stubOpenDialog(session.app, folder);
@@ -126,13 +120,10 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
     const home = isolatedHome(workdir);
     const folder = join(workdir, 'pair-photos');
     mkdirSync(folder, { recursive: true });
-    expect(copyFixtures(samples, folder)).toBeGreaterThan(0);
+    expect(copyPhotoFixtures(samples, folder)).toBeGreaterThan(0);
 
     const models = await ensureE2eFaceModels({ homeDirectory: home });
-    if (!models.ok) {
-      test.skip(true, `Face model artifacts unavailable in this environment: ${models.error.message}`);
-      return;
-    }
+    expect(models.ok ? null : `${models.error.code}: ${models.error.message}`).toBeNull();
 
     let session = await launch(workdir);
     try {
@@ -205,6 +196,10 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
       await awaitPeopleGridUnfolded(session.page, 30_000);
       await expect(session.page.getByTestId('people-card')).toHaveCount(cardsBefore - 1, { timeout: 30_000 });
 
+      await expect(
+        session.page.getByTestId('people-pair-review-open'),
+        'the review queue emptied before the relaunch — the fixture must offer more candidate pairs than this walk answers (one different, the skips it takes to reach a disjoint pair, and one same)',
+      ).toBeVisible({ timeout: 30_000 });
       const badgeBeforeRelaunch = await badgeCount(session.page);
       const counts = await decisionCounts(home);
       expect(counts['same']).toBe(1);
