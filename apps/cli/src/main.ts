@@ -25,7 +25,6 @@ import {
   WHISPER_MODEL_NAMES,
   apiCostSignal,
   analyzerProviderConfigSchema,
-  benchmarkReportTable,
   builtInAnalyzerProvider,
   estimateApiTokens,
   appError,
@@ -52,6 +51,7 @@ import {
   emitError,
   emitProgress,
   emitRaw,
+  emitFacesBenchmark,
   emitStarted,
   emitWarning,
   isJsonMode,
@@ -1773,7 +1773,7 @@ faces
         emitError(json, report.error);
         return;
       }
-      process.stdout.write(`${JSON.stringify({ type: 'faces_benchmark', data: report.value }, null, 2)}\n${benchmarkReportTable(report.value)}\n`);
+      emitFacesBenchmark(json, report.value);
     }
     emitStarted(json, 'faces_recluster', { dryRun });
     const result = await api.facesRecluster({ dryRun });

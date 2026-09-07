@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, ButtonBase, IconButton, useTheme } from '@mui/material';
 
 import basemap from './basemap/land-110m.json' with { type: 'json' };
-import { clusterItems, fitViewport, panViewport, project, toScreen, unitBounds, unwrapRing, worldSizePx, zoomViewport, type MapCluster, type Viewport } from './core/index.js';
+import { buildSpatialIndex, fitViewport, panViewport, project, toScreen, unitBounds, unwrapRing, visibleClusters, worldSizePx, zoomViewport, type MapCluster, type Viewport } from './core/index.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { MapPinPopover } from './MapPinPopover.js';
 import type { CatalogLocation } from './use-catalog-locations.js';
@@ -22,7 +22,7 @@ interface MapCanvasProps {
   initialViewport?: Viewport | undefined;
 }
 
-const landRings = basemap.polygons.map(unwrapRing);
+const landRings = basemap.polygons.map(unwrapRing).map((ring) => ring.map(([lon, lat]) => project({ lon: lon ?? 0, lat: lat ?? 0 })));
 
 const worldCopyOffsetsPx = (viewport: Viewport): number[] => {
   const world = worldSizePx(viewport);
@@ -72,6 +72,17 @@ export const MapCanvas = ({
     initialViewport ?? fitViewport(unitBounds(locations.map((location) => project(location))), size.width, size.height, VIEWPORT_PADDING_PX),
   );
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
+  const pendingPan = useRef({ dx: 0, dy: 0 });
+  const panFrame = useRef<number | null>(null);
+  const applyPan = useCallback(() => {
+    const { dx, dy } = pendingPan.current;
+    pendingPan.current = { dx: 0, dy: 0 };
+    panFrame.current = null;
+    setViewport((current) => panViewport(current, dx, dy));
+  }, []);
+  useEffect(() => () => {
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+  }, []);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
 
   useEffect(() => {
@@ -101,10 +112,11 @@ export const MapCanvas = ({
     onFocusConsumed();
   }, [focusFingerprint, locations, size.width, size.height, onFocusConsumed]);
 
-  const clusters = useMemo(
-    () => clusterItems(locations.map((location) => ({ id: location.fingerprint, lon: location.lon, lat: location.lat })), viewport),
-    [locations, viewport],
+  const index = useMemo(
+    () => buildSpatialIndex(locations.map((location) => ({ id: location.fingerprint, lon: location.lon, lat: location.lat }))),
+    [locations],
   );
+  const clusters = useMemo(() => visibleClusters(index, viewport), [index, viewport]);
 
   const byFingerprint = useMemo(() => new Map(locations.map((location) => [location.fingerprint, location] as const)), [locations]);
 
@@ -162,7 +174,9 @@ export const MapCanvas = ({
         const dx = event.clientX - drag.lastX;
         const dy = event.clientY - drag.lastY;
         dragState.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
-        setViewport((current) => panViewport(current, dx, dy));
+        pendingPan.current.dx += dx;
+        pendingPan.current.dy += dy;
+        panFrame.current ??= requestAnimationFrame(applyPan);
       }}
       onPointerUp={(event) => {
         if (dragState.current?.pointerId === event.pointerId) dragState.current = null;
@@ -195,7 +209,7 @@ export const MapCanvas = ({
               <polygon
                 key={index}
                 points={ring
-                  .map(([lon, lat]) => toScreen(project({ lon: lon ?? 0, lat: lat ?? 0 }), viewport))
+                  .map((point) => toScreen(point, viewport))
                   .map((point) => `${point.x},${point.y}`)
                   .join(' ')}
                 fill={theme.palette.map.land}

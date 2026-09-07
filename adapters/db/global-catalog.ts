@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { and, eq, isNull } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
@@ -20,6 +21,9 @@ import { z } from 'zod';
 
 import {
   FACE_ENGINE_VERSION,
+  gridThumbnailStateSchema,
+  type GridThumbnailState,
+  updateCentroid,
   GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
   analysisLanguageResolutionSchema,
@@ -161,9 +165,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private durabilityErrorCode: AppError['code'] | null = null;
   private lastPersistedAtMs: number;
   private batchDepth = 0;
+  private readonly operationContext = new AsyncLocalStorage<symbol>();
+  private activeOperation: symbol | undefined;
+  private operationTail: Promise<void> = Promise.resolve();
   private readonly autoFlushState = createAutoFlushState();
   private readonly flushOnExit = (): void => {
-    if (this.state === null || this.dirtyCount === 0) return;
+    if (this.batchDepth > 0 || this.state === null || this.dirtyCount === 0) return;
     try {
       this.lock.takeWriteLock();
       this.persist(this.state);
@@ -218,57 +225,64 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async snapshotTo(targetPath: string, signal?: AbortSignal | undefined): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
-    const wasOpen = this.state !== null;
-    let leased = false;
-    try {
-      await acquireSnapshotLease(this.lock, signal);
-      leased = true;
-      const flushed = await this.flush();
-      if (!flushed.ok) return flushed;
-      const state = await this.ensureOpen(false);
-      mkdirSync(path.dirname(targetPath), { recursive: true });
-      persistDatabase(targetPath, state.client);
-      verifySnapshotIntegrity(state.SQL, targetPath, 'Global catalog snapshot failed integrity_check');
-      const sizeBytes = statSync(targetPath).size;
-      if (!wasOpen) {
-        state.client.close();
-        this.state = null;
+    return this.serial(async () => {
+      const wasOpen = this.state !== null;
+      let leased = false;
+      try {
+        await acquireSnapshotLease(this.lock, signal);
+        leased = true;
+        const flushed = await this.flush();
+        if (!flushed.ok) return flushed;
+        const state = await this.ensureOpen(false);
+        mkdirSync(path.dirname(targetPath), { recursive: true });
+        persistDatabase(targetPath, state.client);
+        verifySnapshotIntegrity(state.SQL, targetPath, 'Global catalog snapshot failed integrity_check');
+        const sizeBytes = statSync(targetPath).size;
+        if (!wasOpen) {
+          state.client.close();
+          this.state = null;
+        }
+        return ok({ sizeBytes, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION });
+      } catch (cause) {
+        removeSnapshotFile(targetPath);
+        return failure(cause);
+      } finally {
+        if (!wasOpen && this.state !== null) {
+          this.state.client.close();
+          this.state = null;
+          this.dirtyCount = 0;
+        }
+        if (leased) {
+          this.lock.releaseLease();
+          this.lock.releaseIfIdle();
+        }
       }
-      return ok({ sizeBytes, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION });
-    } catch (cause) {
-      removeSnapshotFile(targetPath);
-      return failure(cause);
-    } finally {
-      if (!wasOpen && this.state !== null) {
-        this.state.client.close();
-        this.state = null;
-        this.dirtyCount = 0;
-      }
-      if (leased) {
-        this.lock.releaseLease();
-        this.lock.releaseIfIdle();
-      }
-    }
+    });
   }
 
   async flush(): Promise<Result<void, AppError>> {
-    if (this.state === null || this.dirtyCount === 0) {
-      clearAutoFlush(this.autoFlushState);
-      this.lock.releaseIfIdle();
-      return ok(undefined);
-    }
-    try {
-      this.lock.takeWriteLock();
-      this.persist(this.state);
-      this.lock.releaseIfIdle();
-      return ok(undefined);
-    } catch (cause) {
-      const failed = failure<undefined>(cause);
-      if (!failed.ok) this.markDurabilityFailure(failed.error);
-      this.lastPersistedAtMs = this.nowMs();
-      this.scheduleAutoFlush();
-      return failed;
-    }
+    return this.serial(async () => {
+      if (this.batchDepth > 0 && this.operationContext.getStore() === this.activeOperation) {
+        return { ok: false, error: appError('conflict', 'Flush must run after the catalog batch settles') };
+      }
+      if (this.state === null || this.dirtyCount === 0) {
+        clearAutoFlush(this.autoFlushState);
+        this.lock.releaseIfIdle();
+        return ok(undefined);
+      }
+      try {
+        this.lock.takeWriteLock();
+        this.persist(this.state);
+        this.lock.releaseIfIdle();
+        return ok(undefined);
+      } catch (cause) {
+        const failed = failure<undefined>(cause);
+        if (!failed.ok) this.markDurabilityFailure(failed.error);
+        this.lastPersistedAtMs = this.nowMs();
+        this.scheduleAutoFlush();
+        return failed;
+      }
+    });
   }
 
   async acquireLease(): Promise<Result<void, AppError>> {
@@ -286,55 +300,79 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async dispose(): Promise<Result<void, AppError>> {
-    const flushed = await this.flush();
-    try {
-      if (this.state !== null) this.state.client.close();
-      this.state = null;
-      this.dirtyCount = 0;
-      clearAutoFlush(this.autoFlushState);
-      this.lock.releaseIfIdle();
-      return flushed;
-    } catch (cause) {
-      if (!flushed.ok) return flushed;
-      return failure(cause);
-    }
+    return this.serial(async () => {
+      const flushed = await this.flush();
+      try {
+        if (this.state !== null) this.state.client.close();
+        this.state = null;
+        this.dirtyCount = 0;
+        clearAutoFlush(this.autoFlushState);
+        this.lock.releaseIfIdle();
+        return flushed;
+      } catch (cause) {
+        if (!flushed.ok) return flushed;
+        return failure(cause);
+      }
+    });
   }
 
   async withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
-    if (this.batchDepth > 0) return operation();
-    try {
-      this.lock.takeWriteLock();
-      const state = await this.ensureOpen(true);
-      const dirtyCountBefore = this.dirtyCount;
-      state.client.run('BEGIN TRANSACTION');
-      this.batchDepth += 1;
-      const result = await operation();
-      if (!result.ok) {
-        state.client.run('ROLLBACK');
-        this.dirtyCount = dirtyCountBefore;
-        this.pendingSearchDocuments.clear();
-        return result;
-      }
-      for (const fingerprint of this.pendingSearchDocuments) {
-        syncSearchDocument(state.db, state.client, fingerprint);
-      }
-      this.pendingSearchDocuments.clear();
-      state.client.run('COMMIT');
-      if (this.dirtyCount > 0) this.recordPersistAttempt(state);
-      return result;
-    } catch (cause) {
-      if (this.state !== null) {
-        try {
-          this.state.client.run('ROLLBACK');
-        } catch {
-          this.state = null;
-          this.dirtyCount = 0;
+    return this.serial(async () => {
+      if (this.batchDepth > 0) return operation();
+      let dirtyCountBefore = this.dirtyCount;
+      try {
+        clearAutoFlush(this.autoFlushState);
+        this.lock.takeWriteLock();
+        const state = await this.ensureOpen(true);
+        dirtyCountBefore = this.dirtyCount;
+        state.client.run('BEGIN TRANSACTION');
+        this.batchDepth = 1;
+        const result = await operation();
+        if (!result.ok) {
+          state.client.run('ROLLBACK');
+          this.dirtyCount = dirtyCountBefore;
+          return result;
         }
+        for (const fingerprint of this.pendingSearchDocuments) syncSearchDocument(state.db, state.client, fingerprint);
+        state.client.run('COMMIT');
+        this.batchDepth = 0;
+        if (this.dirtyCount > 0) this.recordPersistAttempt(state);
+        return result;
+      } catch (cause) {
+        if (this.batchDepth > 0 && this.state !== null) {
+          try {
+            this.state.client.run('ROLLBACK');
+          } catch (rollbackCause) {
+            return failure(rollbackCause);
+          }
+          this.dirtyCount = dirtyCountBefore;
+        }
+        return failure(cause);
+      } finally {
+        this.pendingSearchDocuments.clear();
+        this.batchDepth = 0;
+        this.scheduleAutoFlush();
       }
-      this.pendingSearchDocuments.clear();
+    });
+  }
+
+  private async serial<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    if (this.activeOperation !== undefined && this.operationContext.getStore() === this.activeOperation) {
+      try { return await operation(); } catch (cause) { return failure(cause); }
+    }
+    const previous = this.operationTail;
+    let release = (): void => {};
+    this.operationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    const token = Symbol();
+    this.activeOperation = token;
+    try {
+      return await this.operationContext.run(token, operation);
+    } catch (cause) {
       return failure(cause);
     } finally {
-      this.batchDepth = 0;
+      this.activeOperation = undefined;
+      release();
     }
   }
 
@@ -670,6 +708,37 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async listGridThumbnailCandidates(outputPaths: readonly string[], generationVersion: number): Promise<Result<string[], AppError>> {
+    return this.read((_db, client) => {
+      const paths = z.array(z.string()).parse(outputPaths);
+      const version = z.number().int().positive().parse(generationVersion);
+      return client.exec(`SELECT requested.value FROM json_each(?) requested
+        LEFT JOIN grid_thumbnail_state state ON state.output_path = requested.value
+        WHERE state.output_path IS NULL OR state.generation_version != ? OR state.is_primary = 0`, [JSON.stringify(paths), version])[0]?.values.map((row) => z.string().parse(row[0])) ?? [];
+    });
+  }
+
+  async recordGridThumbnail(input: GridThumbnailState): Promise<Result<void, AppError>> {
+    return this.write((_db, client) => {
+      const state = gridThumbnailStateSchema.parse(input);
+      client.run(`INSERT INTO grid_thumbnail_state (output_path, generation_version, source_path, source_kind, is_primary)
+        VALUES (?, ?, ?, ?, ?) ON CONFLICT(output_path) DO UPDATE SET
+        generation_version = excluded.generation_version, source_path = excluded.source_path,
+        source_kind = excluded.source_kind, is_primary = excluded.is_primary`,
+      [state.outputPath, state.generationVersion, state.sourcePath, state.sourceKind, state.primary ? 1 : 0]);
+    });
+  }
+
+  async listVideoThumbnailFingerprints(folderPath: string): Promise<Result<{ fingerprint: string; fileName: string; finalName: string | null }[], AppError>> {
+    return this.read((_db, client) => client.exec(`SELECT f.fingerprint, f.file_name, a.final_name FROM files f
+      JOIN folders fo ON fo.folder_id = f.folder_id
+      LEFT JOIN analyses a ON a.fingerprint = f.fingerprint AND a.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
+      WHERE fo.current_path = ?`, [canonicalPath(z.string().parse(folderPath))])[0]?.values.map((raw) => {
+        const row = z.tuple([z.string(), z.string(), z.string().nullable()]).parse(raw);
+        return { fingerprint: row[0], fileName: row[1], finalName: row[2] };
+      }) ?? []);
+  }
+
   async listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
     return this.read((db) => {
       const fileRows = db.select().from(files).where(eq(files.folderId, folderId)).all();
@@ -969,7 +1038,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+  async listLibraryFacets(hiddenPhotoFingerprints: readonly string[] = []): Promise<Result<LibraryFacets, AppError>> {
     return this.read((_db, client) => {
       const tagRows = client.exec(
         `SELECT t.name, COUNT(DISTINCT f.fingerprint)
@@ -984,19 +1053,22 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const facetTags: LibraryFacets['tags'] = tagRows.map((row) => ({ name: stringValue(row[0]), count: numberValue(row[1]) }));
 
       const peopleRows = client.exec(
-        `SELECT p.person_id, p.display_name, COUNT(DISTINCT o.fingerprint)
-          FROM face_observations o
-          JOIN people p ON p.person_id = o.person_id
-          LEFT JOIN files f ON f.fingerprint = o.fingerprint
-          WHERE o.person_id IS NOT NULL AND (f.fingerprint IS NULL OR f.hidden_at IS NULL)
-          GROUP BY p.person_id, p.display_name
-          ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
+        `WITH ordered_people AS (
+          SELECT person_id, display_name, ROW_NUMBER() OVER (ORDER BY rowid) - 1 AS fallback_index FROM people
+        )
+        SELECT p.person_id, p.display_name, COUNT(DISTINCT o.fingerprint), p.fallback_index
+        FROM ordered_people p
+        JOIN face_observations o ON o.person_id = p.person_id
+        WHERE o.fingerprint NOT IN (SELECT value FROM json_each(?))
+          AND o.fingerprint NOT IN (SELECT fingerprint FROM files WHERE hidden_at IS NOT NULL)
+        GROUP BY p.person_id
+        ORDER BY p.display_name IS NULL, p.display_name, p.fallback_index`,
+        [JSON.stringify(z.array(z.string()).parse(hiddenPhotoFingerprints))],
       )[0]?.values ?? [];
-      const facetPeople: LibraryFacets['people'] = peopleRows.map((row) => ({
-        personId: stringValue(row[0]),
-        displayName: nullableStringValue(row[1]),
-        count: numberValue(row[2]),
-      }));
+      const facetPeople: LibraryFacets['people'] = peopleRows.map((raw) => {
+        const row = z.tuple([z.string(), z.string().nullable(), z.number(), z.number()]).parse(raw);
+        return { personId: row[0], displayName: row[1], count: row[2], fallbackIndex: row[3] };
+      });
 
       const placeRows = client.exec(
         `SELECT f.place_name, f.place_country, f.place_country_code, COUNT(*)
@@ -1390,6 +1462,18 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async updatePersonCentroid(personId: string, embedding: readonly number[]): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const row = db.select().from(people).where(eq(people.personId, personId)).get();
+      if (row === undefined) throw new CatalogAppError(appError('not_found', 'Person not found'));
+      const person = rowToPerson(row);
+      db.update(people).set({
+        centroid: embeddingToBlob(updateCentroid(person.centroid, person.exemplarCount, z.array(z.number().finite()).length(128).parse(embedding))),
+        exemplarCount: person.exemplarCount + 1,
+      }).where(eq(people.personId, personId)).run();
+    });
+  }
+
   async setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> {
     return this.write((db, client) => {
       const existing = db.select().from(people).where(eq(people.personId, personId)).get();
@@ -1466,7 +1550,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const to = db.select().from(people).where(eq(people.personId, input.toPersonId)).get();
       if (from === undefined || to === undefined) throw new CatalogAppError(appError('not_found', 'Person not found'));
       const rows = db.select().from(faceObservations).where(eq(faceObservations.personId, input.fromPersonId)).all();
-      const affectedFingerprints = uniqueFingerprints(rows);
+      const affectedFingerprints = uniqueFingerprints([
+        ...rows,
+        ...(to.displayName === null && from.displayName !== null
+          ? db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
+          : []),
+      ]);
       db.update(faceObservations).set({ personId: input.toPersonId }).where(eq(faceObservations.personId, input.fromPersonId)).run();
       const embeddings = db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
         .map((row) => rowToFaceObservation(row).embedding);
@@ -1488,47 +1577,51 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const existing = db.select().from(people).where(eq(people.personId, personId)).get();
-      if (existing === undefined) return { personId, deleted: false, cropPaths: [], affectedFingerprints: [] };
+      if (existing === undefined) return { personId, deleted: false, cropPaths: pendingCropPaths(client, personId), affectedFingerprints: [] };
       const rows = db.select().from(faceObservations).where(eq(faceObservations.personId, personId)).all();
       const cropPaths = rows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedFingerprints = uniqueFingerprints(rows);
+      for (const cropPath of cropPaths) client.run('INSERT OR IGNORE INTO pending_face_crop_cleanup (crop_path, person_id) VALUES (?, ?)', [cropPath, personId]);
       db.delete(faceObservations).where(eq(faceObservations.personId, personId)).run();
       db.delete(people).where(eq(people.personId, personId)).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
-      return { personId, deleted: true, cropPaths, affectedFingerprints };
-    });
+      return { personId, deleted: true, cropPaths: pendingCropPaths(client, personId), affectedFingerprints };
+    }));
   }
 
   async purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const observationRows = db.select().from(faceObservations).all();
       const peopleRows = db.select().from(people).all();
-      const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedFingerprints = uniqueFingerprints(observationRows);
+      for (const row of observationRows) {
+        if (row.cropPath !== null) client.run('INSERT OR IGNORE INTO pending_face_crop_cleanup (crop_path, person_id) VALUES (?, ?)', [row.cropPath, row.personId]);
+      }
       db.delete(faceObservations).run();
       db.delete(people).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
-      return { peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths };
-    });
+      return { peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths: pendingCropPaths(client) };
+    }));
+  }
+
+  async completeFaceCropCleanup(cropPath: string): Promise<Result<void, AppError>> {
+    return this.write((_db, client) => { client.run('DELETE FROM pending_face_crop_cleanup WHERE crop_path = ?', [z.string().parse(cropPath)]); });
   }
 
   async faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {
-    return this.read((db) => {
-      const observationRows = db.select().from(faceObservations).all();
-      const stateRows = db.select().from(faceIndexState).all();
-      const videoFingerprints = new Set(observationRows.filter((row) => row.media !== 'photo').map((row) => row.fingerprint));
-      const photoFingerprints = new Set(observationRows.filter((row) => row.media === 'photo').map((row) => row.fingerprint));
+    return this.read((_db, client) => {
+      const row = z.array(z.number()).length(8).parse(client.exec(`SELECT
+        (SELECT COUNT(*) FROM people), COUNT(*), COUNT(person_id), COUNT(*) - COUNT(person_id),
+        COUNT(DISTINCT fingerprint), COUNT(DISTINCT CASE WHEN media = 'video' THEN fingerprint END),
+        COUNT(DISTINCT CASE WHEN media = 'photo' THEN fingerprint END),
+        (SELECT COUNT(*) FROM face_index_state WHERE engine_version < ?)
+        FROM face_observations`, [FACE_ENGINE_VERSION])[0]?.values[0]);
       return {
-        people: db.select().from(people).all().length,
-        observations: observationRows.length,
-        assignedObservations: observationRows.filter((row) => row.personId !== null).length,
-        unassignedObservations: observationRows.filter((row) => row.personId === null).length,
-        filesIndexed: new Set(observationRows.map((row) => row.fingerprint)).size,
-        videosIndexed: videoFingerprints.size,
-        photosWithFaces: photoFingerprints.size,
-        staleVersionFiles: stateRows.filter((row) => row.engineVersion < FACE_ENGINE_VERSION).length,
+        people: numberValue(row[0]), observations: numberValue(row[1]), assignedObservations: numberValue(row[2]),
+        unassignedObservations: numberValue(row[3]), filesIndexed: numberValue(row[4]), videosIndexed: numberValue(row[5]),
+        photosWithFaces: numberValue(row[6]), staleVersionFiles: numberValue(row[7]),
       };
     });
   }
@@ -1546,12 +1639,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const beforeObservations = new Map(
         db.select().from(faceObservations).all().map((row) => [row.obsId, row.personId]),
       );
-      const personsDeleted = db.select().from(people).all().length;
+      const beforeNames = new Map(db.select({ personId: people.personId, displayName: people.displayName }).from(people).all().map((row) => [row.personId, row.displayName]));
+      const afterNames = new Map(input.people.map((person) => [person.personId, person.displayName]));
+      const personsDeleted = beforeNames.size;
       db.delete(people).run();
       for (const person of input.people) db.insert(people).values(personToRow(person)).run();
 
       let observationsReassigned = 0;
       const affected = new Set<string>();
+      for (const row of db.select({ fingerprint: faceObservations.fingerprint, personId: faceObservations.personId }).from(faceObservations).all()) {
+        if (row.personId !== null && beforeNames.get(row.personId) !== afterNames.get(row.personId)) affected.add(row.fingerprint);
+      }
       for (const assignment of input.assignments) {
         const row = db.select().from(faceObservations).where(eq(faceObservations.obsId, assignment.obsId)).get();
         if (row === undefined) continue;
@@ -1572,32 +1670,36 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
-    try {
-      const state = await this.ensureOpen(this.lockMode === 'none');
-      return ok(operation(state.db, state.client));
-    } catch (cause) {
-      return failure(cause);
-    }
+    return this.serial(async () => {
+      try {
+        const state = await this.ensureOpen(this.lockMode === 'none');
+        return ok(operation(state.db, state.client));
+      } catch (cause) {
+        return failure(cause);
+      }
+    });
   }
 
   private async write<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
-    try {
-      this.lock.takeWriteLock();
-      const state = await this.ensureOpen(true);
-      const value = operation(state.db, state.client);
-      this.dirtyCount += 1;
-      if (this.batchDepth === 0 && this.shouldAutoFlush()) {
-        this.recordPersistAttempt(state);
-      } else if (this.batchDepth === 0) this.scheduleAutoFlush();
-      return ok(value);
-    } catch (cause) {
-      if (!(cause instanceof CatalogAppError)) {
-        clearAutoFlush(this.autoFlushState);
-        this.state = null;
-        this.dirtyCount = 0;
+    return this.serial(async () => {
+      try {
+        this.lock.takeWriteLock();
+        const state = await this.ensureOpen(true);
+        const value = operation(state.db, state.client);
+        this.dirtyCount += 1;
+        if (this.batchDepth === 0 && this.shouldAutoFlush()) {
+          this.recordPersistAttempt(state);
+        } else if (this.batchDepth === 0) this.scheduleAutoFlush();
+        return ok(value);
+      } catch (cause) {
+        if (!(cause instanceof CatalogAppError)) {
+          clearAutoFlush(this.autoFlushState);
+          this.state = null;
+          this.dirtyCount = 0;
+        }
+        return failure(cause);
       }
-      return failure(cause);
-    }
+    });
   }
 
   private syncSearchDocument(db: GlobalDrizzle, client: Database, fingerprint: string): void {
@@ -1644,7 +1746,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   private scheduleAutoFlush(): void {
-    if (this.dirtyCount === 0) return;
+    if (this.batchDepth > 0 || this.dirtyCount === 0) return;
     scheduleAutoFlush(
       this.autoFlushState,
       Math.max(0, AUTO_FLUSH_INTERVAL_MS - (this.nowMs() - this.lastPersistedAtMs)),
@@ -1779,6 +1881,12 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
   }
   if (currentVersion < 18) {
     for (const statement of migrateGlobalCatalogSchemaSqlV18) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 19) {
+    client.run('CREATE INDEX IF NOT EXISTS idx_face_observations_person_fingerprint ON face_observations(person_id, fingerprint)');
+    client.run('CREATE TABLE IF NOT EXISTS grid_thumbnail_state (output_path TEXT PRIMARY KEY, generation_version INTEGER NOT NULL, source_path TEXT NOT NULL, source_kind TEXT NOT NULL, is_primary INTEGER NOT NULL)');
+    client.run('CREATE TABLE IF NOT EXISTS pending_face_crop_cleanup (crop_path TEXT PRIMARY KEY, person_id TEXT)');
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -2738,4 +2846,16 @@ const failure = <T>(cause: unknown): Result<T, AppError> => {
   if (cause instanceof CatalogAppError) return { ok: false, error: cause.appError };
   const message = cause instanceof Error ? cause.message : 'Global catalog operation failed';
   return { ok: false, error: appError('internal', message, cause) };
+};
+
+const pendingCropPaths = (client: Database, personId?: string): string[] => {
+  const statement = client.prepare(`SELECT crop_path FROM pending_face_crop_cleanup${personId === undefined ? '' : ' WHERE person_id = ?'}`);
+  try {
+    if (personId !== undefined) statement.bind([personId]);
+    const paths: string[] = [];
+    while (statement.step()) paths.push(z.string().parse(statement.get()[0]));
+    return paths;
+  } finally {
+    statement.free();
+  }
 };

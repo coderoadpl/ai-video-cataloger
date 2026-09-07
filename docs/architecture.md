@@ -289,12 +289,11 @@ there. The library and photo tiles then fall back to the small cover, still
 rendered `object-fit: cover` in the fixed tile box (W103): honesty about a
 missing grid thumbnail is carried by the backfill and the unavailable
 placeholder, not by letting one tile letterbox itself into a different
-apparent size than its neighbours. Because the check re-probes the current
-best source on every pass (not just at first-generation time), an
-already-generated grid thumb that was built from what was then the only
-source but a better one has since become reachable
-gets regenerated even without `--force`; a fallback (non-primary) source
-always regenerates, bypassing the normal exists-skip.
+apparent size than its neighbours. Generation provenance and version distinguish current primary-source thumbnails
+from missing, stale and fallback outputs. Ordinary passes verify cached output
+existence before metadata or media work; `--force` explicitly re-probes changed
+sources. A fallback (non-primary) source remains a repair candidate on every pass,
+bypassing the normal exists-skip.
 
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration. The Library's Kolekcja surface
@@ -1895,3 +1894,28 @@ named in `pnpm-workspace.yaml` ([ADR-0006](decisions/0006-package-manager-pnpm.m
 
 Changing this architecture means changing this document (and, for the frozen
 constraints, ADR-0001) first, then the code.
+
+Face mutations share the indexing job resource. Centroid updates change only the
+centroid and count of an existing person. Catalog batches suspend snapshot exports
+and serialize unrelated operations; explicit flushes wait for the batch to settle.
+Forget and purge transactionally retain pending crop cleanup in schema V19 until
+filesystem deletion succeeds. Failures after application report `applied: true`
+and a durability or cleanup phase so clients can reconcile and retry.
+
+Reclustering advances deterministic domain generators in bounded work chunks,
+yielding to the event loop and checking cancellation between chunks. Similarity,
+heap construction and merging all yield; replacement remains in the face mutation
+resource after calculation. Status uses SQL aggregates and facets use one visible
+file aggregation without observation payloads or person centroids.
+
+Legacy folder repositories use a bounded cache with explicit leases. Opening
+acquires a lease; the caller closes it in a finally block. Eviction closes only
+unleased repositories after pending writes persist. A reopened folder probes
+writability again; degraded mode belongs to that open handle. Application disposal
+closes the factory alongside the global and photo stores.
+
+Grid-thumbnail generation records its version, source path, source kind and whether
+the source was primary in the global catalog. Session backfills query stale or
+missing records and verify current output files before metadata or media work.
+Fallback records remain repair candidates, and forced passes explicitly recheck
+changed sources. Video backfill reuses indexed fingerprints on ordinary passes.

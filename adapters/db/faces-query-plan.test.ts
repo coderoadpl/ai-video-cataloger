@@ -138,7 +138,7 @@ const planLines = async (databasePath: string, statement: CapturedStatement): Pr
 };
 
 describe('face-filtered read paths', () => {
-  it('answers a person-filtered catalog search through the observation fingerprint index', async () => {
+  it('answers a person-filtered catalog search through the covering person and fingerprint index', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     await store.upsertFolder(folder);
@@ -168,7 +168,7 @@ describe('face-filtered read paths', () => {
 
     const plan = await planLines(store.databasePath(), lastSelect('face_observations'));
     expect(plan.some((line) => line.startsWith('SCAN face_observations'))).toBe(false);
-    expect(plan.some((line) => line.includes('idx_face_observations_fingerprint'))).toBe(true);
+    expect(plan.some((line) => line.includes('idx_face_observations_person_fingerprint'))).toBe(true);
   });
 
   it('binds a person fingerprint allow list as one parameter instead of one per file', async () => {

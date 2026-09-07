@@ -1,9 +1,22 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
-import type { FileSystemPort, MediaPort, ThumbnailGeneration } from '../ports.js';
+import type { FileSystemPort, GlobalCatalogStore, MediaPort, ThumbnailGeneration } from '../ports.js';
 import { FRAME_FILE_NAME_PATTERN } from './artifact-store.js';
 import { isSupportedVideoExtension, artifactPaths, thumbnailArtifactPath, GRID_THUMBNAIL_EDGE } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
+
+export const GRID_THUMBNAIL_GENERATION_VERSION = 1;
+
+export const hasCurrentGridThumbnail = async (
+  deps: { fs: FileSystemPort; globalCatalog?: GlobalCatalogStore | undefined },
+  outputPath: string,
+): Promise<Result<boolean, AppError>> => {
+  if (deps.globalCatalog === undefined) return ok(false);
+  const candidates = await deps.globalCatalog.listGridThumbnailCandidates([outputPath], GRID_THUMBNAIL_GENERATION_VERSION);
+  if (!candidates.ok) return candidates;
+  if (candidates.value.length > 0) return ok(false);
+  return deps.fs.isFile(outputPath);
+};
 
 export interface ThumbnailDeps {
   fs: FileSystemPort;
@@ -161,9 +174,14 @@ export interface EnsureGridThumbnailInput {
 }
 
 export const ensureGridThumbnail = async (
-  deps: { fs: FileSystemPort; media: MediaPort },
+  deps: { fs: FileSystemPort; media: MediaPort; globalCatalog?: GlobalCatalogStore | undefined },
   input: EnsureGridThumbnailInput,
 ): Promise<Result<GridThumbnailOutput, AppError>> => {
+  if (!input.force) {
+    const cached = await hasCurrentGridThumbnail(deps, input.gridThumbnailPath);
+    if (!cached.ok) return cached;
+    if (cached.value) return ok({ path: input.gridThumbnailPath, generated: false, skipped: true, source: null });
+  }
   const staged: Result<GridThumbnailCandidate[], AppError> = input.fingerprint === null
     ? ok([])
     : await stagedFrameCandidates(deps.fs, input.catalogDirectory, input.fingerprint);
@@ -191,7 +209,7 @@ const meetsGridFloor = (width: number | null, height: number | null): boolean =>
 };
 
 const selectGridThumbnailSource = async (
-  deps: { fs: FileSystemPort; media: MediaPort },
+  deps: { fs: FileSystemPort; media: MediaPort; globalCatalog?: GlobalCatalogStore | undefined },
   candidates: readonly GridThumbnailCandidate[],
 ): Promise<Result<GridThumbnailCandidate | null, AppError>> => {
   for (const candidate of candidates) {
@@ -206,7 +224,7 @@ const selectGridThumbnailSource = async (
 };
 
 export const generateGridThumbnail = async (
-  deps: { fs: FileSystemPort; media: MediaPort },
+  deps: { fs: FileSystemPort; media: MediaPort; globalCatalog?: GlobalCatalogStore | undefined },
   input: {
     candidates: readonly GridThumbnailCandidate[];
     gridThumbnailPath: string;
@@ -214,6 +232,11 @@ export const generateGridThumbnail = async (
     priority?: 'foreground' | 'background' | undefined;
   },
 ): Promise<Result<GridThumbnailOutput, AppError>> => {
+  if (!input.force) {
+    const cached = await hasCurrentGridThumbnail(deps, input.gridThumbnailPath);
+    if (!cached.ok) return cached;
+    if (cached.value) return ok({ path: input.gridThumbnailPath, generated: false, skipped: true, source: null });
+  }
   const selection = await selectGridThumbnailSource(deps, input.candidates);
   if (!selection.ok) return selection;
   const winner = selection.value;
@@ -229,7 +252,7 @@ export const generateGridThumbnail = async (
   }
 
   const isPrimary = input.candidates[0] === winner;
-  const forceThis = input.force || !isPrimary;
+  const forceThis = input.force || !isPrimary || deps.globalCatalog !== undefined;
 
   const thumbnail = winner.kind === 'video'
     ? await deps.media.thumbnail({
@@ -252,5 +275,12 @@ export const generateGridThumbnail = async (
       priority: input.priority,
     });
   if (!thumbnail.ok) return { ok: false, error: appError('thumbnail_error', thumbnail.error.message, thumbnail.error) };
+  if (deps.globalCatalog !== undefined) {
+    const stored = await deps.globalCatalog.recordGridThumbnail({
+      outputPath: input.gridThumbnailPath, generationVersion: GRID_THUMBNAIL_GENERATION_VERSION,
+      sourcePath: winner.path, sourceKind: winner.kind, primary: isPrimary,
+    });
+    if (!stored.ok) return stored;
+  }
   return ok({ ...thumbnail.value, source: winner.kind });
 };

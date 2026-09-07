@@ -195,60 +195,63 @@ export const processVideoPipeline = async (
   if (!fingerprint.ok) return fingerprint;
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;
+  try {
+    const video = await findOrCreateVideo(deps, repository.value, videoPath);
+    if (!video.ok) return video;
 
-  const video = await findOrCreateVideo(deps, repository.value, videoPath);
-  if (!video.ok) return video;
-
-  const skipped = await alreadyIndexed(
-    deps,
-    folder,
-    videoPath,
-    deps.globalCatalog === undefined ? null : fingerprint.value,
-    identity.configId,
-    identity.descriptor,
-    resolved.value.analyzer.uiLanguage,
-    input.force === true,
-    progress,
-  );
-  if (!skipped.ok) return skipped;
-  if (skipped.value.selectedConfigId !== null) {
-    return ok({
-      ...completedOutput(deps.fs, video.value),
-      configId: identity.configId,
-      selectedConfigId: skipped.value.selectedConfigId,
-    });
-  }
-  const options = pipelineOptions(
-    deps.fs,
-    folder,
-    repository.value.writable(),
-    resolved.value,
-    deps.globalCatalog === undefined ? null : fingerprint.value,
-    identity,
-    input.force === true || skipped.value.languageStale,
-  );
-
-  const runResult = await runPipelineSteps(deps, repository.value, video.value, options, progress);
-  if (!runResult.ok) {
-    if (!isJobCancelled(runResult.error) && !preservesCatalog(runResult.error)) {
-      await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
+    const skipped = await alreadyIndexed(
+      deps,
+      folder,
+      videoPath,
+      deps.globalCatalog === undefined ? null : fingerprint.value,
+      identity.configId,
+      identity.descriptor,
+      resolved.value.analyzer.uiLanguage,
+      input.force === true,
+      progress,
+    );
+    if (!skipped.ok) return skipped;
+    if (skipped.value.selectedConfigId !== null) {
+      return ok({
+        ...completedOutput(deps.fs, video.value),
+        configId: identity.configId,
+        selectedConfigId: skipped.value.selectedConfigId,
+      });
     }
-    return runResult;
-  }
+    const options = pipelineOptions(
+      deps.fs,
+      folder,
+      repository.value.writable(),
+      resolved.value,
+      deps.globalCatalog === undefined ? null : fingerprint.value,
+      identity,
+      input.force === true || skipped.value.languageStale,
+    );
 
-  const recorded = await recordGlobalCatalog(deps, repository.value, options, runResult.value, progress);
-  if (!recorded.ok) return recorded;
-  await ensureCompletedThumbnail(deps, options, runResult.value.path, recorded.value.finalName);
-  if (input.batch === undefined) {
-    const flushed = await flushGlobalCatalog(deps);
-    if (!flushed.ok) return flushed;
+    const runResult = await runPipelineSteps(deps, repository.value, video.value, options, progress);
+    if (!runResult.ok) {
+      if (!isJobCancelled(runResult.error) && !preservesCatalog(runResult.error)) {
+        await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
+      }
+      return runResult;
+    }
+
+    const recorded = await recordGlobalCatalog(deps, repository.value, options, runResult.value, progress);
+    if (!recorded.ok) return recorded;
+    await ensureCompletedThumbnail(deps, options, runResult.value.path, recorded.value.finalName);
+    if (input.batch === undefined) {
+      const flushed = await flushGlobalCatalog(deps);
+      if (!flushed.ok) return flushed;
+    }
+    return ok({
+      ...runResult.value,
+      configId: identity.configId,
+      selectedConfigId: recorded.value.selectedConfigId,
+      snapshotSkipped: recorded.value.snapshotSkipped,
+    });
+  } finally {
+    await repository.value.close();
   }
-  return ok({
-    ...runResult.value,
-    configId: identity.configId,
-    selectedConfigId: recorded.value.selectedConfigId,
-    snapshotSkipped: recorded.value.snapshotSkipped,
-  });
 };
 
 export const checkProcessPrerequisites = async (

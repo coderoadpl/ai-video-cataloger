@@ -17,6 +17,42 @@ describe('SqlJsCatalogRepositoryFactory', () => {
     tempRoots.length = 0;
   });
 
+  it('CP-09 bounds the cache, protects leases, and closes handles on disposal', async () => {
+    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 1 });
+    const first = await factory.open(await tempRoot());
+    if (!first.ok) throw new Error(first.error.message);
+    const nextFolder = await tempRoot();
+    expect(await factory.open(nextFolder)).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect((await first.value.listVideos()).ok).toBe(true);
+    expect((await first.value.close()).ok).toBe(true);
+    const next = await factory.open(nextFolder);
+    expect(next.ok).toBe(true);
+    expect((await factory.dispose()).ok).toBe(true);
+    if (next.ok) expect((await next.value.listVideos()).ok).toBe(false);
+  });
+
+  it('CP-09 retries dirty persistence before evicting a released repository', async () => {
+    const folder = await tempRoot();
+    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 1 });
+    const first = await factory.open(folder);
+    if (!first.ok) throw new Error(first.error.message);
+    const temporaryPath = `${String(first.value.databasePath())}.tmp`;
+    await mkdir(temporaryPath);
+    expect((await first.value.createVideo(videoInput(folder))).ok).toBe(false);
+    await first.value.close();
+    const nextFolder = await tempRoot();
+    expect((await factory.open(nextFolder)).ok).toBe(false);
+    await rm(temporaryPath, { recursive: true });
+    const next = await factory.open(nextFolder);
+    if (!next.ok) throw new Error(next.error.message);
+    await next.value.close();
+    const reopened = await factory.open(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    expect(await reopened.value.listVideos()).toMatchObject({ ok: true, value: [{ originalName: 'clip.mp4' }] });
+    await reopened.value.close();
+    await factory.dispose();
+  });
+
   it('openIfExists never creates a catalog database for an uncataloged folder', async () => {
     const folder = await tempRoot();
     const factory = new SqlJsCatalogRepositoryFactory();
@@ -144,7 +180,12 @@ describe('SqlJsCatalogRepositoryFactory', () => {
     if (!direct.ok) throw new Error(direct.error.message);
     if (!linked.ok) throw new Error(linked.error.message);
 
-    expect(linked.value).toBe(direct.value);
+    await direct.value.createVideo(videoInput(folder));
+    expect(await linked.value.listVideos()).toEqual(await direct.value.listVideos());
+    await direct.value.close();
+    expect((await linked.value.listVideos()).ok).toBe(true);
+    await linked.value.close();
+    await factory.dispose();
   });
 
   it('keeps the existing catalog intact when an atomic temp export fails', async () => {
@@ -408,6 +449,26 @@ describe('SqlJsCatalogRepositoryFactory over a read-only folder', () => {
     await chmod(directory, 0o555);
     restricted.push(directory);
   };
+
+  it('CP-09 re-probes writability after eviction', async () => {
+    const folder = await readOnlyRoot();
+    const otherFolder = await readOnlyRoot();
+    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 1 });
+    const first = await factory.open(folder);
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.value.writable()).toBe(true);
+    await first.value.close();
+    const other = await factory.open(otherFolder);
+    if (!other.ok) throw new Error(other.error.message);
+    await other.value.close();
+    await denyWrites(path.join(folder, '.ai-video-cataloger'));
+    await denyWrites(folder);
+    const reopened = await factory.open(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    expect(reopened.value.writable()).toBe(false);
+    await reopened.value.close();
+    await factory.dispose();
+  });
 
   it('opens degraded without creating the sidecar directory and keeps writes in memory', async () => {
     const folder = await readOnlyRoot();

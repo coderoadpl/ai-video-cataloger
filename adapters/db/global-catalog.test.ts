@@ -11,6 +11,7 @@ import {
   configDescriptorSchema,
   configId,
   err,
+  ok,
   type CatalogFile,
   type CatalogFolder,
   type CatalogVariant,
@@ -93,6 +94,165 @@ describe('SqlJsGlobalCatalogStore', () => {
     vi.restoreAllMocks();
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
     tempRoots.length = 0;
+  });
+
+  it('PE03 defers competing flushes and serializes unrelated batches', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertFolder(folder);
+    let enter = (): void => {};
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const first = store.withBatch(async () => {
+      await store.upsertFile(file);
+      enter();
+      await gate;
+      return ok(undefined);
+    });
+    await entered;
+    let flushed = false;
+    const flush = store.flush().then((result) => { flushed = true; return result; });
+    let secondEntered = false;
+    const second = store.withBatch(async () => {
+      secondEntered = true;
+      return store.upsertFile({ ...file, fingerprint: 'second' });
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const prematureFlush = flushed;
+    const overlappingBatch = secondEntered;
+    release();
+    expect((await first).ok).toBe(true);
+    expect((await second).ok).toBe(true);
+    expect((await flush).ok).toBe(true);
+    expect(prematureFlush).toBe(false);
+    expect(overlappingBatch).toBe(false);
+    expect(await store.getFile(file.fingerprint)).toMatchObject({ ok: true, value: { fingerprint: file.fingerprint } });
+    await store.dispose();
+  });
+
+  it('PE02 atomically updates centroids without overwriting names or recreating deleted people', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertPerson(personFor('person-a', 1));
+    await store.setPersonName('person-a', 'Renamed');
+    expect((await store.updatePersonCentroid('person-a', Array.from({ length: 128 }, () => 0.2))).ok).toBe(true);
+    expect(await store.getPerson('person-a')).toMatchObject({ ok: true, value: { displayName: 'Renamed', exemplarCount: 2 } });
+    await store.forgetPerson('person-a');
+    expect(await store.updatePersonCentroid('person-a', Array.from({ length: 128 }, () => 0.2))).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await store.getPerson('person-a')).toEqual(ok(null));
+    await store.dispose();
+  });
+
+  it('PE07 retains pending crop cleanup across deletion retries and reopening', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertPerson(personFor('person-a', 1));
+    await store.upsertFaceObservation({ ...observationFor('obs-a', 'fp-a', 'person-a'), cropPath: 'faces/obs/fp-a/crop.jpg' });
+    await store.forgetPerson('person-a');
+    await store.dispose();
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect(await reopened.forgetPerson('person-a')).toMatchObject({ ok: true, value: { cropPaths: ['faces/obs/fp-a/crop.jpg'] } });
+    expect(await reopened.purgeFaces()).toMatchObject({ ok: true, value: { cropPaths: ['faces/obs/fp-a/crop.jpg'] } });
+    await reopened.completeFaceCropCleanup('faces/obs/fp-a/crop.jpg');
+    expect(await reopened.purgeFaces()).toMatchObject({ ok: true, value: { cropPaths: [] } });
+    await reopened.dispose();
+  });
+
+  it('PE04 rebuilds search for both sides when a merge carries a name', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFile({ ...file, fingerprint: 'target-file' });
+    await store.upsertPerson(personFor('source', 1));
+    await store.upsertPerson({ ...personFor('target', 1), displayName: null });
+    await store.upsertFaceObservation(observationFor('source-obs', file.fingerprint, 'source'));
+    await store.upsertFaceObservation(observationFor('target-obs', 'target-file', 'target'));
+    expect(await store.mergePeople({ fromPersonId: 'source', toPersonId: 'target' })).toMatchObject({ ok: true, value: { affectedFingerprints: expect.arrayContaining([file.fingerprint, 'target-file']) } });
+    await store.flush();
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(await readFile(store.databasePath()));
+    expect(client.exec("SELECT tags_text FROM search_documents WHERE fingerprint = 'target-file'")[0]?.values[0]?.[0]).toContain('source');
+    client.close();
+    await store.dispose();
+  });
+
+  it('PE05 rebuilds search when a deterministic cluster keeps its id but loses its name', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertPerson(personFor('person-a', 1));
+    await store.upsertFaceObservation(observationFor('obs-a', file.fingerprint, 'person-a'));
+    expect(await store.replaceFaceClustering({ people: [{ ...personFor('person-a', 1), displayName: null }], assignments: [{ obsId: 'obs-a', personId: 'person-a' }] })).toMatchObject({ ok: true, value: { observationsReassigned: 0, affectedFingerprints: [file.fingerprint] } });
+    await store.flush();
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(await readFile(store.databasePath()));
+    expect(client.exec('SELECT tags_text FROM search_documents')[0]?.values[0]?.[0]).not.toContain('person-a');
+    client.close();
+    await store.dispose();
+  });
+
+  it('PE14 computes status without selecting observation payloads', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertFaceObservation(observationFor('obs-a', 'fp-a', null));
+    const SQL = await initSqlJs();
+    const prepare = vi.spyOn(SQL.Database.prototype, 'prepare');
+    expect(await store.faceStatus()).toMatchObject({ ok: true, value: { observations: 1, unassignedObservations: 1 } });
+    expect(prepare.mock.calls.map(([sql]) => sql).filter((sql) => /select.*(?:embedding|bbox_json).*face_observations/iu.test(sql))).toEqual([]);
+    prepare.mockRestore();
+    await store.dispose();
+  });
+
+  it('CP-04 aggregates visible distinct files with stable fallback order', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertPerson({ ...personFor('person-a', 2), displayName: null });
+    await store.upsertFaceObservation({ ...observationFor('obs-a', 'photo-a', 'person-a'), media: 'photo' });
+    await store.upsertFaceObservation({ ...observationFor('obs-b', 'photo-b', 'person-a'), media: 'photo' });
+    expect(await store.listLibraryFacets(['photo-a'])).toMatchObject({ ok: true, value: { people: [{ personId: 'person-a', displayName: null, fallbackIndex: 0, count: 1 }] } });
+    await store.dispose();
+  });
+
+  it('CP-07 persists generation provenance and returns only missing, stale or fallback thumbnails', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.recordGridThumbnail({ outputPath: 'current.jpg', generationVersion: 1, sourcePath: 'frame.jpg', sourceKind: 'frame', primary: true });
+    await store.recordGridThumbnail({ outputPath: 'fallback.jpg', generationVersion: 1, sourcePath: 'video.mp4', sourceKind: 'video', primary: false });
+    await store.dispose();
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect(await reopened.listGridThumbnailCandidates(['current.jpg', 'fallback.jpg', 'missing.jpg'], 1)).toEqual(ok(['fallback.jpg', 'missing.jpg']));
+    expect(await reopened.listGridThumbnailCandidates(['current.jpg'], 2)).toEqual(ok(['current.jpg']));
+    await reopened.upsertFolder(folder);
+    await reopened.upsertFile(file);
+    expect(await reopened.listVideoThumbnailFingerprints(folder.currentPath)).toEqual(ok([{ fingerprint: file.fingerprint, fileName: file.fileName, finalName: null }]));
+    await reopened.dispose();
+  });
+
+  it('PE03 keeps a competing ordinary write outside a rolled-back batch', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    await store.upsertFolder(folder);
+    const write = store.upsertFile(file);
+    const batch = store.withBatch(async () => {
+      await Promise.resolve();
+      return err(appError('validation', 'Rollback requested'));
+    });
+    expect((await write).ok).toBe(true);
+    expect((await batch).ok).toBe(false);
+    expect(await store.getFile(file.fingerprint)).toMatchObject({ ok: true, value: { fingerprint: file.fingerprint } });
+    await store.dispose();
+  });
+
+  it('PE03 suspends an armed auto-flush timer throughout an asynchronous batch', async () => {
+    vi.useFakeTimers();
+    let persisted = 0;
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome(), onPersist: () => { persisted += 1; } });
+    await store.upsertFolder(folder);
+    const result = await store.withBatch(async () => {
+      await store.upsertFile(file);
+      await vi.advanceTimersByTimeAsync(30_001);
+      expect(persisted).toBe(0);
+      return ok(undefined);
+    });
+    expect(result.ok).toBe(true);
+    expect(persisted).toBe(1);
+    await store.dispose();
   });
 
   it('migrates a fresh database and persists upserts across reopen', async () => {
@@ -2976,7 +3136,7 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.people).toEqual([{ personId: 'person-facet', displayName: 'person-facet', count: 1 }]);
+    expect(result.value.people).toEqual([{ personId: 'person-facet', displayName: 'person-facet', count: 1, fallbackIndex: 0 }]);
     expect(result.value.places).toEqual([{ name: 'Wrocław', country: 'Poland', countryCode: 'PL', count: 1 }]);
     expect(result.value.years).toEqual([{ year: '2026', count: 1 }]);
     expect(result.value.counts).toEqual({ total: 3, withGps: 1, withoutCaptureDate: 2, missing: 1, hidden: 0 });
@@ -3038,7 +3198,7 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
   it('shares the selected-variant COALESCE resolution SQL constant across listLocations, search, facets and the tag list', async () => {
     const source = await readFile(new URL('./global-catalog.ts', import.meta.url), 'utf8');
     const occurrences = source.match(/SELECTED_ANALYSIS_CONFIG_ID_SQL/g) ?? [];
-    expect(occurrences.length).toBe(5);
+    expect(occurrences.length).toBe(6);
   });
 });
 

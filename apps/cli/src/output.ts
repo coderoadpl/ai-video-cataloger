@@ -1,5 +1,5 @@
 import { EXIT_CODE_BY_ERROR_CODE, LEGACY_ERROR_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
-import type { AppError } from '@core/domain/index.js';
+import { benchmarkReportTable, type BenchmarkReport, type AppError } from '@core/domain/index.js';
 
 interface BaseEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -111,3 +111,14 @@ const writeJson = (value: unknown): void => {
 };
 
 const now = (): string => new Date().toISOString();
+
+export interface FacesBenchmarkEvent {
+  type: 'faces_benchmark';
+  timestamp: string;
+  data: BenchmarkReport;
+}
+
+export const emitFacesBenchmark = (json: boolean, report: BenchmarkReport): void => {
+  const event: FacesBenchmarkEvent = { type: 'faces_benchmark', timestamp: now(), data: report };
+  emitRaw(json, event, json ? '' : benchmarkReportTable(report));
+};

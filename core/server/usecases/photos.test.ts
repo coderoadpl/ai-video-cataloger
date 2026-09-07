@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { sha256Hex } from '@core/domain/sha256.js';
 import {
@@ -718,12 +718,12 @@ describe('runPhotoGridThumbsPass', () => {
     await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
     media.failFromFrame = true;
 
-    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+    const pass = await runPhotoGridThumbsPass(deps, { force: true });
 
     expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, failed: 1 });
   });
 
-  it('regenerates a grid thumb from the original photo when the proxy is a degenerate sub-512 source', async () => {
+  it('repairs a grid thumb from the original photo when the proxy is a degenerate sub-512 source', async () => {
     const { deps, fs, media } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'a' });
     await runPhotoScan(deps, { root: '/work/photos' });
@@ -733,7 +733,7 @@ describe('runPhotoGridThumbsPass', () => {
     media.dimensions.set(proxyPath, { width: 128, height: 70 });
     media.dimensions.set('/work/photos/a.jpg', { width: 4000, height: 3000 });
 
-    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+    const pass = await runPhotoGridThumbsPass(deps, { force: true });
 
     expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 1, skipped: 0, failed: 0 });
     expect(media.thumbnailFromFrameInputs.at(-1)).toEqual(
@@ -741,7 +741,7 @@ describe('runPhotoGridThumbsPass', () => {
     );
   });
 
-  it('removes a stale grid thumb and leaves it skipped when the proxy is degenerate and the original is unreachable', async () => {
+  it('repairs a stale grid thumb and leaves it skipped when the proxy is degenerate and the original is unreachable', async () => {
     const { deps, fs, media } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'a' });
     await runPhotoScan(deps, { root: '/work/photos' });
@@ -752,7 +752,7 @@ describe('runPhotoGridThumbsPass', () => {
     media.dimensions.set(proxyPath, { width: 128, height: 70 });
     await fs.deleteFile('/work/photos/a.jpg');
 
-    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+    const pass = await runPhotoGridThumbsPass(deps, { force: true });
 
     expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, skipped: 1, failed: 0 });
     await expect(fs.exists(gridPath)).resolves.toEqual({ ok: true, value: false });
@@ -1650,4 +1650,18 @@ describe('enqueuePhotoProcess', () => {
 
     expect(enqueued.ok).toBe(true);
   });
+});
+
+it('CP-07 skips photo metadata and media work for current cached thumbnails', async () => {
+  const { deps, fs, photos, media } = buildDeps();
+  fs.addFile('/work/photos/a.jpg', { content: 'a' });
+  await runPhotoScan(deps, { root: '/work/photos' });
+  await runPhotoGridThumbsPass(deps, { force: true });
+  const getPhoto = vi.spyOn(photos, 'getPhoto');
+  const probe = vi.spyOn(media, 'probe');
+  const generate = vi.spyOn(media, 'thumbnailFromFrame');
+  expect((await runPhotoGridThumbsPass(deps, { force: false })).ok).toBe(true);
+  expect(getPhoto).not.toHaveBeenCalled();
+  expect(probe).not.toHaveBeenCalled();
+  expect(generate).not.toHaveBeenCalled();
 });

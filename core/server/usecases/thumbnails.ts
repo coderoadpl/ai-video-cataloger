@@ -3,18 +3,20 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type FileSystemPort,
+  type GlobalCatalogStore,
   type JobExecutionContext,
   type JobsPort,
   type MediaPort,
 } from '../ports.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 import { discoverCatalogFolders, type DriveRunFailure } from './process-drive.js';
-import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { ensureGridThumbnail, hasCurrentGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { artifactPaths, gridThumbnailArtifactPath, thumbnailArtifactPath } from './shared.js';
 
 const maxFailures = 200;
 
 export interface ThumbnailsDeps {
+  globalCatalog?: GlobalCatalogStore | undefined;
   fs: FileSystemPort;
   media: MediaPort;
   jobs: JobsPort;
@@ -94,6 +96,14 @@ export const runThumbnailsPass = async (
     output.foldersScanned += 1;
     const root = await discoverArtifactRoot(deps.fs, folder.path);
     if (!root.ok) return root;
+    const stored = deps.globalCatalog === undefined ? ok([])
+      : await deps.globalCatalog.listVideoThumbnailFingerprints(folder.path);
+    if (!stored.ok) return stored;
+    const storedFingerprints = new Map<string, string>();
+    for (const file of stored.value) {
+      storedFingerprints.set(file.fileName, file.fingerprint);
+      if (file.finalName !== null) storedFingerprints.set(file.finalName, file.fingerprint);
+    }
     for (const videoPath of folder.videoPaths) {
       const cancelledFile = cancelled(progress);
       if (!cancelledFile.ok) return cancelledFile;
@@ -119,11 +129,24 @@ export const runThumbnailsPass = async (
             failed: output.failed,
           },
         });
+      const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
+      if (!input.force) {
+        const cached = await hasCurrentGridThumbnail(deps, gridThumbnailPath);
+        if (!cached.ok) return cached;
+        const cover = await deps.fs.isFile(thumbnailPath);
+        if (!cover.ok) return cover;
+        if (cached.value && cover.value) {
+          output.skipped += 1;
+          output.gridSkipped += 1;
+          continue;
+        }
+      }
       const framePath = await storedAnalysisFramePath(deps.fs, paths.framesDir);
       if (!framePath.ok) return framePath;
-      const fingerprint = await deps.fs.partialContentHash(videoPath);
+      const storedFingerprint = storedFingerprints.get(deps.fs.basename(videoPath));
+      const fingerprint = !input.force && storedFingerprint !== undefined
+        ? ok(storedFingerprint) : await deps.fs.partialContentHash(videoPath);
       if (!fingerprint.ok) return fingerprint;
-      const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
       const grid = await ensureGridThumbnail(deps, {
         videoPath,
         projectedFramePath: framePath.value,

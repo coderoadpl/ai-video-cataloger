@@ -34,21 +34,25 @@ export const getStatus = async (deps: StatusDeps, input: { folder?: string | und
   const folder = deps.fs.resolve(input.folder ?? deps.fs.cwd());
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;
-  const videos = await repository.value.listVideos();
-  if (!videos.ok) return videos;
+  try {
+    const videos = await repository.value.listVideos();
+    if (!videos.ok) return videos;
 
-  const outputVideos = videos.value.map((video) => ({
-    path: video.originalPath,
-    originalName: video.originalName,
-    newName: video.newName,
-    status: video.status,
-    statusLabel: statusLabel(video.status),
-    errorMessage: video.errorMessage,
-    createdAt: video.createdAt,
-    updatedAt: video.updatedAt,
-  }));
+    const outputVideos = videos.value.map((video) => ({
+      path: video.originalPath,
+      originalName: video.originalName,
+      newName: video.newName,
+      status: video.status,
+      statusLabel: statusLabel(video.status),
+      errorMessage: video.errorMessage,
+      createdAt: video.createdAt,
+      updatedAt: video.updatedAt,
+    }));
 
-  return ok({ videos: outputVideos, summary: summarize(outputVideos) });
+    return ok({ videos: outputVideos, summary: summarize(outputVideos) });
+  } finally {
+    await repository.value.close();
+  }
 };
 
 const summarize = (videos: StatusVideo[]): StatusOutput['summary'] => {

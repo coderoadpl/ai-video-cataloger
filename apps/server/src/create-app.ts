@@ -50,6 +50,7 @@ export const createApp = (config: AppConfig = {}, inMemoryDepsFactory?: InMemory
     },
     dispose: async () => {
       backupSchedule?.stop();
+      await deps.catalogs.dispose();
       await deps.photos.dispose();
       await deps.globalCatalog.dispose();
     },

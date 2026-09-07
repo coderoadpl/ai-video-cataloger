@@ -3,6 +3,8 @@ import path from 'node:path';
 import { sha256Hex } from '@core/domain/sha256.js';
 import {
   FACE_ENGINE_VERSION,
+  updateCentroid,
+  type GridThumbnailState,
   GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
   acceptsGpsWrite,
@@ -450,6 +452,8 @@ export class InMemoryFileSystem implements FileSystemPort {
 }
 
 export class InMemoryCatalogRepository implements CatalogRepository {
+  close(): Promise<Result<void, AppError>> { return Promise.resolve(ok(undefined)); }
+
   private records: Video[];
   private persistent = true;
 
@@ -554,6 +558,8 @@ export class InMemoryCatalogRepository implements CatalogRepository {
 }
 
 export class InMemoryCatalogs implements CatalogRepositoryFactory {
+  dispose(): Promise<Result<void, AppError>> { return Promise.resolve(ok(undefined)); }
+
   private readonly repositories = new Map<string, InMemoryCatalogRepository>();
   readonly openInputs: string[] = [];
 
@@ -1487,6 +1493,26 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(locations));
   }
 
+  private readonly gridThumbnailStates = new Map<string, GridThumbnailState>();
+
+  listGridThumbnailCandidates(outputPaths: readonly string[], generationVersion: number): Promise<Result<string[], AppError>> {
+    return Promise.resolve(ok(outputPaths.filter((outputPath) => {
+      const state = this.gridThumbnailStates.get(outputPath);
+      return state === undefined || state.generationVersion !== generationVersion || !state.primary;
+    })));
+  }
+
+  recordGridThumbnail(state: GridThumbnailState): Promise<Result<void, AppError>> {
+    this.gridThumbnailStates.set(state.outputPath, state);
+    return Promise.resolve(ok(undefined));
+  }
+
+  listVideoThumbnailFingerprints(folderPath: string): Promise<Result<{ fingerprint: string; fileName: string; finalName: string | null }[], AppError>> {
+    const folder = [...this.folders.values()].find((folder) => folder.currentPath === folderPath);
+    return Promise.resolve(ok([...this.files.values()].filter((file) => file.folderId === folder?.folderId)
+      .map((file) => ({ fingerprint: file.fingerprint, fileName: file.fileName, finalName: null }))));
+  }
+
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
     const records = [...this.files.values()]
       .filter((file) => file.folderId === folderId)
@@ -1667,7 +1693,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({ totalFiles: [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null).length, rows }));
   }
 
-  listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+  listLibraryFacets(hiddenPhotoFingerprints: readonly string[] = []): Promise<Result<LibraryFacets, AppError>> {
     const visibleFiles = [...this.files.values()].filter((file) => (file.hiddenAt ?? null) === null);
     const visibleFileByFingerprint = new Map(visibleFiles.map((file) => [file.fingerprint, file]));
     const tagCounts = new Map<string, number>();
@@ -1679,16 +1705,19 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .map(([name, count]) => ({ name, count }))
       .sort((left, right) => left.name.localeCompare(right.name));
 
-    const peopleCounts = new Map<string, number>();
+    const hidden = new Set(hiddenPhotoFingerprints);
+    const peopleCounts = new Map<string, Set<string>>();
+    const indices = new Map([...this.people.keys()].map((personId, index) => [personId, index]));
     for (const observation of this.faceObservations.values()) {
-      if (observation.personId === null) continue;
-      const file = this.files.get(observation.fingerprint);
-      if (file !== undefined && (file.hiddenAt ?? null) !== null) continue;
-      peopleCounts.set(observation.personId, (peopleCounts.get(observation.personId) ?? 0) + 1);
+      if (observation.personId === null || hidden.has(observation.fingerprint)) continue;
+      if ((this.files.get(observation.fingerprint)?.hiddenAt ?? null) !== null) continue;
+      const fingerprints = peopleCounts.get(observation.personId) ?? new Set<string>();
+      fingerprints.add(observation.fingerprint);
+      peopleCounts.set(observation.personId, fingerprints);
     }
     const people = [...peopleCounts.entries()]
-      .map(([personId, count]) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null, count }))
-      .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
+      .map(([personId, fingerprints]) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null, count: fingerprints.size, fallbackIndex: indices.get(personId) ?? 0 }))
+      .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.fallbackIndex - right.fallbackIndex);
 
     const placeCounts = new Map<string, { name: string; country: string | null; countryCode: string | null; count: number }>();
     for (const file of visibleFiles) {
@@ -2010,6 +2039,20 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(this.people.get(personId) ?? null));
   }
 
+  private readonly pendingFaceCrops = new Map<string, string | null>();
+
+  completeFaceCropCleanup(cropPath: string): Promise<Result<void, AppError>> {
+    this.pendingFaceCrops.delete(cropPath);
+    return Promise.resolve(ok(undefined));
+  }
+
+  updatePersonCentroid(personId: string, embedding: readonly number[]): Promise<Result<void, AppError>> {
+    const person = this.people.get(personId);
+    if (person === undefined) return Promise.resolve({ ok: false, error: appError('not_found', 'Person not found') });
+    this.people.set(personId, { ...person, centroid: updateCentroid(person.centroid, person.exemplarCount, embedding), exemplarCount: person.exemplarCount + 1 });
+    return Promise.resolve(ok(undefined));
+  }
+
   upsertPerson(person: Person): Promise<Result<void, AppError>> {
     this.people.set(person.personId, person);
     return Promise.resolve(ok(undefined));
@@ -2074,11 +2117,12 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
     const existing = this.people.get(personId);
-    if (existing === undefined) return Promise.resolve(ok({ personId, deleted: false, cropPaths: [], affectedFingerprints: [] }));
+    if (existing === undefined) return Promise.resolve(ok({ personId, deleted: false, cropPaths: [...this.pendingFaceCrops].filter(([, owner]) => owner === personId).map(([cropPath]) => cropPath), affectedFingerprints: [] }));
     const rows = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
     const cropPaths = rows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
     const affectedFingerprints = uniqueFingerprints(rows);
     for (const observation of rows) this.faceObservations.delete(observation.obsId);
+    for (const cropPath of cropPaths) this.pendingFaceCrops.set(cropPath, personId);
     this.people.delete(personId);
     return Promise.resolve(ok({ personId, deleted: true, cropPaths, affectedFingerprints }));
   }
@@ -2087,9 +2131,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const observationRows = [...this.faceObservations.values()];
     const peopleRows = [...this.people.values()];
     const cropPaths = observationRows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+    for (const cropPath of cropPaths) this.pendingFaceCrops.set(cropPath, null);
     this.faceObservations.clear();
     this.people.clear();
-    return Promise.resolve(ok({ peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths }));
+    return Promise.resolve(ok({ peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths: [...this.pendingFaceCrops.keys()] }));
   }
 
   faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {

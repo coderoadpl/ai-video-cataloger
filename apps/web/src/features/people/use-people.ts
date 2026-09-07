@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import { facesReclusterOutputSchema, type facesPeopleOutputSchema } from '@core/contract/index.js';
@@ -96,9 +96,8 @@ export const usePeople = ({
     || reclusterMutation.isPending;
 
   const invalidate = useCallback(async () => {
-    if (!guard.isMounted()) return;
     await queryClient.invalidateQueries();
-  }, [queryClient, guard]);
+  }, [queryClient]);
 
   const runJob = useCallback(
     (accepted: Promise<{ jobId: string }>, label: string, success: string, failure: string) => {
@@ -158,12 +157,15 @@ export const usePeople = ({
           log(success, 'success');
           setSelectedPersonIds([]);
           setMutationError(null);
-          await invalidate();
         } catch (error) {
           if (!guard.isMounted()) return;
-          const message = messageOf(error);
+          const applied = error instanceof ApiError && z.object({ applied: z.literal(true) }).safeParse(error.appError.details).success;
+          const message = applied ? `${success}. ${messageOf(error)}` : messageOf(error);
+          if (applied) setSelectedPersonIds([]);
           log(`${failure}: ${message}`, 'error');
           setMutationError(`${failure}: ${message}`);
+        } finally {
+          await invalidate();
         }
       })();
     },

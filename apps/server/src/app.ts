@@ -118,6 +118,17 @@ const readBody = async (context: BodyReader): Promise<Result<unknown, AppError>>
   }
 };
 
+const withFaceCatalogWriteLock = async <T>(deps: AppDeps, run: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
+  let applied = false;
+  const result = await withCatalogWriteLock(deps, async () => {
+    const mutation = await run();
+    applied = mutation.ok;
+    return mutation;
+  });
+  if (!result.ok && applied) return err(appError(result.error.code, result.error.message, { applied: true, phase: 'durability' }));
+  return result;
+};
+
 const withCatalogWriteLock = async <T>(
   deps: AppDeps,
   run: () => Promise<Result<T, AppError>>,
@@ -787,7 +798,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesName.output);
     const input = parseInput(API_ROUTES.facesName.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesName.output);
-    return respond(await withCatalogWriteLock(deps, () => facesName(deps, input.value)), API_ROUTES.facesName.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesName(deps, input.value)), API_ROUTES.facesName.output);
   });
 
   app.post(API_ROUTES.facesMerge.path, async (context) => {
@@ -795,7 +806,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesMerge.output);
     const input = parseInput(API_ROUTES.facesMerge.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesMerge.output);
-    return respond(await withCatalogWriteLock(deps, () => facesMerge(deps, input.value)), API_ROUTES.facesMerge.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesMerge(deps, input.value)), API_ROUTES.facesMerge.output);
   });
 
   app.post(API_ROUTES.facesForget.path, async (context) => {
@@ -803,7 +814,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesForget.output);
     const input = parseInput(API_ROUTES.facesForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesForget.output);
-    return respond(await withCatalogWriteLock(deps, () => facesForget(deps, input.value)), API_ROUTES.facesForget.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesForget(deps, input.value)), API_ROUTES.facesForget.output);
   });
 
   app.post(API_ROUTES.facesPurge.path, async (context) => {
@@ -811,7 +822,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesPurge.output);
     const input = parseInput(API_ROUTES.facesPurge.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesPurge.output);
-    return respond(await withCatalogWriteLock(deps, () => facesPurge(deps, input.value)), API_ROUTES.facesPurge.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPurge(deps, input.value)), API_ROUTES.facesPurge.output);
   });
 
   app.get(API_ROUTES.facesStatus.path, async () =>
