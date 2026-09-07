@@ -129,32 +129,38 @@ interface CachedCatalog {
   leases: number;
 }
 
+type OpenOutcome = { kind: 'opened'; repository: CatalogRepository | null } | { kind: 'all-leased' };
+
+export const CATALOG_LEASE_WAIT_TIMEOUT_MS = 30_000;
+
 export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
   private readonly opened = new Map<string, CachedCatalog>();
   private readonly maxOpen: number;
+  private readonly waitTimeoutMs: number;
+  private readonly idleWaiters = new Set<() => void>();
   private tail: Promise<void> = Promise.resolve();
   private disposed = false;
 
-  constructor(options: { maxOpen?: number } = {}) {
+  constructor(options: { maxOpen?: number; waitTimeoutMs?: number } = {}) {
     this.maxOpen = z.number().int().positive().parse(options.maxOpen ?? 8);
+    this.waitTimeoutMs = z.number().int().nonnegative().parse(options.waitTimeoutMs ?? CATALOG_LEASE_WAIT_TIMEOUT_MS);
   }
 
-  open(folder: string): Promise<Result<CatalogRepository, AppError>> {
-    return this.serial(async () => {
-      const opened = await this.openFolder(folder, false);
-      if (!opened.ok) return opened;
-      if (opened.value === null) return { ok: false, error: appError('internal', 'Catalog was not opened') };
-      return ok(opened.value);
-    });
+  async open(folder: string): Promise<Result<CatalogRepository, AppError>> {
+    const opened = await this.openWhenLeasable(folder, false);
+    if (!opened.ok) return opened;
+    if (opened.value === null) return { ok: false, error: appError('internal', 'Catalog was not opened') };
+    return ok(opened.value);
   }
 
   openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
-    return this.serial(() => this.openFolder(folder, true));
+    return this.openWhenLeasable(folder, true);
   }
 
   dispose(): Promise<Result<void, AppError>> {
     return this.serial(async () => {
       this.disposed = true;
+      this.wakeIdleWaiters();
       for (const [folder, entry] of this.opened) {
         const closed = await entry.repository.close();
         if (!closed.ok) return closed;
@@ -164,16 +170,55 @@ export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
     });
   }
 
-  private async openFolder(folder: string, existingOnly: boolean): Promise<Result<CatalogRepository | null, AppError>> {
+  private async openWhenLeasable(
+    folder: string,
+    existingOnly: boolean,
+  ): Promise<Result<CatalogRepository | null, AppError>> {
+    const deadline = Date.now() + this.waitTimeoutMs;
+    for (;;) {
+      const attempt = await this.serial(() => this.openFolder(folder, existingOnly));
+      if (!attempt.ok) return attempt;
+      if (attempt.value.kind === 'opened') return ok(attempt.value.repository);
+      if (!await this.waitForIdleLease(deadline)) {
+        return { ok: false, error: appError('conflict', 'All catalog cache entries are leased') };
+      }
+    }
+  }
+
+  private waitForIdleLease(deadline: number): Promise<boolean> {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const wake = (): void => {
+        if (timer !== null) clearTimeout(timer);
+        this.idleWaiters.delete(wake);
+        resolve(true);
+      };
+      timer = setTimeout(() => {
+        this.idleWaiters.delete(wake);
+        resolve(false);
+      }, remaining);
+      this.idleWaiters.add(wake);
+    });
+  }
+
+  private wakeIdleWaiters(): void {
+    for (const wake of [...this.idleWaiters]) wake();
+  }
+
+  private async openFolder(folder: string, existingOnly: boolean): Promise<Result<OpenOutcome, AppError>> {
     if (this.disposed) return { ok: false, error: appError('conflict', 'Catalog factory is disposed') };
     const normalizedFolder = path.resolve(z.string().parse(folder));
     const canonicalFolder = realpathSync.native(normalizedFolder);
     let entry = this.opened.get(canonicalFolder);
     if (entry === undefined) {
-      if (existingOnly && !existsSync(catalogDatabasePath(normalizedFolder))) return ok(null);
+      if (existingOnly && !existsSync(catalogDatabasePath(normalizedFolder))) {
+        return ok({ kind: 'opened', repository: null });
+      }
       if (this.opened.size >= this.maxOpen) {
         const idle = [...this.opened].find(([, candidate]) => candidate.leases === 0);
-        if (idle === undefined) return { ok: false, error: appError('conflict', 'All catalog cache entries are leased') };
+        if (idle === undefined) return ok({ kind: 'all-leased' });
         const closed = await idle[1].repository.close();
         if (!closed.ok) return closed;
         this.opened.delete(idle[0]);
@@ -189,7 +234,13 @@ export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
     this.opened.set(canonicalFolder, entry);
     entry.leases += 1;
     const leasedEntry = entry;
-    return ok(new CatalogLease(entry.repository, () => { leasedEntry.leases -= 1; }));
+    return ok({
+      kind: 'opened',
+      repository: new CatalogLease(entry.repository, () => {
+        leasedEntry.leases -= 1;
+        this.wakeIdleWaiters();
+      }),
+    });
   }
 
   private async serial<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {

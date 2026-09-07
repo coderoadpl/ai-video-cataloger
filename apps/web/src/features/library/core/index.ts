@@ -10,6 +10,7 @@ export {
   buildRows,
   columnsForWidth,
   rowBounds,
+  renderedRowIndexes,
   visibleRowRange,
   type LibraryGridRow,
   type LibraryRowBound,

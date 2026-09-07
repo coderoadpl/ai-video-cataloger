@@ -35,7 +35,7 @@ import {
   libraryHideOutputSchema,
   libraryPreviewInputSchema,
   libraryPreviewOutputSchema,
-  libraryPreviewPersonSchema,
+  catalogFilePersonSchema,
   librarySelectionPreviewInputSchema,
   librarySelectionPreviewOutputSchema,
   libraryTrashSummarySchema,
@@ -550,9 +550,10 @@ describe('route schemas', () => {
   it('requires a non-empty fingerprint for the library preview route, and validates its output shape', () => {
     expect(libraryPreviewInputSchema.safeParse({ fingerprint: '' }).success).toBe(false);
     expect(libraryPreviewInputSchema.parse({ fingerprint: 'fp-1' })).toEqual({ fingerprint: 'fp-1' });
-    expect(libraryPreviewPersonSchema.parse({ personId: 'person-a', displayName: null })).toEqual({
+    expect(catalogFilePersonSchema.parse({ personId: 'person-a', displayName: null })).toEqual({
       personId: 'person-a',
       displayName: null,
+      fallbackIndex: 0,
     });
     const output = libraryPreviewOutputSchema.parse({
       fingerprint: 'fp-1',
@@ -569,7 +570,7 @@ describe('route schemas', () => {
       rotation: 0,
       people: [{ personId: 'person-a', displayName: 'Ada' }],
     });
-    expect(output.people).toEqual([{ personId: 'person-a', displayName: 'Ada' }]);
+    expect(output.people).toEqual([{ personId: 'person-a', displayName: 'Ada', fallbackIndex: 0 }]);
     expect(output.transcriptSegments).toEqual([{ start: 0, end: 1, text: 'hello' }]);
     expect(output.width).toBe(1920);
     expect(output.analysis).toBeNull();

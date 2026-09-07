@@ -6,6 +6,7 @@ import { libraryTrashSummaryOfDetails } from '@core/contract/index.js';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
+import { personLabel } from '../../i18n/person-label.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
@@ -205,7 +206,7 @@ export const LibraryView = ({
     personDisplayName: (personId: string) => {
       const person = facetPeopleById.get(personId);
       if (person === undefined) return null;
-      return person.displayName ?? dictionary.people.personName(person.fallbackIndex);
+      return personLabel(dictionary, person);
     },
   }), [dictionary, facetPeopleById]);
   const photoRoots = usePhotoRoots({ active });

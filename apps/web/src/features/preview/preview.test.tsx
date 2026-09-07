@@ -132,6 +132,16 @@ describe('BrowsePreview', () => {
     await waitFor(() => expect(screen.getByTestId('preview-person-chip').textContent).toBe('Ada'));
   });
 
+  it('UI-029 names an unnamed person after its fallback index, never after its raw identifier', async () => {
+    stubPreviewDetail({ people: [{ personId: 'person-7f3a91', displayName: null, fallbackIndex: 2 }] });
+    renderThemed(<BrowsePreview item={previewItem()} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-person-chip').textContent).toBe(en.people.personName(2));
+    });
+    expect(screen.queryByText('person-7f3a91')).toBeNull();
+  });
+
   it('renders coordinates only when the item carries gps', async () => {
     stubPreviewDetail();
     renderThemed(<BrowsePreview item={previewItem({ gps: { lat: 51.1, lon: 17.2 } })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);

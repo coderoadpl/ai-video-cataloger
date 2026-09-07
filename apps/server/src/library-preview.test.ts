@@ -83,7 +83,7 @@ describe('GET /api/library/preview', () => {
         width: null,
         height: null,
         rotation: null,
-        people: [{ personId: 'person-a', displayName: 'Ada' }],
+        people: [{ personId: 'person-a', displayName: 'Ada', fallbackIndex: 0 }],
         analysis: { label: 'settings partly unknown', createdAt: '2026-01-02T00:00:00.000Z' },
       },
     });

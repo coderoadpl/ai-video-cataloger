@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LibraryDaySection, LibraryItem } from './day-groups.js';
-import { buildRows, columnsForWidth, visibleRowRange, type LibraryGridRow } from './grid-rows.js';
+import { buildRows, columnsForWidth, renderedRowIndexes, visibleRowRange, type LibraryGridRow } from './grid-rows.js';
 
 const stubItem = (fingerprint: string): LibraryItem => ({
   media: 'video',
@@ -91,5 +91,20 @@ describe('visibleRowRange', () => {
 
     const atBottom = visibleRowRange(10_000, 50, 100, 40, rows, 5);
     expect(atBottom.last).toBe(rows.length - 1);
+  });
+});
+
+describe('renderedRowIndexes', () => {
+  it('renders the visible window when no row is active', () => {
+    expect(renderedRowIndexes({ first: 4, last: 7 }, null)).toEqual([4, 5, 6, 7]);
+  });
+
+  it('keeps the visible window untouched when the active row is inside it', () => {
+    expect(renderedRowIndexes({ first: 4, last: 7 }, 5)).toEqual([4, 5, 6, 7]);
+  });
+
+  it('NEW-01 adds only the active row, never the interval up to it', () => {
+    expect(renderedRowIndexes({ first: 600, last: 603 }, 1)).toEqual([600, 601, 602, 603, 1]);
+    expect(renderedRowIndexes({ first: 2, last: 5 }, 640)).toEqual([2, 3, 4, 5, 640]);
   });
 });

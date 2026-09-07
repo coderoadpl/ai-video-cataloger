@@ -3227,8 +3227,8 @@ describe('SqlJsGlobalCatalogStore listPeopleForFile', () => {
     expect(found).toEqual({
       ok: true,
       value: [
-        { personId: 'person-a', displayName: 'person-a' },
-        { personId: 'person-b', displayName: 'person-b' },
+        { personId: 'person-a', displayName: 'person-a', fallbackIndex: 0 },
+        { personId: 'person-b', displayName: 'person-b', fallbackIndex: 1 },
       ],
     });
     expect(empty).toEqual({ ok: true, value: [] });

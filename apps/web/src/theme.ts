@@ -179,8 +179,12 @@ const CHIP_ICON_INSET = 8;
 const CHIP_ICON_GAP = -4;
 export const CHIP_ICON_SPACING = { marginLeft: CHIP_ICON_INSET, marginRight: CHIP_ICON_GAP } as const;
 const STATUS_CHIP_ICON_GAP = 3;
-export const STATUS_CHIP_ICON_SPACING = { marginLeft: CHIP_ICON_INSET, marginRight: STATUS_CHIP_ICON_GAP } as const;
-export const STATUS_CHIP_ICON_SX = { color: 'inherit', fontSize: '0.9rem', ...STATUS_CHIP_ICON_SPACING } as const;
+export const STATUS_CHIP_ICON_SX = {
+  color: 'inherit',
+  fontSize: '0.9rem',
+  marginLeft: `${String(CHIP_ICON_INSET)}px`,
+  marginRight: `${String(STATUS_CHIP_ICON_GAP)}px`,
+} as const;
 
 export const COMPACT_LABEL_FONT_SIZE = '0.6875rem';
 

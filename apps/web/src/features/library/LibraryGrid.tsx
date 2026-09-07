@@ -12,6 +12,7 @@ import {
   columnsForWidth,
   gridTileRows,
   moveGridFocus,
+  renderedRowIndexes,
   rowBounds,
   tileRowIndexOf,
   visibleRowRange,
@@ -46,6 +47,11 @@ export interface LibrarySelectionModifiers {
 
 const offlineLabel = (dictionary: Dictionary, offlineReason: LibraryOfflineReason): string =>
   offlineReason === 'file-missing' ? dictionary.library.missingBadge : dictionary.library.offlineFolderBadge;
+
+const INTERACTIVE_DESCENDANT = 'input, button, textarea, select, a[href], [contenteditable="true"]';
+
+const fromInteractiveDescendant = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest(INTERACTIVE_DESCENDANT) !== null;
 
 const MOVE_FOR_KEY: Record<string, GridMove> = {
   ArrowLeft: 'left',
@@ -150,6 +156,7 @@ const LibraryGridView = ({
   };
 
   const onGridKeyDown = (event: KeyboardEvent): void => {
+    if (fromInteractiveDescendant(event.target)) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       onSelectAll();
@@ -189,8 +196,10 @@ const LibraryGridView = ({
     [onSelect],
   );
 
-  const first = activeRowIndex === null ? range.first : Math.min(range.first, activeRowIndex);
-  const last = activeRowIndex === null ? range.last : Math.max(range.last, activeRowIndex);
+  const renderedRows = useMemo(
+    () => renderedRowIndexes(range, activeRowIndex),
+    [activeRowIndex, range],
+  );
 
   return (
     <Box
@@ -208,8 +217,9 @@ const LibraryGridView = ({
       sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ position: 'relative', height: range.totalHeight }}>
-        {rows.slice(first, last + 1).map((row, offsetIndex) => {
-          const rowIndex = first + offsetIndex;
+        {renderedRows.map((rowIndex) => {
+          const row = rows[rowIndex];
+          if (row === undefined) return null;
           const section = sections[row.section];
           const bound = bounds[rowIndex];
           if (section === undefined || bound === undefined) return null;

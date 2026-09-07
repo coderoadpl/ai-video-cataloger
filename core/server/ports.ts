@@ -269,6 +269,7 @@ export interface LibraryFacetCounts {
 export interface CatalogFilePerson {
   personId: string;
   displayName: string | null;
+  fallbackIndex: number;
 }
 
 export interface LibraryFacets {

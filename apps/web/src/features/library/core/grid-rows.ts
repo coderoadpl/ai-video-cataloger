@@ -80,3 +80,15 @@ export const visibleRowRange = (
   return { first, last, topOffset: bounds[first]?.offset ?? 0, totalHeight };
 };
 
+
+export const renderedRowIndexes = (
+  range: Pick<LibraryVisibleRowRange, 'first' | 'last'>,
+  activeRowIndex: number | null,
+): number[] => {
+  const indexes: number[] = [];
+  for (let index = range.first; index <= range.last; index += 1) indexes.push(index);
+  if (activeRowIndex !== null && (activeRowIndex < range.first || activeRowIndex > range.last)) {
+    indexes.push(activeRowIndex);
+  }
+  return indexes;
+};
