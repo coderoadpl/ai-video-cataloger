@@ -9,6 +9,13 @@ export interface CatalogLocationsDeps {
   fs: FileSystemPort;
 }
 
+export interface CatalogLocationFolder {
+  folderId: string;
+  currentPath: string;
+  displayName: string;
+  online: boolean;
+}
+
 export interface CatalogLocation {
   fingerprint: string;
   media: 'video' | 'photo';
@@ -18,12 +25,7 @@ export interface CatalogLocation {
   lat: number;
   lon: number;
   missing: boolean;
-  folder: {
-    folderId: string;
-    currentPath: string;
-    displayName: string;
-    online: boolean;
-  };
+  folderId: string;
   source: GpsSource | null;
   accuracyM: number | null;
   intervalKind: TimelineIntervalKind | null;
@@ -35,6 +37,7 @@ export interface CatalogLocationsOutput {
   locatedFiles: number;
   totalPhotos: number;
   locatedPhotos: number;
+  folders: Record<string, CatalogLocationFolder>;
   locations: CatalogLocation[];
 }
 
@@ -58,9 +61,23 @@ export const catalogLocations = async (
   };
 
   const locations: CatalogLocation[] = [];
-  for (const row of snapshot.value.rows) {
-    const online = await resolveOnline(row.folder.currentPath);
+  const folders: Record<string, CatalogLocationFolder> = {};
+  const addFolder = async (folder: { folderId: string; currentPath: string; displayName: string }): Promise<Result<string, AppError>> => {
+    const cached = folders[folder.folderId];
+    if (cached !== undefined) return ok(cached.folderId);
+    const online = await resolveOnline(folder.currentPath);
     if (!online.ok) return online;
+    folders[folder.folderId] = {
+      folderId: folder.folderId,
+      currentPath: folder.currentPath,
+      displayName: folder.displayName,
+      online: online.value,
+    };
+    return ok(folder.folderId);
+  };
+  for (const row of snapshot.value.rows) {
+    const folderId = await addFolder(row.folder);
+    if (!folderId.ok) return folderId;
     locations.push({
       fingerprint: row.fingerprint,
       media: 'video',
@@ -70,12 +87,7 @@ export const catalogLocations = async (
       lat: row.lat,
       lon: row.lon,
       missing: row.missing,
-      folder: {
-        folderId: row.folder.folderId,
-        currentPath: row.folder.currentPath,
-        displayName: row.folder.displayName,
-        online: online.value,
-      },
+      folderId: folderId.value,
       source: row.source,
       accuracyM: row.accuracyM,
       intervalKind: row.intervalKind,
@@ -85,8 +97,8 @@ export const catalogLocations = async (
 
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
   for (const row of photoSnapshot.value.rows) {
-    const online = await resolveOnline(row.folder.currentPath);
-    if (!online.ok) return online;
+    const folderId = await addFolder(row.folder);
+    if (!folderId.ok) return folderId;
     locations.push({
       fingerprint: row.fingerprint,
       media: 'photo',
@@ -96,12 +108,7 @@ export const catalogLocations = async (
       lat: row.lat,
       lon: row.lon,
       missing: row.missing,
-      folder: {
-        folderId: row.folder.folderId,
-        currentPath: row.folder.currentPath,
-        displayName: row.folder.displayName,
-        online: online.value,
-      },
+      folderId: folderId.value,
       source: row.source,
       accuracyM: row.accuracyM,
       intervalKind: row.intervalKind,
@@ -114,6 +121,7 @@ export const catalogLocations = async (
     locatedFiles: snapshot.value.rows.length,
     totalPhotos: photoSnapshot.value.totalPhotos,
     locatedPhotos: photoSnapshot.value.rows.length,
+    folders,
     locations,
   });
 };

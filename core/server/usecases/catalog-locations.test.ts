@@ -114,7 +114,7 @@ describe('catalogLocations', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toEqual({ totalFiles: 0, locatedFiles: 0, totalPhotos: 0, locatedPhotos: 0, locations: [] });
+    expect(result.value).toEqual({ totalFiles: 0, locatedFiles: 0, totalPhotos: 0, locatedPhotos: 0, folders: {}, locations: [] });
   });
 
   it('returns only files that carry GPS, with the catalog total', async () => {
@@ -143,12 +143,15 @@ describe('catalogLocations', () => {
       lat: 50,
       lon: 19,
       missing: false,
-      folder: { folderId: folderA.folderId, currentPath: folderA.currentPath, displayName: folderA.displayName, online: true },
+      folderId: folderA.folderId,
       source: null,
       accuracyM: null,
       intervalKind: null,
       place: null,
     }]);
+    expect(result.value.folders).toEqual({
+      [folderA.folderId]: { folderId: folderA.folderId, currentPath: folderA.currentPath, displayName: folderA.displayName, online: true },
+    });
   });
 
   it('marks a folder offline when its path is absent on disk', async () => {
@@ -162,7 +165,7 @@ describe('catalogLocations', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.locations[0]?.folder.online).toBe(false);
+    expect(result.value.folders[folderB.folderId]?.online).toBe(false);
   });
 
   it('flags a file marked missing', async () => {
@@ -236,6 +239,7 @@ describe('catalogLocations', () => {
     expect(result.value.locations.map((location) => location.media)).toEqual(['video', 'video', 'photo', 'photo']);
     const photoLocation = result.value.locations.find((location) => location.fingerprint === 'fp-photo-1');
     expect(photoLocation).toMatchObject({ media: 'photo', finalName: null, fileName: 'a.jpg', lat: 3, lon: 3 });
+    expect(Object.keys(result.value.folders).sort()).toEqual([folderA.folderId, photoFolder.folderId].sort());
   });
 
   it('propagates a photo store error without throwing', async () => {

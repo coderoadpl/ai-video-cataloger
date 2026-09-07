@@ -140,6 +140,10 @@ describe('SqlJsPhotosStore', () => {
       'idx_photo_paths_folder',
       'idx_photo_paths_path',
       'idx_photos_captured_at',
+      'idx_photos_collection_all_captured_desc',
+      'idx_photos_collection_hidden_captured_desc',
+      'idx_photos_collection_only_hidden_captured_desc',
+      'idx_photos_collection_visible_captured_desc',
       'idx_photos_current_path',
       'idx_photos_folder',
       'idx_photos_proxy_state_path',
@@ -176,6 +180,10 @@ describe('SqlJsPhotosStore', () => {
 
     expect(indexes.map((row) => row[0])).toEqual([
       'idx_photos_captured_at',
+      'idx_photos_collection_all_captured_desc',
+      'idx_photos_collection_hidden_captured_desc',
+      'idx_photos_collection_only_hidden_captured_desc',
+      'idx_photos_collection_visible_captured_desc',
       'idx_photos_current_path',
       'idx_photos_folder',
       'idx_photos_proxy_state_path',

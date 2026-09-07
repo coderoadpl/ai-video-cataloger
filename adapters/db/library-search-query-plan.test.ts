@@ -23,12 +23,20 @@ vi.mock('sql.js', async () => {
     default: async (config: Parameters<typeof actual.default>[0]) => {
       const SQL = await actual.default(config);
       const exec = SQL.Database.prototype.exec;
+      const prepare = SQL.Database.prototype.prepare;
       SQL.Database.prototype.exec = function patched(
         this: InstanceType<typeof SQL.Database>,
         ...args: [string, Record<string, SqlValue> | undefined]
       ) {
         captured.statements.push({ sql: args[0], params: args[1] });
         return exec.apply(this, args);
+      };
+      SQL.Database.prototype.prepare = function patched(
+        this: InstanceType<typeof SQL.Database>,
+        ...args: [string, Record<string, SqlValue> | undefined]
+      ) {
+        captured.statements.push({ sql: args[0], params: args[1] });
+        return prepare.apply(this, args);
       };
       return SQL;
     },
@@ -262,6 +270,111 @@ describe('full-text collection queries', () => {
     ]) {
       const plan = await planLines(store.databasePath(), capturedMatching(needles));
       expect(plan[0]?.startsWith('SCAN photo_search_documents_fts')).toBe(true);
+    }
+  });
+
+  it('counts video locations with COUNT instead of materializing visible files', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.withBatch(async () => {
+      for (let index = 0; index < 12; index += 1) {
+        const file = await store.upsertFile(fileOf(index));
+        if (!file.ok) return file;
+      }
+      return { ok: true as const, value: undefined };
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    captured.statements.length = 0;
+    const locations = await store.listLocations();
+    expect(locations.ok && locations.value.totalFiles).toBe(12);
+
+    expect(captured.statements.some((statement) =>
+      statement.sql.trimStart().startsWith('SELECT COUNT(*)')
+      && statement.sql.includes('FROM files')
+      && statement.sql.includes('hidden_at IS NULL'))).toBe(true);
+  });
+
+  it('counts zero-limit relevance video searches without ranking or hydrating matches', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.withBatch(async () => {
+      for (let index = 0; index < 12; index += 1) {
+        const file = await store.upsertFile(fileOf(index));
+        if (!file.ok) return file;
+        const analysis = await store.upsertAnalysis({
+          fingerprint: `fp-${String(index)}`,
+          finalName: null,
+          description: 'wakacje nad jeziorem',
+          transcript: 'wakacje',
+          language: 'pl',
+          tags: ['wakacje'],
+        });
+        if (!analysis.ok) return analysis;
+      }
+      return { ok: true as const, value: undefined };
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    captured.statements.length = 0;
+    const searched = await store.search({
+      match: 'wakacj*',
+      rankingTerms: ['wakacj'],
+      filters: EMPTY_FILTERS,
+      sort: 'relevance',
+      limit: 0,
+      offset: 0,
+      after: null,
+    });
+    expect(searched).toMatchObject({ ok: true, value: { total: 12, rows: [] } });
+
+    const matchSql = [...new Set(captured.statements
+      .filter((statement) => statement.sql.includes('search_documents_fts MATCH'))
+      .map((statement) => statement.sql))];
+    expect(matchSql).toHaveLength(1);
+    expect(matchSql[0]?.trimStart().startsWith('SELECT COUNT(*)')).toBe(true);
+  });
+
+  it('orders captured-date video pages from indexes for each visibility scope', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.withBatch(async () => {
+      for (let index = 0; index < 24; index += 1) {
+        const file = await store.upsertFile(fileOf(index));
+        if (!file.ok) return file;
+        const analysis = await store.upsertAnalysis({
+          fingerprint: `fp-${String(index)}`,
+          finalName: null,
+          description: 'indexed',
+          transcript: 'indexed',
+          language: 'pl',
+          tags: ['indexed'],
+        });
+        if (!analysis.ok) return analysis;
+      }
+      return { ok: true as const, value: undefined };
+    });
+    expect((await store.setHidden(['fp-1', 'fp-3'], 1)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    for (const hidden of ['exclude', 'only', 'include'] as const) {
+      captured.statements.length = 0;
+      const searched = await store.search({
+        match: null,
+        rankingTerms: [],
+        filters: { ...EMPTY_FILTERS, hidden },
+        sort: 'captured_desc',
+        limit: 6,
+        offset: 0,
+        after: null,
+      });
+      expect(searched.ok && searched.value.rows).toHaveLength(hidden === 'only' ? 2 : 6);
+      const plan = await planLines(store.databasePath(), capturedMatching(['ORDER BY f.captured_at IS NULL']));
+      expect(plan.some((line) => line.includes('TEMP B-TREE FOR ORDER BY'))).toBe(false);
+      expect(plan.some((line) => line.includes('captured_desc'))).toBe(true);
     }
   });
 });

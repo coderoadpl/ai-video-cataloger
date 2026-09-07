@@ -1056,6 +1056,55 @@ describe('route schemas', () => {
       expect(parsed.locations[0]?.missing).toBe(false);
     });
 
+    it('expands the compact location envelope for clients', () => {
+      const parsed = catalogLocationsOutputSchema.parse({
+        totalFiles: 3752,
+        locatedFiles: 1,
+        folders: {
+          [validLocation.folder.folderId]: validLocation.folder,
+        },
+        locations: [{
+          fingerprint: validLocation.fingerprint,
+          media: 'video',
+          fileName: validLocation.fileName,
+          finalName: validLocation.finalName,
+          thumbPath: null,
+          lat: validLocation.lat,
+          lon: validLocation.lon,
+          missing: validLocation.missing,
+          folderId: validLocation.folder.folderId,
+          source: validLocation.source,
+          accuracyM: validLocation.accuracyM,
+          intervalKind: validLocation.intervalKind,
+          place: validLocation.place,
+        }],
+      });
+      expect(parsed.locations[0]?.folder).toEqual(validLocation.folder);
+    });
+
+    it('rejects a compact location whose folder is absent from the folder map', () => {
+      expect(catalogLocationsOutputSchema.safeParse({
+        totalFiles: 1,
+        locatedFiles: 1,
+        folders: {},
+        locations: [{
+          fingerprint: validLocation.fingerprint,
+          media: 'video',
+          fileName: validLocation.fileName,
+          finalName: validLocation.finalName,
+          thumbPath: null,
+          lat: validLocation.lat,
+          lon: validLocation.lon,
+          missing: validLocation.missing,
+          folderId: validLocation.folder.folderId,
+          source: validLocation.source,
+          accuracyM: validLocation.accuracyM,
+          intervalKind: validLocation.intervalKind,
+          place: validLocation.place,
+        }],
+      }).success).toBe(false);
+    });
+
     it('rejects an out-of-range latitude or longitude', () => {
       expect(catalogLocationsOutputSchema.safeParse({
         totalFiles: 1,

@@ -2093,6 +2093,13 @@ export const catalogLocationPlaceSchema = z.object({
   dataset: z.string().min(1),
 });
 
+export const catalogLocationFolderSchema = z.object({
+  folderId: folderIdSchema,
+  currentPath: z.string().min(1),
+  displayName: z.string(),
+  online: z.boolean(),
+}).strict();
+
 export const catalogLocationSchema = z.object({
   fingerprint: z.string().min(1),
   media: z.enum(['video', 'photo']).default('video'),
@@ -2102,25 +2109,69 @@ export const catalogLocationSchema = z.object({
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   missing: z.boolean(),
-  folder: z.object({
-    folderId: folderIdSchema,
-    currentPath: z.string().min(1),
-    displayName: z.string(),
-    online: z.boolean(),
-  }),
+  folder: catalogLocationFolderSchema,
   source: z.enum(['camera', 'timeline', 'manual']).nullable(),
   accuracyM: z.number().nonnegative().nullable(),
   intervalKind: z.enum(['visit', 'activity', 'path']).nullable(),
   place: catalogLocationPlaceSchema.nullable(),
 }).strict();
 
-export const catalogLocationsOutputSchema = z.object({
+const catalogLocationCompactSchema = catalogLocationSchema.omit({ folder: true }).extend({
+  folderId: folderIdSchema,
+}).strict();
+
+const catalogLocationsLegacyOutputSchema = z.object({
   totalFiles: z.number().int().nonnegative(),
   locatedFiles: z.number().int().nonnegative(),
   totalPhotos: z.number().int().nonnegative().default(0),
   locatedPhotos: z.number().int().nonnegative().default(0),
   locations: z.array(catalogLocationSchema),
 }).strict();
+
+const catalogLocationsCompactOutputSchema = z.object({
+  totalFiles: z.number().int().nonnegative(),
+  locatedFiles: z.number().int().nonnegative(),
+  totalPhotos: z.number().int().nonnegative().default(0),
+  locatedPhotos: z.number().int().nonnegative().default(0),
+  folders: z.record(folderIdSchema, catalogLocationFolderSchema),
+  locations: z.array(catalogLocationCompactSchema),
+}).strict();
+
+export const catalogLocationsOutputSchema = z.union([
+  catalogLocationsLegacyOutputSchema,
+  catalogLocationsCompactOutputSchema,
+]).transform((value, context) => {
+  if (!('folders' in value)) return value;
+  const locations = value.locations.map((location) => {
+    const folder = value.folders[location.folderId];
+    if (folder === undefined) {
+      context.addIssue({ code: 'custom', message: 'Location references an unknown folder' });
+      return z.NEVER;
+    }
+    return {
+      fingerprint: location.fingerprint,
+      media: location.media,
+      fileName: location.fileName,
+      finalName: location.finalName,
+      thumbPath: location.thumbPath,
+      lat: location.lat,
+      lon: location.lon,
+      missing: location.missing,
+      folder,
+      source: location.source,
+      accuracyM: location.accuracyM,
+      intervalKind: location.intervalKind,
+      place: location.place,
+    };
+  });
+  return {
+    totalFiles: value.totalFiles,
+    locatedFiles: value.locatedFiles,
+    totalPhotos: value.totalPhotos,
+    locatedPhotos: value.locatedPhotos,
+    locations,
+  };
+});
 
 export const libraryFacetTagSchema = z.object({
   name: z.string().min(1),

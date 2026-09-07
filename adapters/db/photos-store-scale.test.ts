@@ -22,12 +22,20 @@ vi.mock('sql.js', async () => {
     default: async (config: Parameters<typeof actual.default>[0]) => {
       const SQL = await actual.default(config);
       const exec = SQL.Database.prototype.exec;
+      const prepare = SQL.Database.prototype.prepare;
       SQL.Database.prototype.exec = function patched(
         this: InstanceType<typeof SQL.Database>,
         ...args: [string, Record<string, SqlValue> | undefined]
       ) {
         captured.statements.push({ sql: args[0], params: args[1] });
         return exec.apply(this, args);
+      };
+      SQL.Database.prototype.prepare = function patched(
+        this: InstanceType<typeof SQL.Database>,
+        ...args: [string, Record<string, SqlValue> | undefined]
+      ) {
+        captured.statements.push({ sql: args[0], params: args[1] });
+        return prepare.apply(this, args);
       };
       return SQL;
     },
@@ -243,4 +251,176 @@ describe('photos store at scale', () => {
     console.log(`photos scale: counts ${String(countsMs)}ms, page ${String(pageMs)}ms, sightings ${String(sightingsMs)}ms`);
     expect(Math.max(countsMs, pageMs, sightingsMs)).toBeLessThan(2_000);
   }, scaledTimeout(120_000));
+
+  it('counts photo locations with COUNT instead of materializing visible photos', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const folder = folderOf('a', '/media/a');
+    await seed(store, folder, 12);
+    expect((await store.flush()).ok).toBe(true);
+
+    captured.statements.length = 0;
+    const locations = await store.listPhotoLocations();
+    expect(locations.ok && locations.value.totalPhotos).toBe(12);
+
+    expect(captured.statements.some((statement) =>
+      statement.sql.trimStart().startsWith('SELECT COUNT(*)')
+      && statement.sql.includes('FROM photos')
+      && statement.sql.includes('hidden_at IS NULL'))).toBe(true);
+  });
+
+  it('counts zero-limit relevance collection pages without ranking or hydrating matches', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const folder = folderOf('a', '/media/a');
+    await seed(store, folder, 12);
+    expect((await store.upsertAnalysisConfig({
+      configId: 'cfg_000000000001',
+      descriptorJson: '{"analyzer":"harness"}',
+      label: 'harness',
+      now: '2026-01-01T00:00:00.000Z',
+    })).ok).toBe(true);
+    for (let index = 0; index < 12; index += 1) {
+      const fingerprint = photoOf(index, folder).fingerprint;
+      expect((await store.recordPhotoAnalysis({
+        fingerprint,
+        configId: 'cfg_000000000001',
+        description: 'wakacje',
+        scene: 'outdoor',
+        quality: 'good',
+        language: 'pl',
+        analyzer: 'harness',
+        model: 'harness-1',
+        batchSize: 1,
+        usageJson: null,
+        tags: ['wakacje'],
+        createdAt: '2026-01-02T00:00:00.000Z',
+      })).ok).toBe(true);
+    }
+
+    captured.statements.length = 0;
+    const page = await store.collectionPage({
+      match: 'wakacj*',
+      rankingTerms: ['wakacj'],
+      from: null,
+      to: null,
+      folderId: null,
+      fingerprints: null,
+      tagTermSets: [],
+      excludeMissing: false,
+      hidden: 'exclude',
+      sort: 'relevance',
+      limit: 0,
+      offset: 0,
+      after: null,
+    });
+    expect(page).toMatchObject({ ok: true, value: { total: 12, rows: [] } });
+
+    const matchSql = [...new Set(captured.statements
+      .filter((statement) => statement.sql.includes('photo_search_documents_fts MATCH'))
+      .map((statement) => statement.sql))];
+    expect(matchSql).toHaveLength(1);
+    expect(matchSql[0]?.trimStart().startsWith('SELECT COUNT(*)')).toBe(true);
+  });
+
+  it('hydrates only the selected photo search page after ranking matches', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const folder = folderOf('a', '/media/a');
+    await seed(store, folder, 18);
+    expect((await store.upsertAnalysisConfig({
+      configId: 'cfg_000000000001',
+      descriptorJson: '{"analyzer":"harness"}',
+      label: 'harness',
+      now: '2026-01-01T00:00:00.000Z',
+    })).ok).toBe(true);
+    for (let index = 0; index < 18; index += 1) {
+      const fingerprint = photoOf(index, folder).fingerprint;
+      expect((await store.recordPhotoAnalysis({
+        fingerprint,
+        configId: 'cfg_000000000001',
+        description: index === 0 ? 'wakacje wakacje' : 'wakacje',
+        scene: 'outdoor',
+        quality: 'good',
+        language: 'pl',
+        analyzer: 'harness',
+        model: 'harness-1',
+        batchSize: 1,
+        usageJson: null,
+        tags: ['wakacje'],
+        createdAt: '2026-01-02T00:00:00.000Z',
+      })).ok).toBe(true);
+    }
+
+    captured.statements.length = 0;
+    const rows = await store.searchPhotos({
+      match: 'wakacj*',
+      rankingTerms: ['wakacj'],
+      hidden: 'exclude',
+      limit: 5,
+      offset: 2,
+    });
+    expect(rows.ok && rows.value).toHaveLength(5);
+
+    const snippetSql = [...new Set(captured.statements
+      .filter((statement) => statement.sql.includes('snippet(photo_search_documents_fts'))
+      .map((statement) => statement.sql))];
+    expect(snippetSql).toHaveLength(1);
+    expect(snippetSql[0]).toContain('p.fingerprint IN (');
+  });
+
+  it('orders captured-date collection pages from indexes for each visibility scope', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const folder = folderOf('a', '/media/a');
+    await seed(store, folder, 24);
+    expect((await store.upsertAnalysisConfig({
+      configId: 'cfg_000000000001',
+      descriptorJson: '{"analyzer":"harness"}',
+      label: 'harness',
+      now: '2026-01-01T00:00:00.000Z',
+    })).ok).toBe(true);
+    for (let index = 0; index < 24; index += 1) {
+      const fingerprint = photoOf(index, folder).fingerprint;
+      expect((await store.recordPhotoAnalysis({
+        fingerprint,
+        configId: 'cfg_000000000001',
+        description: 'indexed',
+        scene: 'outdoor',
+        quality: 'good',
+        language: 'pl',
+        analyzer: 'harness',
+        model: 'harness-1',
+        batchSize: 1,
+        usageJson: null,
+        tags: ['indexed'],
+        createdAt: '2026-01-02T00:00:00.000Z',
+      })).ok).toBe(true);
+    }
+    expect((await store.setPhotosHidden([photoOf(1, folder).fingerprint, photoOf(3, folder).fingerprint], 1)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    for (const hidden of ['exclude', 'only', 'include'] as const) {
+      captured.statements.length = 0;
+      const page = await store.collectionPage({
+        match: null,
+        rankingTerms: [],
+        from: null,
+        to: null,
+        folderId: null,
+        fingerprints: null,
+        tagTermSets: [],
+        excludeMissing: false,
+        hidden,
+        sort: 'captured_desc',
+        limit: 6,
+        offset: 0,
+        after: null,
+      });
+      expect(page.ok && page.value.rows).toHaveLength(hidden === 'only' ? 2 : 6);
+      const plan = await planLines(store.databasePath(), lastSelect('ORDER BY p.captured_at IS NULL'));
+      expect(plan.some((line) => line.includes('TEMP B-TREE FOR ORDER BY'))).toBe(false);
+      expect(plan.some((line) => line.includes('captured_desc'))).toBe(true);
+    }
+  });
 });

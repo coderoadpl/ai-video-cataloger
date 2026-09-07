@@ -30,6 +30,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 - People mutations refresh cached queries after failures and identify changes already applied before durability or cleanup failed.
 - Displayed face exemplars select usable crops before applying file-diversity and count limits.
 - JSON-mode face benchmarks emit one typed NDJSON event, with the formatted table restricted to human output.
+- Kolekcja captured-date browsing uses collection-order indexes for visible, hidden and all-media visibility scopes.
+- Kolekcja relevance count-only requests skip match ranking and row hydration.
+- Map location totals count visible videos and photos in SQL, and location responses share folder metadata instead of repeating it on every pin.
+- Photo search ranks matches before hydrating snippets and variant counts for the selected page.
 
 ## [0.6.30] - 2026-09-07
 
