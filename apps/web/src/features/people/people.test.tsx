@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
-import type { facesPeopleOutputSchema } from '@core/contract/index.js';
+import { librarySelectionPreviewInputSchema, type facesPeopleOutputSchema } from '@core/contract/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -200,21 +200,24 @@ const stubPersonLibraryActions = () => {
   personLibraryRequests.length = 0;
   server.use(
     http.post('/api/library/selection/preview', async ({ request }) => {
-      personLibraryRequests.push(await request.json());
+      const body = await request.json();
+      personLibraryRequests.push(body);
+      const input = librarySelectionPreviewInputSchema.parse(body);
+      const skipped = input.scope.kind === 'person' && input.scope.skipSharedWithOtherPeople;
       return HttpResponse.json({
         ok: true,
         data: {
-          total: 2,
-          videoCount: 1,
+          total: skipped ? 2 : 3,
+          videoCount: skipped ? 1 : 2,
           photoCount: 1,
           hiddenCount: 0,
-          visibleCount: 2,
-          sharedWithOtherPeople: 1,
+          visibleCount: skipped ? 2 : 3,
+          sharedWithOtherPeople: skipped ? 0 : 1,
           roots: [{
             folderId: '11111111-1111-4111-8111-111111111111',
             displayName: 'Sample root',
             currentPath: '/fixtures/root',
-            fileCount: 2,
+            fileCount: skipped ? 2 : 3,
             writable: true,
             online: true,
           }],
@@ -445,7 +448,8 @@ describe('PeopleView', () => {
     fireEvent.click(screen.getByLabelText('More actions for Alex'));
     fireEvent.click(await screen.findByTestId('people-hide-files'));
 
-    expect((await screen.findByTestId('people-library-action-summary')).textContent).toContain('2 files, including 1 that also contains other recognized people');
+    expect((await screen.findByTestId('people-library-action-summary')).textContent).toContain('3 files, including 1 that also contains other recognized people');
+    expect((await screen.findByTestId('people-library-action-scope')).textContent).toBe('3 files will be hidden');
     expect(screen.getByTestId('people-library-skip-shared').querySelector('input')?.checked).toBe(false);
     expect(personLibraryRequests[0]).toEqual({
       scope: { kind: 'person', personId: 'p1', skipSharedWithOtherPeople: false },
@@ -469,13 +473,16 @@ describe('PeopleView', () => {
     fireEvent.click(screen.getByLabelText('More actions for Alex'));
     fireEvent.click(await screen.findByTestId('people-trash-files'));
 
-    expect((await screen.findByTestId('library-trash-person-summary')).textContent).toContain('2 files, including 1 that also contains other recognized people');
+    expect((await screen.findByTestId('library-trash-person-summary')).textContent).toContain('3 files, including 1 that also contains other recognized people');
+    expect((await screen.findByTestId('library-trash-person-action')).textContent).toBe('2 files will be moved to Trash');
     expect(screen.getByTestId('people-library-skip-shared').querySelector('input')?.checked).toBe(true);
     fireEvent.click(screen.getByTestId('people-library-skip-shared'));
 
     await waitFor(() => expect(personLibraryRequests).toContainEqual({
       scope: { kind: 'person', personId: 'p1', skipSharedWithOtherPeople: false },
     }));
+    await waitFor(() => expect(screen.getByTestId('library-trash-person-action').textContent).toBe('3 files will be moved to Trash'));
+    expect(screen.getByTestId('library-trash-person-summary').textContent).toContain('3 files, including 1 that also contains other recognized people');
   });
 
   it('keeps the destructive delete action off the card face, behind an overflow menu', async () => {

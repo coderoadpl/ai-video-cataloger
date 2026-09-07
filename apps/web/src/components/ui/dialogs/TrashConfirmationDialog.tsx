@@ -46,6 +46,7 @@ interface TrashConfirmationDialogProps {
   readOnlyRootNames?: readonly string[] | undefined;
   offlineRootNames?: readonly string[] | undefined;
   personSummary?: string | undefined;
+  personActionSummary?: string | undefined;
   skipSharedControl?: ReactNode;
   onCheckedChange: (checked: boolean) => void;
   onClose: () => void;
@@ -63,6 +64,7 @@ export const TrashConfirmationDialog = ({
   readOnlyRootNames = [],
   offlineRootNames = [],
   personSummary,
+  personActionSummary,
   skipSharedControl,
   onCheckedChange,
   onClose,
@@ -98,6 +100,11 @@ export const TrashConfirmationDialog = ({
             {personSummary === undefined ? null : (
               <Typography variant="body2" data-testid="library-trash-person-summary">
                 {personSummary}
+              </Typography>
+            )}
+            {personActionSummary === undefined ? null : (
+              <Typography variant="body2" data-testid="library-trash-person-action">
+                {personActionSummary}
               </Typography>
             )}
             {skipSharedControl === undefined ? null : <Box>{skipSharedControl}</Box>}
