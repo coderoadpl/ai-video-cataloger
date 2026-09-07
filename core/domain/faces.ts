@@ -62,6 +62,9 @@ export const selectExemplars = <T extends ExemplarCandidate>(observations: reado
   return selected;
 };
 
+export const selectDisplayedExemplars = <T extends ExemplarCandidate>(observations: readonly T[]): T[] =>
+  selectExemplars(observations.filter((observation) => observation.cropPath !== null));
+
 export interface FaceObservationSummary extends ExemplarCandidate {
   personId: string | null;
   media: 'video' | 'photo';
@@ -113,7 +116,7 @@ export const totalsByPerson = (
     photoCount: accumulator.photoCount,
     videoFileCount: accumulator.videoFingerprints.size,
     photoFileCount: accumulator.photoFingerprints.size,
-    exemplars: selectExemplars(accumulator.candidates),
+    exemplars: selectDisplayedExemplars(accumulator.candidates),
   }]));
 };
 
@@ -746,7 +749,13 @@ export const prepareFaceClustering = (
 export const buildFaceSimilarityEdges = (
   ordered: readonly FaceClusterInput[],
   onSimilarityBlock?: ((candidatePairs: number) => void) | undefined,
-): FaceSimilarityEdges => {
+): FaceSimilarityEdges => finishClusteringSteps(buildFaceSimilarityEdgeSteps(ordered, onSimilarityBlock));
+
+function* buildFaceSimilarityEdgeSteps(
+  ordered: readonly FaceClusterInput[],
+  onSimilarityBlock?: ((candidatePairs: number) => void) | undefined,
+): Generator<'similarity', FaceSimilarityEdges, void> {
+  let comparisons = 0;
   const builder = new FaceSimilarityEdgeBuilder(ordered.length);
   for (let leftBlockStart = 0; leftBlockStart < ordered.length; leftBlockStart += FACE_CLUSTERING.edgeBlockSize) {
     const leftBlockEnd = Math.min(leftBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
@@ -760,6 +769,8 @@ export const buildFaceSimilarityEdges = (
         for (let rightIndex = firstRight; rightIndex < rightBlockEnd; rightIndex += 1) {
           const right = ordered[rightIndex];
           if (right === undefined) continue;
+          comparisons += 1;
+          if (comparisons % 512 === 0) yield 'similarity';
           const similarity = cosineSimilarity(left.embedding, right.embedding);
           if (similarity < FACE_CLUSTERING.reviewBandMin) continue;
           builder.append(leftIndex, rightIndex, similarity);
@@ -768,7 +779,7 @@ export const buildFaceSimilarityEdges = (
     }
   }
   return builder.build();
-};
+}
 
 const pushMergeCandidate = (
   heap: MergeHeap,
@@ -808,7 +819,30 @@ export const clusterFaceObservations = (
 export const clusterPreparedFaceObservations = (
   prepared: PreparedFaceClustering,
   options: Omit<FaceClusteringOptions, 'onSimilarityBlock'> = {},
-): FaceClusteringOutcome => {
+): FaceClusteringOutcome => finishClusteringSteps(clusterPreparedFaceObservationSteps(prepared, options));
+
+export function* clusterFaceObservationSteps(
+  observations: readonly FaceClusterInput[],
+  options: FaceClusteringOptions = {},
+): Generator<'similarity' | 'clustering', FaceClusteringOutcome, void> {
+  const allOrdered = [...observations].sort((left, right) => left.obsId.localeCompare(right.obsId));
+  const ordered = allOrdered.filter(isClusterableFaceInput);
+  const unassignedObsIds = allOrdered.filter((observation) => !isClusterableFaceInput(observation)).map((observation) => observation.obsId);
+  const edges = yield* buildFaceSimilarityEdgeSteps(ordered, options.onSimilarityBlock);
+  return yield* clusterPreparedFaceObservationSteps({ ordered, unassignedObsIds, edges }, options);
+}
+
+const finishClusteringSteps = <T>(steps: Generator<string, T, void>): T => {
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+};
+
+function* clusterPreparedFaceObservationSteps(
+  prepared: PreparedFaceClustering,
+  options: Omit<FaceClusteringOptions, 'onSimilarityBlock'> = {},
+): Generator<'clustering', FaceClusteringOutcome, void> {
+  let steps = 0;
   const clusterCutSimilarity = options.clusterCutSimilarity ?? FACE_CLUSTERING.clusterCutSimilarity;
   const minStrongFraction = options.minStrongFraction ?? FACE_CLUSTER_MIN_STRONG_FRACTION;
   const ordered = prepared.ordered;
@@ -833,6 +867,7 @@ export const clusterPreparedFaceObservations = (
   const pairSums = new FacePairSumStore(prepared.edges.count + ordered.length);
   const heap = new MergeHeap(prepared.edges.count + ordered.length);
   for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
+    if (edgeIndex % 512 === 0) yield 'clustering';
     const leftId = at(prepared.edges.leftIds, edgeIndex);
     const rightId = at(prepared.edges.rightIds, edgeIndex);
     const similarity = at(prepared.edges.similarities, edgeIndex);
@@ -841,6 +876,7 @@ export const clusterPreparedFaceObservations = (
     neighbours[rightId]?.push(leftId);
   }
   for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
+    if (edgeIndex % 512 === 0) yield 'clustering';
     pushMergeCandidate(heap, clusters, pairSums, at(prepared.edges.leftIds, edgeIndex), at(prepared.edges.rightIds, edgeIndex));
   }
 
@@ -848,6 +884,8 @@ export const clusterPreparedFaceObservations = (
   let markerToken = 1;
   const markers = new Uint32Array(maxClusterCount);
   while (true) {
+    steps += 1;
+    if (steps % 512 === 0) yield 'clustering';
     const candidate = heap.pop();
     if (candidate === undefined || candidate.score < clusterCutSimilarity) break;
     if (at(alive, candidate.leftId) === 0 || at(alive, candidate.rightId) === 0) continue;
@@ -875,6 +913,8 @@ export const clusterPreparedFaceObservations = (
     const neighbourIds: number[] = [];
     markerToken += 1;
     for (const id of [...(neighbours[left.id] ?? []), ...(neighbours[right.id] ?? [])]) {
+      steps += 1;
+      if (steps % 512 === 0) yield 'clustering';
       if (id === left.id || id === right.id || at(alive, id) === 0 || at(markers, id) === markerToken) continue;
       markers[id] = markerToken;
       neighbourIds.push(id);
@@ -889,6 +929,8 @@ export const clusterPreparedFaceObservations = (
     alive[merged.id] = 1;
 
     for (const neighbourId of neighbourIds) {
+      steps += 1;
+      if (steps % 512 === 0) yield 'clustering';
       const neighbourCluster = clusters.get(neighbourId);
       if (neighbourCluster === undefined) continue;
       const leftPair = pairSums.get(left.id, neighbourId);
@@ -925,7 +967,7 @@ export const clusterPreparedFaceObservations = (
   }
 
   return { clusters: finalClusters, unassignedObsIds: unassignedObsIds.sort() };
-};
+}
 
 export const shouldMergePeople = (
   left: { centroid: readonly number[]; exemplars: readonly (readonly number[])[] },

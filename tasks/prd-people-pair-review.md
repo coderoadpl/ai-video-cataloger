@@ -705,8 +705,9 @@ question is asked against the corrected state.
        "delete a row whose person columns become equal" is scoped to
        `different` rows only and never touches this one.
   5. Return the updated `pending` count and, for a merge, the merge output.
-- **Merge direction is derived by default and overridable only on a
-  named/named "Tak".** The derived survivor is the named one; if both or
+- **Merge direction is derived by default and overridable through the API.**
+  The API accepts either pair member as `survivorPersonId`, regardless of names.
+  The GUI offers the override only for named/named pairs. The derived survivor is the named one; if both or
   neither are named, the one with more observations; ties on the
   lexicographically smaller `personId`. That is the rule `survivorIfSame`
   (US-A3) publishes, and it is what the route applies when the caller says
@@ -720,8 +721,7 @@ question is asked against the corrected state.
   rather than reintroducing a silent pick: `survivorPersonId` is optional, and
   when present must be `personAId` or `personBId` — anything else is a
   `validation` error and writes no row. When it is absent the derived rule
-  applies unchanged, so the CLI, the import and every non-named/named answer
-  keep exactly the behaviour above.
+  applies unchanged to every caller that omits the override.
 - **The derived rule is not `defaultMergeTarget`.** That helper tiebreaks on
   *selection order* (its `reduce` keeps the incumbent on an equal
   `observationCount`), which is meaningless for a server-generated pair; the

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, ButtonBase, IconButton, useTheme } from '@mui/material';
 
 import basemap from './basemap/land-110m.json' with { type: 'json' };
-import { clusterItems, fitViewport, panViewport, project, toScreen, unitBounds, unwrapRing, worldSizePx, zoomViewport, type MapCluster, type Viewport } from './core/index.js';
+import { fitViewport, panViewport, project, toScreen, unitBounds, unwrapRing, worldSizePx, zoomViewport, type MapCluster, type Viewport } from './core/index.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { MapPinPopover } from './MapPinPopover.js';
 import type { CatalogLocation } from './use-catalog-locations.js';
@@ -22,7 +22,77 @@ interface MapCanvasProps {
   initialViewport?: Viewport | undefined;
 }
 
-const landRings = basemap.polygons.map(unwrapRing);
+const landRings = basemap.polygons.map(unwrapRing).map((ring) => ring.map(([lon, lat]) => project({ lon: lon ?? 0, lat: lat ?? 0 })));
+
+const CLUSTER_CELL_PX = 56;
+const MARKER_OVERSCAN_PX = 64;
+
+interface ProjectedLocation {
+  item: { id: string; lon: number; lat: number };
+  x: number;
+  y: number;
+}
+
+interface SpatialNode {
+  point: ProjectedLocation;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  left: SpatialNode | null;
+  right: SpatialNode | null;
+}
+
+const spatialIndex = (points: ProjectedLocation[], depth = 0): SpatialNode | null => {
+  if (points.length === 0) return null;
+  const axis = depth % 2 === 0 ? 'x' : 'y';
+  points.sort((left, right) => left[axis] - right[axis]);
+  const middle = Math.floor(points.length / 2);
+  const point = points[middle];
+  if (point === undefined) return null;
+  const left = spatialIndex(points.slice(0, middle), depth + 1);
+  const right = spatialIndex(points.slice(middle + 1), depth + 1);
+  return {
+    point, left, right,
+    minX: Math.min(point.x, left?.minX ?? point.x, right?.minX ?? point.x),
+    maxX: Math.max(point.x, left?.maxX ?? point.x, right?.maxX ?? point.x),
+    minY: Math.min(point.y, left?.minY ?? point.y, right?.minY ?? point.y),
+    maxY: Math.max(point.y, left?.maxY ?? point.y, right?.maxY ?? point.y),
+  };
+};
+
+const visibleClusters = (index: SpatialNode | null, viewport: Viewport): MapCluster[] => {
+  const world = worldSizePx(viewport);
+  const screenMin = Math.floor(-MARKER_OVERSCAN_PX / CLUSTER_CELL_PX) * CLUSTER_CELL_PX;
+  const screenMaxX = Math.ceil((viewport.width + MARKER_OVERSCAN_PX) / CLUSTER_CELL_PX) * CLUSTER_CELL_PX;
+  const screenMaxY = Math.ceil((viewport.height + MARKER_OVERSCAN_PX) / CLUSTER_CELL_PX) * CLUSTER_CELL_PX;
+  const minX = viewport.centerX + (screenMin - viewport.width / 2) / world;
+  const minY = viewport.centerY + (screenMin - viewport.height / 2) / world;
+  const maxX = viewport.centerX + (screenMaxX - viewport.width / 2) / world;
+  const maxY = viewport.centerY + (screenMaxY - viewport.height / 2) / world;
+  const buckets = new Map<string, MapCluster>();
+  const visit = (node: SpatialNode | null): void => {
+    if (node === null || node.maxX < minX || node.minX >= maxX || node.maxY < minY || node.minY >= maxY) return;
+    const point = node.point;
+    if (point.x >= minX && point.x < maxX && point.y >= minY && point.y < maxY) {
+      const screen = toScreen(point, viewport);
+      const id = `${Math.floor(screen.x / CLUSTER_CELL_PX)}:${Math.floor(screen.y / CLUSTER_CELL_PX)}`;
+      const bucket = buckets.get(id) ?? { id, x: 0, y: 0, count: 0, items: [] };
+      bucket.x += screen.x;
+      bucket.y += screen.y;
+      bucket.count += 1;
+      bucket.items.push(point.item);
+      buckets.set(id, bucket);
+    }
+    visit(node.left);
+    visit(node.right);
+  };
+  visit(index);
+  return [...buckets.values()].map((bucket) => ({ ...bucket, x: bucket.x / bucket.count, y: bucket.y / bucket.count }))
+    .filter((bucket) => bucket.x >= -MARKER_OVERSCAN_PX && bucket.x <= viewport.width + MARKER_OVERSCAN_PX
+      && bucket.y >= -MARKER_OVERSCAN_PX && bucket.y <= viewport.height + MARKER_OVERSCAN_PX)
+    .sort((left, right) => left.id.localeCompare(right.id));
+};
 
 const worldCopyOffsetsPx = (viewport: Viewport): number[] => {
   const world = worldSizePx(viewport);
@@ -72,6 +142,17 @@ export const MapCanvas = ({
     initialViewport ?? fitViewport(unitBounds(locations.map((location) => project(location))), size.width, size.height, VIEWPORT_PADDING_PX),
   );
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
+  const pendingPan = useRef({ dx: 0, dy: 0 });
+  const panFrame = useRef<number | null>(null);
+  const applyPan = useCallback(() => {
+    const { dx, dy } = pendingPan.current;
+    pendingPan.current = { dx: 0, dy: 0 };
+    panFrame.current = null;
+    setViewport((current) => panViewport(current, dx, dy));
+  }, []);
+  useEffect(() => () => {
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+  }, []);
   const dragState = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
 
   useEffect(() => {
@@ -101,10 +182,10 @@ export const MapCanvas = ({
     onFocusConsumed();
   }, [focusFingerprint, locations, size.width, size.height, onFocusConsumed]);
 
-  const clusters = useMemo(
-    () => clusterItems(locations.map((location) => ({ id: location.fingerprint, lon: location.lon, lat: location.lat })), viewport),
-    [locations, viewport],
-  );
+  const index = useMemo(() => spatialIndex(locations.map((location) => ({
+    ...project(location), item: { id: location.fingerprint, lon: location.lon, lat: location.lat },
+  }))), [locations]);
+  const clusters = useMemo(() => visibleClusters(index, viewport), [index, viewport]);
 
   const byFingerprint = useMemo(() => new Map(locations.map((location) => [location.fingerprint, location] as const)), [locations]);
 
@@ -162,7 +243,9 @@ export const MapCanvas = ({
         const dx = event.clientX - drag.lastX;
         const dy = event.clientY - drag.lastY;
         dragState.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
-        setViewport((current) => panViewport(current, dx, dy));
+        pendingPan.current.dx += dx;
+        pendingPan.current.dy += dy;
+        panFrame.current ??= requestAnimationFrame(applyPan);
       }}
       onPointerUp={(event) => {
         if (dragState.current?.pointerId === event.pointerId) dragState.current = null;
@@ -195,7 +278,7 @@ export const MapCanvas = ({
               <polygon
                 key={index}
                 points={ring
-                  .map(([lon, lat]) => toScreen(project({ lon: lon ?? 0, lat: lat ?? 0 }), viewport))
+                  .map((point) => toScreen(point, viewport))
                   .map((point) => `${point.x},${point.y}`)
                   .join(' ')}
                 fill={theme.palette.map.land}

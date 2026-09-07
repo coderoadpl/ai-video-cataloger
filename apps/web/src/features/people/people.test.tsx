@@ -848,6 +848,28 @@ describe('PeopleView', () => {
     await waitFor(() => expect(screen.getByTestId('people-recluster-confirm').textContent).toBe('Rebuild'));
   }, scaledTimeout(30_000));
 
+  it('PE06 refreshes people when purge applied but cleanup failed', async () => {
+    stubPeople({ facesEnabled: true, artifactsReady: true, observations: 1, people: [person({ personId: 'p1', displayName: 'Named' })] });
+    let applied = false;
+    let refreshed = false;
+    server.use(
+      http.get('/api/faces/people', () => {
+        if (applied) refreshed = true;
+        return HttpResponse.json({ ok: true, data: { people: applied ? [] : [person({ personId: 'p1', displayName: 'Named' })] } });
+      }),
+      http.post('/api/faces/purge', () => {
+        applied = true;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Cleanup failed', details: { applied: true, phase: 'cleanup' } } }, { status: 500 });
+      }),
+    );
+    renderThemed(<PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />);
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-purge'));
+    fireEvent.click(await screen.findByTestId('people-purge-confirm'));
+    await screen.findByTestId('people-mutation-error');
+    await waitFor(() => expect(refreshed).toBe(true));
+  });
+
   it('surfaces a purge mutation failure via a visible alert instead of only the terminal', async () => {
     stubPeople({
       facesEnabled: true,

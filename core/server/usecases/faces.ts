@@ -6,16 +6,15 @@ import {
   FILE_ARTIFACTS,
   boxIoU,
   classifyFace,
-  clusterFaceObservations,
+  clusterFaceObservationSteps,
   findNewClusterSeed,
   normalizeEmbedding,
   parseFaceObsId,
   passesFaceQuality,
   planExemplarBackfill,
   faceCropFileName,
-  selectExemplars,
+  selectDisplayedExemplars,
   totalsByPerson,
-  updateCentroid,
   appError,
   ok,
   type AppError,
@@ -250,7 +249,21 @@ export const runFacesReclusterPass = async (
     quality: observation.quality,
     boxPx: Math.min(observation.bbox.width, observation.bbox.height),
   }));
-  const outcome = clusterFaceObservations(clusterInputs);
+  const steps = clusterFaceObservationSteps(clusterInputs);
+  let step = steps.next();
+  let lastYield = Date.now();
+  while (!step.done) {
+    if (Date.now() - lastYield >= 8) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const updated = await report(progress, { step: 'faces_clustering', data: { phase: step.value } });
+      if (!updated.ok) return updated;
+      lastYield = Date.now();
+    }
+    const cancellation = cancelled(progress);
+    if (!cancellation.ok) return cancellation;
+    step = steps.next();
+  }
+  const outcome = step.value;
 
   const postCancellation = cancelled(progress);
   if (!postCancellation.ok) return postCancellation;
@@ -279,7 +292,7 @@ export const runFacesReclusterPass = async (
     const members = cluster.memberObsIds
       .map((obsId) => observationByObsId.get(obsId))
       .filter((observation): observation is FaceObservation => observation !== undefined);
-    return !selectExemplars(members).some((observation) => observation.cropPath !== null);
+    return selectDisplayedExemplars(members).length === 0;
   }).length;
 
   let observationsReassigned: number;
@@ -338,23 +351,35 @@ export const facesPeople = async (deps: FacesPeopleDeps): Promise<Result<{ peopl
   });
 };
 
+const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
+  const acquired = await jobs.acquireResource('faces-write');
+  if (!acquired.ok) return acquired;
+  try {
+    return await operation();
+  } catch {
+    return { ok: false, error: appError('internal', 'Face mutation failed') };
+  } finally {
+    acquired.value();
+  }
+};
+
 export const facesName = async (
   deps: FacesDeps,
   input: { personId: string; displayName: string },
-): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> => {
+): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   const named = await deps.globalCatalog.setPersonName(input.personId, input.displayName.trim());
   if (!named.ok) return named;
   const flushed = await deps.globalCatalog.flush();
-  if (!flushed.ok) return flushed;
+  if (!flushed.ok) return appliedFaceFailure(flushed.error, 'durability');
   return named;
-};
+});
 
 export const facesMerge = async (
   deps: FacesDeps,
   input: { fromPersonId: string; toPersonId: string },
-): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> => {
+): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   if (input.fromPersonId === input.toPersonId) {
@@ -363,23 +388,22 @@ export const facesMerge = async (
   const merged = await deps.globalCatalog.mergePeople(input);
   if (!merged.ok) return merged;
   const flushed = await deps.globalCatalog.flush();
-  if (!flushed.ok) return flushed;
+  if (!flushed.ok) return appliedFaceFailure(flushed.error, 'durability');
   return merged;
-};
+});
 
 export const facesForget = async (
   deps: FacesDeps,
   input: { personId: string; force: boolean },
-): Promise<Result<{ personId: string; deleted: boolean; cropPathsDeleted: number; affectedFingerprints: string[] }, AppError>> => {
+): Promise<Result<{ personId: string; deleted: boolean; cropPathsDeleted: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   if (!input.force) return { ok: false, error: appError('confirmation_required', 'Forget requires --force flag') };
   const forgotten = await deps.globalCatalog.forgetPerson(input.personId);
   if (!forgotten.ok) return forgotten;
   const flushed = await deps.globalCatalog.flush();
-  if (!flushed.ok) return flushed;
-  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
-  const deleted = await deleteCropPaths(deps.fs, forgotten.value.cropPaths.map((path) => reanchorFaceCropPath(currentCatalogDir, path)));
+  if (!flushed.ok) return appliedFaceFailure(flushed.error, 'durability');
+  const deleted = await cleanupFaceCrops(deps, forgotten.value.cropPaths);
   if (!deleted.ok) return deleted;
   return ok({
     personId: forgotten.value.personId,
@@ -387,28 +411,27 @@ export const facesForget = async (
     cropPathsDeleted: deleted.value,
     affectedFingerprints: forgotten.value.affectedFingerprints,
   });
-};
+});
 
 export const facesPurge = async (
   deps: FacesDeps,
   input: { force: boolean },
-): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPathsDeleted: number }, AppError>> => {
+): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPathsDeleted: number }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   if (!input.force) return { ok: false, error: appError('confirmation_required', 'Purge requires --force flag') };
   const purged = await deps.globalCatalog.purgeFaces();
   if (!purged.ok) return purged;
   const flushed = await deps.globalCatalog.flush();
-  if (!flushed.ok) return flushed;
-  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
-  const deleted = await deleteCropPaths(deps.fs, purged.value.cropPaths.map((path) => reanchorFaceCropPath(currentCatalogDir, path)));
+  if (!flushed.ok) return appliedFaceFailure(flushed.error, 'durability');
+  const deleted = await cleanupFaceCrops(deps, purged.value.cropPaths);
   if (!deleted.ok) return deleted;
   return ok({
     peopleDeleted: purged.value.peopleDeleted,
     observationsDeleted: purged.value.observationsDeleted,
     cropPathsDeleted: deleted.value,
   });
-};
+});
 
 export const facesStatus = async (deps: FacesDeps): Promise<Result<FacesStatusOutput, AppError>> => {
   const enabled = await ensureFacesEnabled(deps);
@@ -1294,14 +1317,7 @@ const updatePersonCentroid = async (
   personId: string,
   embedding: readonly number[],
 ): Promise<Result<void, AppError>> => {
-  const person = await store.getPerson(personId);
-  if (!person.ok) return person;
-  if (person.value === null) return { ok: false, error: appError('not_found', `Person not found: ${personId}`) };
-  return store.upsertPerson({
-    ...person.value,
-    centroid: updateCentroid(person.value.centroid, person.value.exemplarCount, embedding),
-    exemplarCount: person.value.exemplarCount + 1,
-  });
+  return store.updatePersonCentroid(personId, embedding);
 };
 
 const writeObservationCrop = async (
@@ -1399,4 +1415,24 @@ const centroidFor = (embeddings: readonly (readonly number[])[]): number[] => {
     });
   }
   return normalizeEmbedding(totals.map((value) => value / embeddings.length));
+};
+
+const appliedFaceFailure = (error: AppError, phase: 'durability' | 'cleanup', cleanup?: { cropPathsDeleted: number; cropPathsPending: number }): Result<never, AppError> => ({
+  ok: false,
+  error: appError(error.code, error.message, { applied: true, phase, ...cleanup }),
+});
+
+const cleanupFaceCrops = async (deps: FacesDeps, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+  let count = 0;
+  for (const cropPath of cropPaths) {
+    const deleted = await deleteCropPaths(deps.fs, [reanchorFaceCropPath(currentCatalogDir, cropPath)]);
+    if (!deleted.ok) return appliedFaceFailure(deleted.error, 'cleanup', { cropPathsDeleted: count, cropPathsPending: cropPaths.length - count });
+    count += deleted.value;
+    const completed = await deps.globalCatalog.completeFaceCropCleanup(cropPath);
+    if (!completed.ok) return appliedFaceFailure(completed.error, 'cleanup', { cropPathsDeleted: count, cropPathsPending: cropPaths.length - count + 1 });
+  }
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return appliedFaceFailure(flushed.error, 'durability');
+  return ok(count);
 };

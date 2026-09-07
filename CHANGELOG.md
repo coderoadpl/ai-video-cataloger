@@ -14,6 +14,23 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Face naming, merging, forgetting and purging share the indexing resource, and centroid updates preserve names and deleted identities.
+- Catalog batches suspend snapshot exports and defer competing flushes until the transaction settles.
+- Forget and purge retain pending face-crop cleanup across failures and restarts for retry.
+- Merging a named person into an unnamed target refreshes name search for both people’s files.
+- Reclustering refreshes name search when a person keeps its identifier but loses its name.
+- Reclustering yields during similarity and merging work so progress and cancellation remain responsive.
+- People status computes counts without loading face embeddings or bounding boxes.
+- People facets aggregate distinct visible files in one query without loading observation summaries or centroids.
+- Folder catalogs use bounded leased handles, close on disposal, and recheck writability after reopening.
+- Thumbnail backfills skip current cached outputs before metadata and media work, reuse indexed video fingerprints, and retain a forced source-repair pass.
+- The map culls off-screen clusters through a cached spatial index and coalesces pointer updates while preserving cluster membership.
+- People mutations refresh cached queries after failures and identify changes already applied before durability or cleanup failed.
+- Displayed face exemplars select usable crops before applying file-diversity and count limits.
+- JSON-mode face benchmarks emit one typed NDJSON event, with the formatted table restricted to human output.
+
 ## [0.6.30] - 2026-09-07
 
 ### Added

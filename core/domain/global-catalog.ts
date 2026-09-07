@@ -6,7 +6,7 @@ import { analysisLanguageResolutionSchema, configDescriptorSchema, configId } fr
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 18;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 19;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 13;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
@@ -246,3 +246,12 @@ export const normalizeTagList = (values: readonly string[]): string[] => {
   }
   return normalized;
 };
+
+export const gridThumbnailStateSchema = z.object({
+  outputPath: z.string(),
+  generationVersion: z.number().int().positive(),
+  sourcePath: z.string(),
+  sourceKind: z.enum(['frame', 'video', 'proxy', 'original']),
+  primary: z.boolean(),
+});
+export type GridThumbnailState = z.output<typeof gridThumbnailStateSchema>;

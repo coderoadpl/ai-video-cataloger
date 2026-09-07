@@ -38,20 +38,23 @@ export const resetAll = async (
 ): Promise<Result<ResetAllOutput, AppError>> => {
   const repository = await openRepository(deps, input.folder);
   if (!repository.ok) return repository;
+  try {
+    const videos = await repository.value.listVideos();
+    if (!videos.ok) return videos;
+    if (videos.value.length === 0) return ok({ cleared: 0, message: 'No video records in database' });
+    if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
 
-  const videos = await repository.value.listVideos();
-  if (!videos.ok) return videos;
-  if (videos.value.length === 0) return ok({ cleared: 0, message: 'No video records in database' });
-  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
+    const byStatus = emptyByStatus();
+    for (const video of videos.value) {
+      byStatus[video.status] += 1;
+    }
 
-  const byStatus = emptyByStatus();
-  for (const video of videos.value) {
-    byStatus[video.status] += 1;
+    const cleared = await repository.value.clearVideos();
+    if (!cleared.ok) return { ok: false, error: appError('reset_failed', 'Failed to reset videos', cleared.error) };
+    return ok({ cleared: cleared.value.cleared, byStatus, configPreserved: true });
+  } finally {
+    await repository.value.close();
   }
-
-  const cleared = await repository.value.clearVideos();
-  if (!cleared.ok) return { ok: false, error: appError('reset_failed', 'Failed to reset videos', cleared.error) };
-  return ok({ cleared: cleared.value.cleared, byStatus, configPreserved: true });
 };
 
 export const resetSingle = async (
@@ -60,33 +63,36 @@ export const resetSingle = async (
 ): Promise<Result<ResetSingleOutput, AppError>> => {
   const repository = await openRepository(deps, input.folder);
   if (!repository.ok) return repository;
+  try {
+    const videos = await repository.value.listVideos();
+    if (!videos.ok) return videos;
+    const video = videos.value.find((candidate) => candidate.originalName === input.filename) ?? null;
+    if (video === null) return { ok: false, error: appError('video_not_found', `Video not found: ${input.filename}`) };
 
-  const videos = await repository.value.listVideos();
-  if (!videos.ok) return videos;
-  const video = videos.value.find((candidate) => candidate.originalName === input.filename) ?? null;
-  if (video === null) return { ok: false, error: appError('video_not_found', `Video not found: ${input.filename}`) };
+    if (video.status === 'pending') {
+      return ok({
+        filename: input.filename,
+        previousStatus: 'pending',
+        newStatus: 'pending',
+        message: 'Video is already in pending status',
+      });
+    }
 
-  if (video.status === 'pending') {
+    if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
+
+    const reset = await repository.value.resetVideoByOriginalName(input.filename);
+    if (!reset.ok) return { ok: false, error: appError('reset_failed', 'Failed to reset video', reset.error) };
+    if (reset.value === null) return { ok: false, error: appError('reset_failed', 'Failed to reset video') };
+
     return ok({
       filename: input.filename,
-      previousStatus: 'pending',
+      previousStatus: reset.value.before.status,
       newStatus: 'pending',
-      message: 'Video is already in pending status',
+      previousError: reset.value.before.errorMessage,
     });
+  } finally {
+    await repository.value.close();
   }
-
-  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
-
-  const reset = await repository.value.resetVideoByOriginalName(input.filename);
-  if (!reset.ok) return { ok: false, error: appError('reset_failed', 'Failed to reset video', reset.error) };
-  if (reset.value === null) return { ok: false, error: appError('reset_failed', 'Failed to reset video') };
-
-  return ok({
-    filename: input.filename,
-    previousStatus: reset.value.before.status,
-    newStatus: 'pending',
-    previousError: reset.value.before.errorMessage,
-  });
 };
 
 const openRepository = async (deps: ResetDeps, folder?: string | undefined) =>

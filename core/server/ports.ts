@@ -28,6 +28,7 @@ import type {
   FileArtifactId,
   GeminiUsageAccounting,
   GpsSource,
+  GridThumbnailState,
   PhotoExtension,
   SpendLedgerEntry,
   MachineProfile,
@@ -48,6 +49,7 @@ export interface CatalogResetSingleResult {
 }
 
 export interface CatalogRepository {
+  close(): Promise<Result<void, AppError>>;
   databasePath(): string | null;
   writable(): boolean;
   listVideos(): Promise<Result<CatalogVideo[], AppError>>;
@@ -66,6 +68,7 @@ export interface CatalogRepository {
 }
 
 export interface CatalogRepositoryFactory {
+  dispose(): Promise<Result<void, AppError>>;
   open(folder: string): Promise<Result<CatalogRepository, AppError>>;
   /** Never creates {folder}/.ai-video-cataloger/catalog.db: `null` when the folder has no catalog yet. */
   openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>>;
@@ -230,6 +233,7 @@ export interface LibraryFacetTag {
 }
 
 export interface LibraryFacetPerson {
+  fallbackIndex: number;
   personId: string;
   displayName: string | null;
   count: number;
@@ -745,6 +749,9 @@ export interface GlobalCatalogStore {
   getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>>;
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
+  listGridThumbnailCandidates(outputPaths: readonly string[], generationVersion: number): Promise<Result<string[], AppError>>;
+  recordGridThumbnail(state: GridThumbnailState): Promise<Result<void, AppError>>;
+  listVideoThumbnailFingerprints(folderPath: string): Promise<Result<{ fingerprint: string; fileName: string; finalName: string | null }[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
@@ -752,7 +759,7 @@ export interface GlobalCatalogStore {
   expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
-  listLibraryFacets(): Promise<Result<LibraryFacets, AppError>>;
+  listLibraryFacets(hiddenPhotoFingerprints?: readonly string[]): Promise<Result<LibraryFacets, AppError>>;
   setHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>>;
   listHiddenFingerprints(): Promise<Result<string[], AppError>>;
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
@@ -775,6 +782,8 @@ export interface GlobalCatalogStore {
   listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>>;
   listPeople(): Promise<Result<Person[], AppError>>;
   getPerson(personId: string): Promise<Result<Person | null, AppError>>;
+  updatePersonCentroid(personId: string, embedding: readonly number[]): Promise<Result<void, AppError>>;
+  completeFaceCropCleanup(cropPath: string): Promise<Result<void, AppError>>;
   upsertPerson(person: Person): Promise<Result<void, AppError>>;
   setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>>;
   listFaceObservations(input?: {

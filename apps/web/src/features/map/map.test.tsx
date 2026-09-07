@@ -8,6 +8,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
+import { MapCanvas } from './MapCanvas.js';
 import { MapView } from './MapView.js';
 
 const theme = createAppTheme('light');
@@ -121,7 +122,7 @@ describe('MapView', () => {
 
     fireEvent.click(screen.getByTestId('map-cluster'));
 
-    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(5));
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(4));
     expect(screen.queryByTestId('map-cluster')).toBeNull();
   });
 
@@ -384,4 +385,13 @@ describe('MapView', () => {
     fireEvent.click(screen.getByTestId('map-open-photo'));
     expect(onOpenPhoto).toHaveBeenCalledWith('fp-photo');
   });
+});
+
+it('CP-06 renders only viewport clusters and keeps complete visible membership', () => {
+  const locations = Array.from({ length: 1000 }, (_value, index) => location({ fingerprint: `far-${String(index)}`, lon: -170 + index * 0.3, lat: 40 }));
+  locations.push(location({ fingerprint: 'center-a', lon: 0, lat: 0 }), location({ fingerprint: 'center-b', lon: 0, lat: 0 }));
+  renderThemed(<MapCanvas locations={locations} initialViewport={{ width: 800, height: 600, centerX: 0.5, centerY: 0.5, scale: 4096 }} focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenPreview={vi.fn()} onOpenPhoto={vi.fn()} />);
+  expect(screen.queryAllByTestId('map-pin')).toHaveLength(0);
+  expect(screen.getAllByTestId('map-cluster')).toHaveLength(1);
+  expect(screen.getByTestId('map-cluster').textContent).toBe('2');
 });

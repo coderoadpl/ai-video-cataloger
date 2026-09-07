@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { type AppError, type Result, ok } from '@core/domain/index.js';
 
 import type { JobProgress } from '../ports.js';
 import { runThumbnailsPass } from './thumbnails.js';
-import { InMemoryFileSystem, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
+import { InMemoryFileSystem, InMemoryMedia, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
 
 const recordingProgress = (events: JobProgress[]) => ({
   signal: new AbortController().signal,
@@ -277,4 +277,18 @@ describe('runThumbnailsPass', () => {
     expect(result.value.generated).toBe(1);
     expect(result.value.failed).toBe(0);
   });
+});
+
+it('CP-07 skips hash and probe work for cached video thumbnails', async () => {
+  const fs = new InMemoryFileSystem('/root');
+  const media = new InMemoryMedia(fs);
+  const globalCatalog = new InMemoryGlobalCatalogStore();
+  fs.addDirectory('/root');
+  seedCompletedFile(fs, '/root/a.mp4', 'a');
+  await runThumbnailsPass({ fs, media, globalCatalog }, { root: '/root', force: false });
+  const hash = vi.spyOn(fs, 'partialContentHash');
+  const probe = vi.spyOn(media, 'probe');
+  expect((await runThumbnailsPass({ fs, media, globalCatalog }, { root: '/root', force: false })).ok).toBe(true);
+  expect(hash).not.toHaveBeenCalled();
+  expect(probe).not.toHaveBeenCalled();
 });

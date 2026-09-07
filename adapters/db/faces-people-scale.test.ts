@@ -3,11 +3,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { facesPeople, libraryCollection, type CollectionDeps, type FacesPeopleDeps } from '@core/server/index.js';
+import { facesPeople, facesStatus, libraryCollection, type CollectionDeps, type FacesPeopleDeps } from '@core/server/index.js';
 
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 import { seedSyntheticFaceCatalog, type SyntheticFaceCatalog, type SyntheticFaceCatalogShape } from '../../test/helpers/synthetic-face-catalog.js';
-import { InMemoryConfig, InMemoryMedia } from '../../test/server/usecases/test-fakes.js';
+import { InMemoryConfig, InMemoryMedia, InMemoryDownloads, InMemoryJobs, InMemoryFaceEngine } from '../../test/server/usecases/test-fakes.js';
 
 const BENCH = process.env.AVC_PEOPLE_SCALE_BENCH === '1';
 
@@ -76,7 +76,11 @@ afterAll(async () => {
 describe('people surfaces at library scale', () => {
   it('lists people without walking every observation once per person', async () => {
     const elapsed = await millisecondsOf(async () => {
-      const listed = await facesPeople(facesDeps);
+      const [listed, status] = await Promise.all([
+        facesPeople(facesDeps),
+        facesStatus({ ...facesDeps, downloads: new InMemoryDownloads(), jobs: new InMemoryJobs(), faceEngine: new InMemoryFaceEngine(), media: new InMemoryMedia() }),
+      ]);
+      expect(status.ok).toBe(true);
       expect(listed.ok).toBe(true);
       if (!listed.ok) return;
       expect(listed.value.people.length).toBe(SHAPE.people);
@@ -84,7 +88,7 @@ describe('people surfaces at library scale', () => {
       expect(busiest?.observationCount).toBeGreaterThan(500);
       expect(busiest?.fileCounts.video).toBe(SHAPE.videos);
     });
-    report('facesPeople', elapsed);
+    report('facesPeople + facesStatus', elapsed);
     expect(elapsed).toBeLessThan(PEOPLE_BUDGET_MS);
   }, scaledTimeout(60_000));
 

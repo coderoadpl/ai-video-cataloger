@@ -66,7 +66,7 @@ import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath 
 import { reportStep as report } from './process-drive-batch.js';
 import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
 import { isUnderExcludedDirectory, shouldSkipDirectory } from './shared.js';
-import { generateGridThumbnail, type GridThumbnailCandidate } from './thumbnail.js';
+import { GRID_THUMBNAIL_GENERATION_VERSION, generateGridThumbnail, type GridThumbnailCandidate } from './thumbnail.js';
 import { faceArtifactsInstalled, facesEnabled, runPhotoFacesIndexPass } from './faces.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
@@ -794,6 +794,13 @@ export const runPhotoGridThumbsPass = async (
     }
     fingerprints.sort();
   }
+  const stale = deps.globalCatalog === undefined || input.force
+    ? ok(fingerprints.map((fingerprint) => photoGridThumbPath(deps.fs, artifactsRoot, fingerprint)))
+    : await deps.globalCatalog.listGridThumbnailCandidates(
+      fingerprints.map((fingerprint) => photoGridThumbPath(deps.fs, artifactsRoot, fingerprint)), GRID_THUMBNAIL_GENERATION_VERSION,
+    );
+  if (!stale.ok) return stale;
+  const stalePaths = new Set(stale.value);
   await report(progress, 'photo-grid-thumbs-scanning', { candidates: fingerprints.length });
 
   let generated = 0;
@@ -805,6 +812,11 @@ export const runPhotoGridThumbsPass = async (
     }
     const proxyPath = photoProxyPath(deps.fs, artifactsRoot, fingerprint);
     const gridThumbnailPath = photoGridThumbPath(deps.fs, artifactsRoot, fingerprint);
+    if (!stalePaths.has(gridThumbnailPath)) {
+      const cached = await deps.fs.isFile(gridThumbnailPath);
+      if (!cached.ok) return cached;
+      if (cached.value) { skipped += 1; continue; }
+    }
     const photo = await deps.photos.getPhoto(fingerprint);
     if (!photo.ok) return photo;
     const candidates: GridThumbnailCandidate[] = [{ kind: 'proxy', path: proxyPath }];

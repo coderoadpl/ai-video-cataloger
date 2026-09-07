@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   facesExemplars,
@@ -205,6 +205,20 @@ const buildDeps = (): FacesDeps & {
 const enableFaces = async (deps: Pick<FacesDeps, 'config'>): Promise<void> => {
   await deps.config.set({ kind: 'home' }, 'faces_enabled', 'true');
 };
+
+it('PE02 waits for the indexing resource before a GUI mutation', async () => {
+  const deps = buildDeps();
+  await enableFaces(deps);
+  const held = await deps.jobs.acquireResource('faces-write');
+  if (!held.ok) throw new Error('Expected resource');
+  let settled = false;
+  const mutation = facesName(deps, { personId: 'missing', displayName: 'Renamed' }).then((result) => { settled = true; return result; });
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const premature = settled;
+  held.value();
+  await mutation;
+  expect(premature).toBe(false);
+});
 
 describe('faces use-cases gating', () => {
   it('returns the disabled error for every entry point when faces_enabled is off', async () => {
@@ -1362,7 +1376,7 @@ describe('facesRecluster', () => {
     expect(deps.faceEngine.detectCalls).toBe(0);
   });
 
-  it('counts a person whose only crop is outranked as still having no photo', async () => {
+  it('counts an available crop even when a higher-quality observation has no crop', async () => {
     const deps = buildReclusterDeps();
     await enableFaces(deps);
     for (let index = 0; index < 6; index += 1) {
@@ -1379,12 +1393,12 @@ describe('facesRecluster', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.personsAfter).toBe(1);
-    expect(result.value.personsWithoutExemplar).toBe(1);
+    expect(result.value.personsWithoutExemplar).toBe(0);
 
     const people = await facesPeople(deps);
     expect(people.ok).toBe(true);
     if (!people.ok) throw new Error(people.error.message);
-    expect(people.value.people[0]?.exemplarCropPaths).toEqual([]);
+    expect(people.value.people[0]?.exemplarCropPaths).toEqual(['/crops/fp-5/1-1.jpg']);
   });
 
   it('splits a merged person into two and drops old names', async () => {
@@ -2204,4 +2218,41 @@ describe('facesPeople per-medium counts', () => {
       fileCounts: { video: 2, photo: 3 },
     });
   });
+});
+
+it('PE15 yields during similarity work so cancellation runs before replacement', async () => {
+  const deps = buildDeps();
+  for (let index = 0; index < 300; index += 1) {
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: `obs-${String(index)}`, fingerprint: `fp-${String(index)}` }));
+  }
+  const abort = new AbortController();
+  const progress: JobExecutionContext = { signal: abort.signal, reportProgress: () => Promise.resolve(ok(undefined)) };
+  const timer = setTimeout(() => abort.abort(), 0);
+  const result = await runFacesReclusterPass(deps, { dryRun: false }, progress);
+  clearTimeout(timer);
+  expect(result).toMatchObject({ ok: false });
+  expect(await deps.globalCatalog.listPeople()).toEqual(ok([]));
+});
+
+it('PE12 displays a usable crop even when a better observation has none', async () => {
+  const deps = buildDeps();
+  await enableFaces(deps);
+  await deps.globalCatalog.upsertPerson(personFixture({ personId: 'person-a' }));
+  await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'high', personId: 'person-a', quality: 1, cropPath: null }));
+  await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'usable', personId: 'person-a', quality: 0.8, cropPath: 'crop.jpg' }));
+  expect(await facesPeople(deps)).toMatchObject({ ok: true, value: { people: [{ exemplarCropPaths: ['crop.jpg'] }] } });
+});
+
+it('PE07 reports applied cleanup failure and retries the retained crops', async () => {
+  const deps = buildDeps();
+  await enableFaces(deps);
+  await deps.globalCatalog.upsertPerson(personFixture({ personId: 'person-a' }));
+  deps.fs.addFile('/crops/crop.jpg');
+  await deps.globalCatalog.upsertFaceObservation(observationFixture({ personId: 'person-a', cropPath: '/crops/crop.jpg' }));
+  const deletion = vi.spyOn(deps.fs, 'deleteFile').mockResolvedValueOnce({ ok: false, error: appError('internal', 'Cleanup failed') });
+  const first = await facesForget(deps, { personId: 'person-a', force: true });
+  expect(first).toMatchObject({ ok: false, error: { details: { applied: true, phase: 'cleanup' } } });
+  expect(await facesForget(deps, { personId: 'person-a', force: true })).toMatchObject({ ok: true, value: { cropPathsDeleted: 1 } });
+  expect(deletion).toHaveBeenCalledTimes(2);
+  deletion.mockRestore();
 });

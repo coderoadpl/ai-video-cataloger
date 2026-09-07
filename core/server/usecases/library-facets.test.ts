@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AppError, CatalogFile, CatalogFolder, FaceObservation, Result } from '@core/domain/index.js';
 
@@ -248,4 +248,13 @@ describe('libraryFacets', () => {
     expect(result.value.people).toEqual([{ personId: 'p-named', displayName: 'Alex', count: 1, fallbackIndex: 0 }]);
     expect(globalCatalog.fullObservationScans).toBe(0);
   });
+});
+
+it('CP-04 uses the aggregate without loading observation summaries or centroids', async () => {
+  const catalog = new InMemoryGlobalCatalogStore();
+  const people = vi.spyOn(catalog, 'listPeople');
+  const observations = vi.spyOn(catalog, 'listFaceObservationSummaries');
+  expect((await libraryFacets(deps(catalog, new InMemoryFileSystem()))).ok).toBe(true);
+  expect(people).not.toHaveBeenCalled();
+  expect(observations).not.toHaveBeenCalled();
 });

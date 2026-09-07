@@ -149,7 +149,8 @@ failing the pass.
   a no-op rather than a throw. `CatalogRepository.writable()`
   (`core/server/ports.ts`) exposes that state so use-cases can branch on it
   instead of discovering it through an exception. Writability is decided once per
-  folder, at open, and cached with the repository.
+  repository open and cached with that handle. Eviction closes the handle; opening
+  the folder again probes writability anew and can re-enter degraded mode.
 - **Identity.** With no marker file writable, `resolveFolderIdentity`
   (`core/server/usecases/folder-identity.ts`) falls back to the deterministic
   path-derived id `path-<fnv1a32-hex>`, which is stable for as long as the folder

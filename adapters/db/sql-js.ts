@@ -124,44 +124,125 @@ const sleepUntilRetry = (signal?: AbortSignal | undefined): Promise<void> => new
 const cancelledError = (): CatalogAppError =>
   new CatalogAppError(appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE));
 
-export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
-  private readonly opened = new Map<string, SqlJsCatalogRepository>();
+interface CachedCatalog {
+  repository: SqlJsCatalogRepository;
+  leases: number;
+}
 
-  async open(folder: string): Promise<Result<CatalogRepository, AppError>> {
-    try {
-      const normalizedFolder = path.resolve(folder);
-      const canonicalFolder = realpathSync.native(normalizedFolder);
-      const existing = this.opened.get(canonicalFolder);
-      if (existing !== undefined) return ok(existing);
+export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
+  private readonly opened = new Map<string, CachedCatalog>();
+  private readonly maxOpen: number;
+  private tail: Promise<void> = Promise.resolve();
+  private disposed = false;
+
+  constructor(options: { maxOpen?: number } = {}) {
+    this.maxOpen = z.number().int().positive().parse(options.maxOpen ?? 8);
+  }
+
+  open(folder: string): Promise<Result<CatalogRepository, AppError>> {
+    return this.serial(async () => {
+      const opened = await this.openFolder(folder, false);
+      if (!opened.ok) return opened;
+      if (opened.value === null) return { ok: false, error: appError('internal', 'Catalog was not opened') };
+      return ok(opened.value);
+    });
+  }
+
+  openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
+    return this.serial(() => this.openFolder(folder, true));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return this.serial(async () => {
+      this.disposed = true;
+      for (const [folder, entry] of this.opened) {
+        const closed = await entry.repository.close();
+        if (!closed.ok) return closed;
+        this.opened.delete(folder);
+      }
+      return ok(undefined);
+    });
+  }
+
+  private async openFolder(folder: string, existingOnly: boolean): Promise<Result<CatalogRepository | null, AppError>> {
+    if (this.disposed) return { ok: false, error: appError('conflict', 'Catalog factory is disposed') };
+    const normalizedFolder = path.resolve(z.string().parse(folder));
+    const canonicalFolder = realpathSync.native(normalizedFolder);
+    let entry = this.opened.get(canonicalFolder);
+    if (entry === undefined) {
+      if (existingOnly && !existsSync(catalogDatabasePath(normalizedFolder))) return ok(null);
+      if (this.opened.size >= this.maxOpen) {
+        const idle = [...this.opened].find(([, candidate]) => candidate.leases === 0);
+        if (idle === undefined) return { ok: false, error: appError('conflict', 'All catalog cache entries are leased') };
+        const closed = await idle[1].repository.close();
+        if (!closed.ok) return closed;
+        this.opened.delete(idle[0]);
+      }
       const opened = await openSqlJsDatabase(catalogDatabasePath(normalizedFolder));
       if (!opened.ok) return opened;
-      const repository = new SqlJsCatalogRepository(
-        opened.value.databasePath,
-        opened.value.SQL,
-        opened.value.client,
-        opened.value.db,
-        opened.value.fileState,
-        opened.value.persistent,
-      );
-      this.opened.set(canonicalFolder, repository);
-      return ok(repository);
-    } catch (cause) {
-      return repositoryFailure(cause);
+      entry = {
+        leases: 0,
+        repository: new SqlJsCatalogRepository(opened.value.databasePath, opened.value.SQL, opened.value.client, opened.value.db, opened.value.fileState, opened.value.persistent),
+      };
     }
+    this.opened.delete(canonicalFolder);
+    this.opened.set(canonicalFolder, entry);
+    entry.leases += 1;
+    const leasedEntry = entry;
+    return ok(new CatalogLease(entry.repository, () => { leasedEntry.leases -= 1; }));
   }
 
-  async openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
+  private async serial<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    const previous = this.tail;
+    let release = (): void => {};
+    this.tail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
     try {
-      const normalizedFolder = path.resolve(folder);
-      const canonicalFolder = realpathSync.native(normalizedFolder);
-      const existing = this.opened.get(canonicalFolder);
-      if (existing !== undefined) return ok(existing);
-      if (!existsSync(catalogDatabasePath(normalizedFolder))) return ok(null);
-      return this.open(folder);
+      return await operation();
     } catch (cause) {
       return repositoryFailure(cause);
+    } finally {
+      release();
     }
   }
+}
+
+class CatalogLease implements CatalogRepository {
+  private closed = false;
+  constructor(private readonly repository: CatalogRepository, private readonly release: () => void) {}
+
+  databasePath(): string | null { return this.repository.databasePath(); }
+  writable(): boolean { return this.repository.writable(); }
+  close(): Promise<Result<void, AppError>> {
+    if (!this.closed) {
+      this.closed = true;
+      this.release();
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
+  private run<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    if (this.closed) return Promise.resolve({ ok: false, error: appError('conflict', 'Catalog lease is closed') });
+    return operation();
+  }
+
+  listVideos: CatalogRepository['listVideos'] = (...args) => this.run(() => this.repository.listVideos(...args));
+
+  findVideoByPath: CatalogRepository['findVideoByPath'] = (...args) => this.run(() => this.repository.findVideoByPath(...args));
+
+  findVideoByHash: CatalogRepository['findVideoByHash'] = (...args) => this.run(() => this.repository.findVideoByHash(...args));
+
+  createVideo: CatalogRepository['createVideo'] = (...args) => this.run(() => this.repository.createVideo(...args));
+
+  updateVideoStatus: CatalogRepository['updateVideoStatus'] = (...args) => this.run(() => this.repository.updateVideoStatus(...args));
+
+  updateVideoPath: CatalogRepository['updateVideoPath'] = (...args) => this.run(() => this.repository.updateVideoPath(...args));
+
+  updateVideoNewName: CatalogRepository['updateVideoNewName'] = (...args) => this.run(() => this.repository.updateVideoNewName(...args));
+
+  clearVideos: CatalogRepository['clearVideos'] = (...args) => this.run(() => this.repository.clearVideos(...args));
+
+  resetVideoByOriginalName: CatalogRepository['resetVideoByOriginalName'] = (...args) => this.run(() => this.repository.resetVideoByOriginalName(...args));
 }
 
 export class JsonConfigStore implements ConfigStore {
@@ -216,6 +297,22 @@ export class JsonConfigStore implements ConfigStore {
 }
 
 class SqlJsCatalogRepository implements CatalogRepository {
+  private closed = false;
+  private dirty = false;
+
+  async close(): Promise<Result<void, AppError>> {
+    if (this.closed) return ok(undefined);
+    try {
+      if (this.dirty && this.persistent) persistDatabase(this.filePath, this.client);
+      this.client.close();
+      this.closed = true;
+      this.dirty = false;
+      return ok(undefined);
+    } catch (cause) {
+      return repositoryFailure(cause);
+    }
+  }
+
   constructor(
     private readonly filePath: string,
     private readonly SQL: SqlJsStatic,
@@ -342,6 +439,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
 
   private async read<T>(operation: () => T): Promise<Result<T, AppError>> {
     try {
+      if (this.closed) return { ok: false, error: appError('conflict', 'Catalog is closed') };
       this.reloadIfChanged();
       return ok(operation());
     } catch (cause) {
@@ -351,11 +449,14 @@ class SqlJsCatalogRepository implements CatalogRepository {
 
   private async write<T>(operation: () => T): Promise<Result<T, AppError>> {
     try {
+      if (this.closed) return { ok: false, error: appError('conflict', 'Catalog is closed') };
       this.reloadIfChanged();
       const value = operation();
+      this.dirty = true;
       if (!this.persistent) return ok(value);
       persistDatabase(this.filePath, this.client);
       this.fileState = databaseFileState(this.filePath);
+      this.dirty = false;
       return ok(value);
     } catch (cause) {
       this.fileState = null;
@@ -364,7 +465,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
   }
 
   private reloadIfChanged(): void {
-    if (!this.persistent) return;
+    if (!this.persistent || this.dirty) return;
     const diskState = databaseFileState(this.filePath);
     if (this.fileState !== null && sameFileState(this.fileState, diskState)) return;
     const client = new this.SQL.Database(readFileSync(this.filePath));

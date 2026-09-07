@@ -5,7 +5,7 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { CatalogFolder } from '@core/domain/index.js';
+import { GLOBAL_CATALOG_SCHEMA_VERSION, type CatalogFolder } from '@core/domain/index.js';
 
 import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import { SqlJsPhotosStore } from './photos-store.js';
@@ -34,7 +34,7 @@ describe('backup database snapshots', () => {
     }
     const result = await store.snapshotTo(target);
 
-    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 18 } });
+    expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION } });
     const SQL = await initSqlJs();
     const client = new SQL.Database(await readFile(target));
     expect(client.exec('SELECT COUNT(*) FROM folders')[0]?.values[0]?.[0]).toBe(25);

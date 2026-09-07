@@ -112,20 +112,24 @@ export const cachedScanFolder = async (
   if (!identity.ok) return identity;
   const repository = await deps.catalogs.openIfExists(folder);
   if (!repository.ok) return repository;
-  if (repository.value === null) {
-    return ok({ folder, databasePath: null, videos: [], summary: summarize([]) });
+  try {
+    if (repository.value === null) {
+      return ok({ folder, databasePath: null, videos: [], summary: summarize([]) });
+    }
+    const stored = await repository.value.listVideos();
+    if (!stored.ok) return stored;
+    const videos = stored.value
+      .map((video) => cachedLegacyVideo(deps.fs, video))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    return ok({
+      folder,
+      databasePath: repository.value.databasePath(),
+      videos,
+      summary: summarize(videos),
+    });
+  } finally {
+    await repository.value?.close();
   }
-  const stored = await repository.value.listVideos();
-  if (!stored.ok) return stored;
-  const videos = stored.value
-    .map((video) => cachedLegacyVideo(deps.fs, video))
-    .sort((left, right) => left.path.localeCompare(right.path));
-  return ok({
-    folder,
-    databasePath: repository.value.databasePath(),
-    videos,
-    summary: summarize(videos),
-  });
 };
 
 export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Promise<Result<ScanOutput, AppError>> => {
@@ -145,33 +149,36 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
   if (!identity.ok) return identity;
   const repository = await deps.catalogs.openIfExists(folder);
   if (!repository.ok) return repository;
+  try {
+    const videoEntries = entries.value
+      .filter((entry) => entry.kind === 'file' && isSupportedVideoExtension(deps.fs.extname(entry.name)))
+      .sort((left, right) => left.path.localeCompare(right.path));
 
-  const videoEntries = entries.value
-    .filter((entry) => entry.kind === 'file' && isSupportedVideoExtension(deps.fs.extname(entry.name)))
-    .sort((left, right) => left.path.localeCompare(right.path));
+    // An existing catalog answers "can we write here" by having just tried, exactly as `process` does;
+    // a folder with no catalog has only the marker write to go on.
+    const writable = repository.value?.writable() ?? identity.value.persistent;
+    const artifactRoot = artifactRootFor(deps.fs, folder, writable);
+    const indexed = await indexedAnalyses(deps, folder, writable);
+    if (!indexed.ok) return indexed;
+    const videos: ScanVideo[] = [];
+    for (const entry of videoEntries) {
+      const scanned = await scanVideo(deps, repository.value, artifactRoot, entry.path, indexed.value);
+      if (!scanned.ok) return scanned;
+      videos.push(scanned.value);
+    }
 
-  // An existing catalog answers "can we write here" by having just tried, exactly as `process` does;
-  // a folder with no catalog has only the marker write to go on.
-  const writable = repository.value?.writable() ?? identity.value.persistent;
-  const artifactRoot = artifactRootFor(deps.fs, folder, writable);
-  const indexed = await indexedAnalyses(deps, folder, writable);
-  if (!indexed.ok) return indexed;
-  const videos: ScanVideo[] = [];
-  for (const entry of videoEntries) {
-    const scanned = await scanVideo(deps, repository.value, artifactRoot, entry.path, indexed.value);
-    if (!scanned.ok) return scanned;
-    videos.push(scanned.value);
+    const enriched = await enrichWithDuplicates(deps, videos);
+    if (!enriched.ok) return enriched;
+
+    return ok({
+      folder,
+      databasePath: repository.value?.databasePath() ?? null,
+      videos: enriched.value,
+      summary: summarize(enriched.value),
+    });
+  } finally {
+    await repository.value?.close();
   }
-
-  const enriched = await enrichWithDuplicates(deps, videos);
-  if (!enriched.ok) return enriched;
-
-  return ok({
-    folder,
-    databasePath: repository.value?.databasePath() ?? null,
-    videos: enriched.value,
-    summary: summarize(enriched.value),
-  });
 };
 
 const ensureFolderIdentity = async (
