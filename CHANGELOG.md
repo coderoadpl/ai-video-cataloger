@@ -14,56 +14,108 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.33] - 2026-09-07
+
 ### Fixed
 
-- The person hide and trash dialogs describe the person’s whole set of files and state separately how many files the action will touch, so skipping shared files no longer produces a self-contradicting count.
-- Settings shows the app-global backup section with no folder selected and while folder settings are loading or failed to load.
-- Face naming, merging, forgetting and purging share the indexing resource, and centroid updates preserve names and deleted identities.
-- Catalog batches suspend snapshot exports and defer competing flushes until the transaction settles.
-- Forget and purge retain pending face-crop cleanup across failures and restarts for retry.
-- Merging a named person into an unnamed target refreshes name search for both people’s files.
-- Reclustering refreshes name search when a person keeps its identifier but loses its name.
-- Reclustering yields during similarity and merging work so progress and cancellation remain responsive.
-- People status computes counts without loading face embeddings or bounding boxes.
-- People facets aggregate distinct visible files in one query without loading observation summaries or centroids.
-- Folder catalogs use bounded leased handles, close on disposal, and recheck writability after reopening.
-- Thumbnail backfills skip current cached outputs before metadata and media work, reuse indexed video fingerprints, and retain a forced source-repair pass.
-- The map culls off-screen clusters through a cached spatial index and coalesces pointer updates while preserving cluster membership.
-- People mutations refresh cached queries after failures and identify changes already applied before durability or cleanup failed.
-- Displayed face exemplars select usable crops before applying file-diversity and count limits.
-- JSON-mode face benchmarks emit one typed NDJSON event, with the formatted table restricted to human output.
-- Kolekcja captured-date browsing uses collection-order indexes for visible, hidden and all-media visibility scopes.
-- Kolekcja relevance count-only requests skip match ranking and row hydration.
-- Map location totals count visible videos and photos in SQL, and location responses share folder metadata instead of repeating it on every pin.
-- Photo search ranks matches before hydrating snippets and variant counts for the selected page.
-- The Kolekcja grid is fully operable from the keyboard: arrow keys, Home/End, Enter to open, Ctrl/Cmd+Space to select, Shift+Arrow to extend, with an announced active tile.
-- The document language follows the interface language, so screen readers and native date fields match the visible copy.
-- Viewer arrow keys no longer seek the file list while a video control, text field or select has focus, and both media viewers are announced as named modal dialogs.
-- The enlarged photo preview in Analiza is reachable and activatable from the keyboard.
-- Ustawienia reports a failed initial configuration load with a retry instead of an endless spinner, gives the analyzer and file-renaming groups the section titles their siblings have, and loads the backup section with the rest of the dialog.
-- The person media preview omits selection checkboxes and the Hide action it cannot perform, and reports a failed load with a retry instead of claiming the person has no media.
-- Osoby keeps a persistent selection bar with the selected count, the count outside the current view and Clear, and the merge confirmation lists every selected person.
-- The Osoby trash preview counts the files the confirmed action will touch, with the shared-file total shown as separate explanatory data.
-- A chosen merge name no longer outlives its dialog, so a later two-person selection stays mergeable.
-- Opening a person from Osoby establishes a person-only collection scope instead of stacking a second person onto the existing filters.
-- Collection person chips follow the current person name and show localized dates instead of raw ISO days.
-- Person cards reuse the theme-aware placeholder tile, retry a repaired exemplar crop, open the media preview from the card face and reveal their checkbox on hover or focus.
-- Kolekcja treats a medium with no results as a filtered empty state offering a switch to all media, instead of the first-use empty state.
-- The Kolekcja date preset is derived from the applied dates and reads as a custom range when they match no preset.
-- The people, tag, place and folder filters cap the options they mount and carry localized clear, open, close and no-options copy.
-- Mapa uses the shared media toggle with counts and a localized group name, and explains a medium with no located files instead of rendering a pinless map.
-- Videos and photos share one status vocabulary, and duplicate badges render through the same status chip on both media.
-- Library tiles render media kind independently of availability, so a missing video keeps its film marker, and photos carry their own marker.
-- Photo rows in Analiza render the shared thumbnail states and offer Reveal in Finder.
-- The Kolekcja, Osoby and Mapa page headers, empty states, confirm dialogs, tag rows and slider fields come from one shared component each.
-- The header Models and Prerequisites buttons carry stable test ids.
-- The Polish copy uses one ellipsis character and Polish quotation marks, the English collection header has a singular form, and the map empty state describes camera, timeline and manual locations.
-- Keeping the keyboard-active Kolekcja tile mounted no longer mounts every row between it and the viewport, so scrolling a large collection after selecting a tile stays responsive.
-- Space on a Kolekcja tile checkbox toggles that file instead of opening the previously active one.
-- Concurrent folder scans wait for a free catalog handle instead of failing once eight folders are open.
-- Status badges regain their original icon spacing instead of the oversized gap introduced with the shared badge tokens.
-- The file preview names an unnamed person "Osoba N" like Osoby does, instead of showing the raw person identifier.
-- Deleting one face grouping or all face data keeps its confirmation dialog open with the error when the deletion fails, and closes it only once the deletion succeeds.
+- The person hide and trash dialogs describe the person’s whole set of files and state separately how many files the action will touch, so skipping shared files no longer produces a self-contradicting count
+  ([`1ffdc9d`](https://github.com/coderoadpl/ai-video-cataloger/commit/1ffdc9dcf4124cf31be0e4220374e402bdcc146a)).
+- Settings shows the app-global backup section with no folder selected and while folder settings are loading or failed to load
+  ([`3c77cb4`](https://github.com/coderoadpl/ai-video-cataloger/commit/3c77cb4cf5908eb4be7ba3cb81639a83b7345ef6)).
+- Face naming, merging, forgetting and purging share the indexing resource, and centroid updates preserve names and deleted identities
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Catalog batches suspend snapshot exports and defer competing flushes until the transaction settles
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Forget and purge retain pending face-crop cleanup across failures and restarts for retry
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Merging a named person into an unnamed target refreshes name search for both people’s files
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Reclustering refreshes name search when a person keeps its identifier but loses its name
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Reclustering yields during similarity and merging work so progress and cancellation remain responsive
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- People status computes counts without loading face embeddings or bounding boxes
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- People facets aggregate distinct visible files in one query without loading observation summaries or centroids
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Folder catalogs use bounded leased handles, close on disposal, and recheck writability after reopening
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Thumbnail backfills skip current cached outputs before metadata and media work, reuse indexed video fingerprints, and retain a forced source-repair pass
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- The map culls off-screen clusters through a cached spatial index and coalesces pointer updates while preserving cluster membership
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- People mutations refresh cached queries after failures and identify changes already applied before durability or cleanup failed
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Displayed face exemplars select usable crops before applying file-diversity and count limits
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- JSON-mode face benchmarks emit one typed NDJSON event, with the formatted table restricted to human output
+  ([`075048b`](https://github.com/coderoadpl/ai-video-cataloger/commit/075048bb87b4cbe4700e111b808772694fbd0517)).
+- Kolekcja captured-date browsing uses collection-order indexes for visible, hidden and all-media visibility scopes
+  ([`7ab2830`](https://github.com/coderoadpl/ai-video-cataloger/commit/7ab28304d66922f7ff3054eba911d3a76a220ea5)).
+- Kolekcja relevance count-only requests skip match ranking and row hydration
+  ([`7ab2830`](https://github.com/coderoadpl/ai-video-cataloger/commit/7ab28304d66922f7ff3054eba911d3a76a220ea5)).
+- Map location totals count visible videos and photos in SQL, and location responses share folder metadata instead of repeating it on every pin
+  ([`7ab2830`](https://github.com/coderoadpl/ai-video-cataloger/commit/7ab28304d66922f7ff3054eba911d3a76a220ea5)).
+- Photo search ranks matches before hydrating snippets and variant counts for the selected page
+  ([`7ab2830`](https://github.com/coderoadpl/ai-video-cataloger/commit/7ab28304d66922f7ff3054eba911d3a76a220ea5)).
+- The Kolekcja grid is fully operable from the keyboard: arrow keys, Home/End, Enter to open, Ctrl/Cmd+Space to select, Shift+Arrow to extend, with an announced active tile
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The document language follows the interface language, so screen readers and native date fields match the visible copy
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Viewer arrow keys no longer seek the file list while a video control, text field or select has focus, and both media viewers are announced as named modal dialogs
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The enlarged photo preview in Analiza is reachable and activatable from the keyboard
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Ustawienia reports a failed initial configuration load with a retry instead of an endless spinner, gives the analyzer and file-renaming groups the section titles their siblings have, and loads the backup section with the rest of the dialog
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The person media preview omits selection checkboxes and the Hide action it cannot perform, and reports a failed load with a retry instead of claiming the person has no media
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Osoby keeps a persistent selection bar with the selected count, the count outside the current view and Clear, and the merge confirmation lists every selected person
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The Osoby trash preview counts the files the confirmed action will touch, with the shared-file total shown as separate explanatory data
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- A chosen merge name no longer outlives its dialog, so a later two-person selection stays mergeable
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Opening a person from Osoby establishes a person-only collection scope instead of stacking a second person onto the existing filters
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Collection person chips follow the current person name and show localized dates instead of raw ISO days
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Person cards reuse the theme-aware placeholder tile, retry a repaired exemplar crop, open the media preview from the card face and reveal their checkbox on hover or focus
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Kolekcja treats a medium with no results as a filtered empty state offering a switch to all media, instead of the first-use empty state
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The Kolekcja date preset is derived from the applied dates and reads as a custom range when they match no preset
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The people, tag, place and folder filters cap the options they mount and carry localized clear, open, close and no-options copy
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Mapa uses the shared media toggle with counts and a localized group name, and explains a medium with no located files instead of rendering a pinless map
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Videos and photos share one status vocabulary, and duplicate badges render through the same status chip on both media
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Library tiles render media kind independently of availability, so a missing video keeps its film marker, and photos carry their own marker
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Photo rows in Analiza render the shared thumbnail states and offer Reveal in Finder
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The Kolekcja, Osoby and Mapa page headers, empty states, confirm dialogs, tag rows and slider fields come from one shared component each
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The header Models and Prerequisites buttons carry stable test ids
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- The Polish copy uses one ellipsis character and Polish quotation marks, the English collection header has a singular form, and the map empty state describes camera, timeline and manual locations
+  ([`b6885b0`](https://github.com/coderoadpl/ai-video-cataloger/commit/b6885b06efedb9bb262d78a6e493430864193731)).
+- Keeping the keyboard-active Kolekcja tile mounted no longer mounts every row between it and the viewport, so scrolling a large collection after selecting a tile stays responsive
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+- Space on a Kolekcja tile checkbox toggles that file instead of opening the previously active one
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+- Concurrent folder scans wait for a free catalog handle instead of failing once eight folders are open
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+- Status badges regain their original icon spacing instead of the oversized gap introduced with the shared badge tokens
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+- The file preview names an unnamed person "Osoba N" like Osoby does, instead of showing the raw person identifier
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+- Deleting one face grouping or all face data keeps its confirmation dialog open with the error when the deletion fails, and closes it only once the deletion succeeds
+  ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
+
+**Note:** versions `0.6.31` and `0.6.32` were never published; the version field moved past them while the audit fix waves landed, and this release supersedes both.
 
 ## [0.6.30] - 2026-09-07
 
