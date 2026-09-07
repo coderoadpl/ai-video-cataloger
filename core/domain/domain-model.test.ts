@@ -114,6 +114,7 @@ describe('config schema', () => {
         promptStyle: 'file-urls',
       },
       faces_enabled: false,
+      faces_pair_scope: 'standard',
       gemini_batch_mode: false,
       gemini_monthly_budget_usd: null,
       output_language: 'auto',
