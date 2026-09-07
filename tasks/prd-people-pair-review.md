@@ -11,7 +11,9 @@ additions; its additive, idempotent migration also installs the decision table
 when opening an existing V19 catalog that lacks it. Both V18 and existing-V19
 upgrade paths are covered by lossless migration probes. The current store also
 serializes batches and defers competing flushes; W99 still issues no flush
-inside a batch.
+inside a batch. The current `totalsByPerson` selects crop-bearing displayed
+exemplars; pair ranking selects its quality exemplars independently through
+`selectExemplars`, while the two routes share visible counts and numbering.
 
 Decision record: [ADR-0018](../docs/decisions/0018-unified-people.md) and its
 amendment "Pairwise decisions as clustering constraints".

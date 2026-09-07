@@ -211,3 +211,77 @@ describe('W99 A4 decide and undo', () => {
     expect(merge).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('W99 A7 import', () => {
+  it('guards disabled imports and rejects filesystem paths at the server boundary', async () => {
+    expect((await postPair(buildApp(createInMemoryDeps()), 'import', { pairs: [{ left: 'a', right: 'b', verdict: 'same' }] })).status).toBe(409);
+    expect((await postPair(buildApp(await pairTestDeps()), 'import', { path: '/fixture/pairs.json' })).status).toBe(400);
+  });
+  it.each([true, false])('reports native, skipped, unresolved, together, conflicting and unassigned rows (dry run %s)', async (dryRun) => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'), 3);
+    await seedPairPerson(deps, pairTestPerson('b'), 2);
+    await deps.globalCatalog.assignFaceObservation('b-1', null);
+    const pairs = [
+      { left: 'a-0', right: 'b-0', verdict: 'same' },
+      { left: 'a-1', right: 'b-1', verdict: 'different' },
+      { left: 'a-0', right: 'a-1', verdict: 'same' },
+      { left: 'a-1', right: 'a-2', verdict: 'different' },
+      { left: 'a-0', right: 'b-0', verdict: 'unsure' },
+      { left: 'reference-a', right: 'reference-b', verdict: 'same' },
+    ];
+    const response = await postPair(buildApp(deps), 'import', { pairs, dryRun });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { dryRun, imported: 4, skipped: 1, unresolved: 1, alreadyTogether: 1, conflicting: 1, merges: 0, decisionsInvalidated: 0 } });
+    const rows = await deps.globalCatalog.listPeoplePairDecisions();
+    expect(rows.ok && rows.value.length).toBe(dryRun ? 0 : 4);
+    if (!dryRun) {
+      expect(rows).toMatchObject({ value: expect.arrayContaining([expect.objectContaining({ personBId: null }), expect.objectContaining({ decision: 'different', personAId: 'a', personBId: 'a' })]) });
+      const { runFacesReclusterPass } = await import('@core/server/index.js');
+      expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { constraintsApplied: { mustLink: 2, cannotLink: 2 } } });
+    }
+  });
+  it('keeps a conflicting cannot-link and splits its anchors on the next rebuild', async () => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'), 4);
+    await postPair(buildApp(deps), 'import', { pairs: [{ left: 'a-0', right: 'a-3', verdict: 'different' }] });
+    const { runFacesReclusterPass } = await import('@core/server/index.js');
+    expect(await runFacesReclusterPass(deps, { dryRun: false })).toMatchObject({ value: { constraintsApplied: { cannotLink: 1 } } });
+    const summaries = await deps.globalCatalog.listFaceObservationSummaries();
+    if (!summaries.ok) throw new Error('Fixture failed');
+    expect(summaries.value.find((o) => o.obsId === 'a-0')?.personId).not.toBe(summaries.value.find((o) => o.obsId === 'a-3')?.personId);
+  });
+  it('applies merges inside the batch, re-resolves later rows and reports invalidation', async () => {
+    const deps = await pairTestDeps();
+    for (const id of ['a', 'b', 'c']) await seedPairPerson(deps, pairTestPerson(id), 2);
+    await deps.globalCatalog.recordPeoplePairDecision({ obsAId: 'a-0', obsBId: 'b-0', personAId: 'a', personBId: 'b', decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
+    const mergeStore = deps.globalCatalog.mergePeople.bind(deps.globalCatalog);
+    vi.spyOn(deps.globalCatalog, 'mergePeople').mockImplementation((input) => {
+      expect(deps.globalCatalog.batchDepth).toBe(1);
+      return mergeStore(input);
+    });
+    const response = await postPair(buildApp(deps), 'import', { applyMerges: true, pairs: [
+      { left: 'a-1', right: 'b-1', verdict: 'same' }, { left: 'b-1', right: 'c-1', verdict: 'same' },
+    ] });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { imported: 2, merges: 2, decisionsInvalidated: 1 } });
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toMatchObject({ value: [expect.objectContaining({ personAId: 'a', personBId: 'a' }), expect.objectContaining({ personAId: 'a', personBId: 'a' })] });
+  });
+  it('rolls back earlier imported rows if an opted-in merge fails', async () => {
+    const deps = await pairTestDeps();
+    for (const id of ['a', 'b']) await seedPairPerson(deps, pairTestPerson(id), 2);
+    const { appError } = await import('@core/domain/index.js');
+    const error = appError('internal', 'Injected merge failure');
+    vi.spyOn(deps.globalCatalog, 'mergePeople').mockResolvedValue({ ok: false, error });
+    const response = await postPair(buildApp(deps), 'import', { applyMerges: true, pairs: [
+      { left: 'a-0', right: 'b-0', verdict: 'different' }, { left: 'a-1', right: 'b-1', verdict: 'same' },
+    ] });
+    expect(await response.json()).toMatchObject({ ok: false, error });
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+  });
+  it('reports only unresolved rows for reference ids', async () => {
+    const deps = await pairTestDeps();
+    expect(await (await postPair(buildApp(deps), 'import', { pairs: [{ left: 'reference-a', right: 'reference-b', verdict: 'different' }] })).json()).toMatchObject({ data: { imported: 0, unresolved: 1 } });
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+  });
+});

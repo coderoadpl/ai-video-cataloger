@@ -238,6 +238,7 @@ const configDefaults = {
     promptStyle: 'file-urls',
   }),
   faces_enabled: 'false',
+  faces_pair_scope: 'standard',
   gemini_batch_mode: 'false',
   gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
@@ -258,6 +259,7 @@ const configView = (uiLanguage: string, outputLanguage: string, facesEnabled = f
   const effective = {
     ...configDefaults,
     faces_enabled: facesEnabled ? 'true' : 'false',
+    faces_pair_scope: 'standard',
     ui_language: uiLanguage,
     output_language: outputLanguage,
   };

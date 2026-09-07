@@ -225,6 +225,26 @@ usually arrive in minutes but the API allows up to 24 hours, and a run killed
 mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
+`faces pairs list [--limit <n>] [--json]` lists ranked potential duplicates
+(default 200 pairs, maximum 1000), with the full pending count. Unnamed labels
+use the same person number as the grid. `faces pairs decide <personAId>
+<personBId> <same|different|skip> [--json]` records an answer: `same` merges,
+`different` constrains future reclusters, and `skip` hides the pair for 30 days.
+Merges keep the named person, then the larger person, then the smaller id on
+a tie; an explicit correction can use `faces merge` in the desired direction.
+
+`faces pairs import <path> [--apply-merges] [--dry-run] [--json]` reads a JSON
+array of `{ "left": "obs-a", "right": "obs-b", "verdict": "same" }` or headerless CSV
+rows `obs-a,obs-b,same` (`left,right,verdict`). Ids must be native observation ids;
+reference ids are reported as unresolved. `same` and `different` become
+constraints, `unsure` and `not_face` are skipped. Existing unassigned anchors
+are valid. A `different` pair already within one person is kept and reported
+as conflicting. Import reports imported, skipped, unresolved, already-together,
+conflicting, merged and invalidated counts. It merges only with `--apply-merges`;
+`--dry-run` writes nothing. JSON mode emits started/completed NDJSON events,
+or an error event with the existing exit codes: validation 2, not found 5,
+faces disabled 41. An empty queue exits 0.
+
 `config set faces_pair_scope careful|standard|wide` controls how eagerly Osoby
 proposes people to compare. This app-global setting defaults to `standard`.
 

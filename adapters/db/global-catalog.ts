@@ -1580,7 +1580,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       for (let offset = 0; offset < ids.length; offset += 500) {
         const rows = db.select({ obsId: faceObservations.obsId, embedding: faceObservations.embedding }).from(faceObservations)
           .where(inArray(faceObservations.obsId, ids.slice(offset, offset + 500))).all();
-        for (const row of rows) result.set(row.obsId, new Float32Array(z.array(z.number().finite()).length(128).parse(blobToEmbedding(row.embedding))));
+        for (const row of rows) result.set(z.string().min(1).parse(row.obsId), new Float32Array(z.array(z.number().finite()).length(128).parse(blobToEmbedding(z.instanceof(Uint8Array).parse(row.embedding)))));
       }
       return result;
     });

@@ -1,4 +1,4 @@
-import { peoplePairDecisionKindSchema, PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
+import { labelledPairSchema, peoplePairDecisionKindSchema, PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
 import { z } from 'zod';
 
 import {
@@ -2434,6 +2434,22 @@ export const facesPairsUndoOutputSchema = z.object({
   pending: z.number().int().nonnegative(),
 });
 
+export const facesPairsImportInputSchema = z.object({
+  pairs: z.array(labelledPairSchema).min(1),
+  applyMerges: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
+}).strict();
+export const facesPairsImportOutputSchema = z.object({
+  dryRun: z.boolean(),
+  imported: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  unresolved: z.number().int().nonnegative(),
+  alreadyTogether: z.number().int().nonnegative(),
+  conflicting: z.number().int().nonnegative(),
+  merges: z.number().int().nonnegative(),
+  decisionsInvalidated: z.number().int().nonnegative(),
+});
+
 export const facesForgetInputSchema = z.object({
   personId: z.string().min(1),
   force: z.boolean().default(false),
@@ -2735,6 +2751,7 @@ export const API_ROUTES = {
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
   facesPairsDecide: { method: 'POST', path: '/api/faces/pairs/decide', input: facesPairsDecideInputSchema, output: facesPairsDecideOutputSchema },
   facesPairsUndo: { method: 'POST', path: '/api/faces/pairs/undo', input: emptyInputSchema, output: facesPairsUndoOutputSchema },
+  facesPairsImport: { method: 'POST', path: '/api/faces/pairs/import', input: facesPairsImportInputSchema, output: facesPairsImportOutputSchema },
   facesPairs: { method: 'GET', path: '/api/faces/pairs', input: facesPairsInputSchema, output: facesPairsOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
@@ -2944,6 +2961,7 @@ export const API_PATHS = {
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
   facesPairs: API_ROUTES.facesPairs.path,
+  facesPairsImport: API_ROUTES.facesPairsImport.path,
   facesPairsDecide: API_ROUTES.facesPairsDecide.path,
   facesPairsUndo: API_ROUTES.facesPairsUndo.path,
   facesName: API_ROUTES.facesName.path,

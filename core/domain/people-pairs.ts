@@ -73,6 +73,7 @@ const compareQuality = (a: ExemplarCandidate, b: ExemplarCandidate): number => b
 
 export const selectPairReviewCrops = <T extends ExemplarCandidate>(observations: readonly T[]): T[] => {
   const ordered = observations.filter((o) => o.cropPath !== null).sort(compareQuality);
+  const ranks = new Map(ordered.map((o, i) => [o, i]));
   const selected = new Set<T>();
   const fingerprints = new Set<string>();
   const targets = [0, 1, 2, Math.floor(ordered.length / 2), ordered.length - 2, ordered.length - 1];
@@ -80,7 +81,7 @@ export const selectPairReviewCrops = <T extends ExemplarCandidate>(observations:
     const remaining = ordered.filter((o) => !selected.has(o));
     const distinct = remaining.filter((o) => !fingerprints.has(o.fingerprint));
     const candidates = distinct.length > 0 ? distinct : remaining;
-    const choice = candidates.sort((a, b) => Math.abs(ordered.indexOf(a) - target) - Math.abs(ordered.indexOf(b) - target) || compareQuality(a, b))[0];
+    const choice = candidates.sort((a, b) => Math.abs((ranks.get(a) ?? 0) - target) - Math.abs((ranks.get(b) ?? 0) - target) || compareQuality(a, b))[0];
     if (choice === undefined) break;
     selected.add(choice);
     fingerprints.add(choice.fingerprint);

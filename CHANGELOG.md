@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- `faces pairs list`, `faces pairs decide` and `faces pairs import` expose the pairwise people review from the CLI, including a one-off import of a labelled same/different pairs corpus.
+
 - `faces recluster` honours stored pairwise decisions as clustering constraints and carries a name across the rebuild when the old person maps one-to-one onto a new one.
 
 - Osoby can be reviewed pair by pair: the app proposes two people it believes may be the same, and the answer is stored — `same` merges them, `different` is a permanent constraint honoured by later rebuilds, `skip` hides the pair for 30 days.

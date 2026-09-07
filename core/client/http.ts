@@ -1050,6 +1050,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (!parsed.ok) return Promise.resolve(err(parsed.error));
     return request(options, API_ROUTES.facesPairsUndo.method, API_ROUTES.facesPairsUndo.path, API_ROUTES.facesPairsUndo.output, parsed.value, signal);
   },
+  facesPairsImport: (input: z.input<typeof API_ROUTES.facesPairsImport.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairsImport.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairsImport.method, API_ROUTES.facesPairsImport.path, API_ROUTES.facesPairsImport.output, parsed.value, signal);
+  },
   facesPeople: (signal?: AbortSignal) =>
     request(
       options,

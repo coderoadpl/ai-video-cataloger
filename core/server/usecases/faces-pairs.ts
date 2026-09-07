@@ -1,7 +1,7 @@
 import type { GlobalCatalogStore } from '../ports.js';
 import {
   FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, PAIR_REVIEW_DEFAULT_LIMIT, buildPeoplePairCandidates, configValueSchema,
-  selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, appError, ok, type AppError, type Result, type PeoplePairCandidate,
+  selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, type LabelledPair, appError, ok, type AppError, type Result, type PeoplePairCandidate,
 } from '@core/domain/index.js';
 import { buildVisiblePeople, ensureFacesEnabled, reanchorFaceCropPath, withFaceMutation, type FacesDeps, type FacesPeopleDeps } from './faces.js';
 import { resolveConfigValues } from './config-resolution.js';
@@ -47,8 +47,9 @@ export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }
   const decisions = await deps.globalCatalog.listPeoplePairDecisions();
   if (!decisions.ok) return decisions;
   const observations = new Map<string, typeof loaded.value.visible>();
+  const visiblePersonIds = new Set(loaded.value.people.map((p) => p.personId));
   for (const observation of loaded.value.visible) {
-    if (observation.personId === null) continue;
+    if (observation.personId === null || !visiblePersonIds.has(observation.personId)) continue;
     const group = observations.get(observation.personId) ?? [];
     group.push(observation);
     observations.set(observation.personId, group);
@@ -156,4 +157,67 @@ export const facesPairsUndo = async (deps: PairMutationDeps): Promise<Result<Fac
   const queue = await facesPairs(deps, { limit: PAIR_REVIEW_DEFAULT_LIMIT });
   if (!queue.ok) return queue;
   return ok({ undone: reason === null, reason, personAId: row?.personAId ?? null, personBId: row?.personBId ?? null, pending: queue.value.pending });
+});
+
+export interface FacesPairsImportOutput {
+  dryRun: boolean;
+  imported: number;
+  skipped: number;
+  unresolved: number;
+  alreadyTogether: number;
+  conflicting: number;
+  merges: number;
+  decisionsInvalidated: number;
+}
+
+export const facesPairsImport = async (deps: PairMutationDeps, input: {
+  pairs: readonly LabelledPair[]; applyMerges: boolean; dryRun: boolean;
+}): Promise<Result<FacesPairsImportOutput, AppError>> => withFaceMutation(deps.jobs, async () => {
+  const enabled = await ensureFacesEnabled(deps);
+  if (!enabled.ok) return enabled;
+  const operation = async (): Promise<Result<FacesPairsImportOutput, AppError>> => {
+    const loaded = await deps.globalCatalog.listFaceObservationSummaries();
+    if (!loaded.ok) return loaded;
+    const observations = new Map(loaded.value.map((o) => [o.obsId, o]));
+    const output: FacesPairsImportOutput = { dryRun: input.dryRun, imported: 0, skipped: 0, unresolved: 0, alreadyTogether: 0, conflicting: 0, merges: 0, decisionsInvalidated: 0 };
+    for (const pair of input.pairs) {
+      if (pair.verdict === 'unsure' || pair.verdict === 'not_face') { output.skipped += 1; continue; }
+      const a = observations.get(pair.left);
+      const b = observations.get(pair.right);
+      if (a === undefined || b === undefined) { output.unresolved += 1; continue; }
+      let personAId = a.personId;
+      let personBId = b.personId;
+      if (personAId !== null && personAId === personBId) {
+        if (pair.verdict === 'same') output.alreadyTogether += 1;
+        else output.conflicting += 1;
+      }
+      if (!input.dryRun && input.applyMerges && pair.verdict === 'same' && personAId !== null && personBId !== null && personAId !== personBId) {
+        const personA = await deps.globalCatalog.getPerson(personAId);
+        if (!personA.ok) return personA;
+        const personB = await deps.globalCatalog.getPerson(personBId);
+        if (!personB.ok) return personB;
+        if (personA.value === null || personB.value === null) return { ok: false, error: appError('not_found', 'Person not found') };
+        const all = [...observations.values()];
+        const survivor = pairReviewSurvivor({ ...personA.value, observationCount: all.filter((o) => o.personId === personAId).length }, { ...personB.value, observationCount: all.filter((o) => o.personId === personBId).length });
+        const from = survivor === personAId ? personBId : personAId;
+        const merged = await deps.globalCatalog.mergePeople({ fromPersonId: from, toPersonId: survivor });
+        if (!merged.ok) return merged;
+        output.merges += 1;
+        output.decisionsInvalidated += merged.value.decisionsInvalidated;
+        for (const [id, observation] of observations) if (observation.personId === from) observations.set(id, { ...observation, personId: survivor });
+        personAId = survivor;
+        personBId = survivor;
+      }
+      if (!input.dryRun) {
+        const recorded = await deps.globalCatalog.recordPeoplePairDecision({
+          obsAId: a.obsId, obsBId: b.obsId, personAId, personBId, decision: pair.verdict,
+          source: 'import', decidedAt: new Date().toISOString(),
+        });
+        if (!recorded.ok) return recorded;
+      }
+      output.imported += 1;
+    }
+    return ok(output);
+  };
+  return input.dryRun ? operation() : deps.globalCatalog.withBatch(operation);
 });

@@ -107,7 +107,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     const before = new SQL.Database(await readFile(databasePath));
     before.run('DROP TABLE IF EXISTS people_pair_decisions');
     before.run('UPDATE schema_meta SET version = ?', [version]);
-    const tables = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_observations', 'face_index_state'];
+    const tables = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_observations', 'face_index_state', 'analysis_configs', 'search_documents', 'grid_thumbnail_state', 'pending_face_crop_cleanup'];
     const snapshot = snapshotAllTables(before, tables);
     await writeFile(databasePath, before.export());
     before.close();
