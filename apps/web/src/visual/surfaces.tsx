@@ -22,6 +22,8 @@ import {
 } from '../features/details/VariantCompareView.js';
 import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
+import { PairReview } from '../features/people/PairReview.js';
+import type { FacesPairCandidate, PeoplePairsState } from '../features/people/use-people-pairs.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
 import { BackupIndicatorView, type BackupIndicatorViewProps } from '../features/settings/BackupIndicator.js';
@@ -40,6 +42,7 @@ const SURFACE_IDS = [
   'catalog-sidebar-wide',
   'photos-sidebar-narrow',
   'photos-sidebar-wide',
+  'people-pair-review',
 ] as const;
 
 export type SurfaceId = (typeof SURFACE_IDS)[number];
@@ -48,7 +51,8 @@ type StandaloneSurfaceId =
   | 'catalog-sidebar-narrow'
   | 'catalog-sidebar-wide'
   | 'photos-sidebar-narrow'
-  | 'photos-sidebar-wide';
+  | 'photos-sidebar-wide'
+  | 'people-pair-review';
 type ShellSurfaceId = Exclude<SurfaceId, StandaloneSurfaceId>;
 
 const DEFAULT_SURFACE: SurfaceId = 'shell-default';
@@ -380,6 +384,54 @@ const PhotosSidebarFixture = ({ width }: { width: number }) => (
   </SidebarPanelFrame>
 );
 
+const PAIR_REVIEW_CANDIDATE: FacesPairCandidate = {
+  a: {
+    personId: 'per_0000000000000001',
+    displayName: null,
+    fallbackIndex: 3,
+    observationCount: 9,
+    fileCounts: { video: 2, photo: 5 },
+    cropPaths: [],
+  },
+  b: {
+    personId: 'per_0000000000000002',
+    displayName: null,
+    fallbackIndex: 7,
+    observationCount: 4,
+    fileCounts: { video: 0, photo: 4 },
+    cropPaths: [],
+  },
+  similarity: 0.81,
+  centroidSimilarity: 0.78,
+  bestObservationSimilarity: 0.86,
+  expectedValue: 0.62,
+  aboveClusterCut: false,
+  survivorIfSame: 'per_0000000000000001',
+};
+
+const PAIR_REVIEW_STATE: PeoplePairsState = {
+  pending: 6,
+  truncated: false,
+  limit: 200,
+  current: PAIR_REVIEW_CANDIDATE,
+  queueLength: 6,
+  answeredThisSession: 0,
+  isLoading: false,
+  isBusy: false,
+  canUndo: false,
+  notUndoable: false,
+  error: null,
+  openSession: noop,
+  decide: noop,
+  undo: noop,
+};
+
+const PairReviewFixture = () => (
+  <Box sx={{ maxWidth: 880, p: 3 }}>
+    <PairReview state={PAIR_REVIEW_STATE} disabled={false} lockReason={undefined} />
+  </Box>
+);
+
 const Header = () => (
   <AppHeader
     appVersion="0.5.13"
@@ -516,6 +568,13 @@ export const VisualSurface = ({ id }: { id: SurfaceId }) => {
     return (
       <Box data-testid={`visual-surface-${id}`} sx={{ minHeight: '100vh', p: 2 }}>
         <PhotosSidebarFixture width={id === 'photos-sidebar-narrow' ? SIDEBAR_NARROW_WIDTH : SIDEBAR_WIDE_WIDTH} />
+      </Box>
+    );
+  }
+  if (id === 'people-pair-review') {
+    return (
+      <Box data-testid={`visual-surface-${id}`} sx={{ minHeight: '100vh' }}>
+        <PairReviewFixture />
       </Box>
     );
   }
