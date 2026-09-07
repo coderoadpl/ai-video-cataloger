@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process.
+
 ### Added
 
 - `faces pairs list`, `faces pairs decide` and `faces pairs import` expose the pairwise people review from the CLI, including a one-off import of a labelled same/different pairs corpus.
@@ -29,6 +33,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Ustawienia can set how eagerly Osoby proposes people to compare (Ostrożnie / Standardowo / Szeroko).
 
 - `pnpm run test:e2e:people-pairs` drives the review surface with real clicks and keystrokes over a real faces pass and asserts the decisions survive a relaunch.
+
+### Changed
+
+- Automated launches driven by the e2e suites and the release walkthrough set `AVC_WINDOW_INACTIVE=1`, which opens the app window inactive and off the macOS Dock so a long gate run never takes keyboard focus; a normal launch is unaffected.
 
 ## [0.6.33] - 2026-09-07
 

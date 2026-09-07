@@ -18,6 +18,8 @@ import {
 } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, ModelDownloadPort } from '@core/server/index.js';
 
+import { disableOrtTelemetry } from './ort-telemetry.js';
+
 export interface OrtTensor {
   data: Float32Array | Int32Array | Uint8Array | readonly number[];
   dims: readonly number[];
@@ -578,8 +580,10 @@ const clamp = (value: number, min: number, max: number): number =>
 const clamp01 = (value: number): number =>
   clamp(value, 0, 1);
 
-const defaultOrtSessionFactory: OrtSessionFactory = {
+export const defaultOrtSessionFactory: OrtSessionFactory = {
   create: async (modelPath, providers) => {
+    // WHY: the native telemetry uploader thread aborted the whole process (SIGABRT); a local-first app must not phone home.
+    disableOrtTelemetry();
     const ort = await import('onnxruntime-node');
     const session = await ort.InferenceSession.create(modelPath, { executionProviders: [...providers] });
     return {

@@ -20,6 +20,8 @@ import {
   RENDERER_HTML,
   REPO_ROOT,
   addSampleTo,
+  desktopLaunchEnv,
+  expectInactiveWindow,
   findKeyword,
   listVideos,
   makeEmptyWorkdir,
@@ -500,15 +502,12 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userData}`],
     cwd: REPO_ROOT,
-    env: {
-      ...unavailableManagedOllamaEnvironment(freshHome),
-      NODE_ENV: 'production',
-      AVC_RENDERER_HTML: RENDERER_HTML,
-    },
+    env: desktopLaunchEnv({ AVC_RENDERER_HTML: RENDERER_HTML }, unavailableManagedOllamaEnvironment(freshHome)),
   });
   try {
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
+    await expectInactiveWindow(app);
     await page.waitForFunction(() => window.desktopBridge !== undefined);
     await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 60_000 });
     await page.getByTestId('wizard-next').click();

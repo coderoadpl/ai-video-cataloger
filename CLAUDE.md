@@ -99,7 +99,11 @@ faking a pick, `desktopBridge.folder.setCurrent`+`reload()`, shelling a CLI
 config command mid-GUI-test) is forbidden. Assert outcomes on the UI first; a
 direct data read (catalog.db via sql.js) is only a secondary invariant. CLI
 specs testing the CLI surface itself are exempt. Reference:
-`test/e2e/open-folder.spec.ts`.
+`test/e2e/open-folder.spec.ts`. Every automated launch sets
+`AVC_WINDOW_INACTIVE=1`, so the app opens as an inactive accessory window with
+no Dock icon and never steals keyboard focus from whoever is at the keyboard;
+`desktopLaunchEnv` in `test/e2e/helpers.ts` carries the flag and
+`expectInactiveWindow` asserts it right after every launch.
 
 ## On-demand real-provider suite
 

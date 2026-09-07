@@ -7,7 +7,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { desktopLaunchEnv, dismissSetupWizard, ELECTRON_MAIN, expectInactiveWindow, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -220,15 +220,14 @@ async function launch(workdir: string): Promise<Session> {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
     cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
+    env: desktopLaunchEnv({
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
-    },
+    }),
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  await expectInactiveWindow(app);
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
   await dismissSetupWizard(page);
