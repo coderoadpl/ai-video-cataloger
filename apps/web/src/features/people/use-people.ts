@@ -9,6 +9,7 @@ import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { useFacesIndex } from './use-faces-index.js';
 
 export type FacePerson = z.output<typeof facesPeopleOutputSchema>['people'][number];
@@ -61,6 +62,8 @@ export const usePeople = ({
   addLine,
   intervalMs = 1000,
 }: UsePeopleOptions): PeopleState => {
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
   const facesIndex = useFacesIndex({ active, folder, addLine, intervalMs });
@@ -93,15 +96,16 @@ export const usePeople = ({
     || reclusterMutation.isPending;
 
   const invalidate = useCallback(async () => {
+    if (!guard.isMounted()) return;
     await queryClient.invalidateQueries();
-  }, [queryClient]);
+  }, [queryClient, guard]);
 
   const runJob = useCallback(
     (accepted: Promise<{ jobId: string }>, label: string, success: string, failure: string) => {
       if (activeJobLabel !== null) return;
       setActiveJobLabel(label);
       setMutationError(null);
-      addLine(label, 'info');
+      log(label, 'info');
       void (async () => {
         try {
           const job = await accepted;
@@ -110,26 +114,30 @@ export const usePeople = ({
             delay: sleep,
             fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
             isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-            onSnapshot: () => undefined,
+            shouldStop: () => !guard.isMounted(),
+            signal: guard.signal(),
           });
+          if (!guard.isMounted()) return;
           if (final.status === 'completed') {
-            addLine(success, 'success');
+            log(success, 'success');
             await invalidate();
           } else {
             const message = `${failure}: ${final.error?.message ?? 'unknown error'}`;
-            addLine(message, 'error');
+            log(message, 'error');
             setMutationError(message);
           }
         } catch (error) {
-          const message = `${failure}: ${messageOf(error)}`;
-          addLine(message, 'error');
-          setMutationError(message);
+          if (guard.isMounted()) {
+            const message = `${failure}: ${messageOf(error)}`;
+            log(message, 'error');
+            setMutationError(message);
+          }
         } finally {
-          setActiveJobLabel(null);
+          if (guard.isMounted()) setActiveJobLabel(null);
         }
       })();
     },
-    [activeJobLabel, addLine, intervalMs, invalidate, queryClient],
+    [activeJobLabel, log, intervalMs, invalidate, queryClient, guard],
   );
 
   const installArtifacts = useCallback(() => {
@@ -146,18 +154,20 @@ export const usePeople = ({
       void (async () => {
         try {
           await operation;
-          addLine(success, 'success');
+          if (!guard.isMounted()) return;
+          log(success, 'success');
           setSelectedPersonIds([]);
           setMutationError(null);
           await invalidate();
         } catch (error) {
+          if (!guard.isMounted()) return;
           const message = messageOf(error);
-          addLine(`${failure}: ${message}`, 'error');
+          log(`${failure}: ${message}`, 'error');
           setMutationError(`${failure}: ${message}`);
         }
       })();
     },
-    [addLine, invalidate],
+    [log, invalidate, guard],
   );
 
   const rename = useCallback(
@@ -178,19 +188,21 @@ export const usePeople = ({
         try {
           await mergeMutation.mutateAsync({ fromPersonId, toPersonId });
         } catch (error) {
+          if (!guard.isMounted()) return false;
           const message = `${dictionary.people.mergeGroupingsFailedLog}: ${messageOf(error)}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setMergeError(message);
           await invalidate();
           return false;
         }
       }
-      addLine(dictionary.people.mergedGroupingsLog, 'success');
+      if (!guard.isMounted()) return false;
+      log(dictionary.people.mergedGroupingsLog, 'success');
       setSelectedPersonIds([]);
       await invalidate();
       return true;
     },
-    [addLine, dictionary, invalidate, mergeMutation],
+    [log, dictionary, invalidate, mergeMutation, guard],
   );
 
   const forget = useCallback(
@@ -218,7 +230,7 @@ export const usePeople = ({
     setActiveJobLabel(label);
     setMutationError(null);
     setReclusterDryRunReport(null);
-    addLine(label, 'info');
+    log(label, 'info');
     void (async () => {
       try {
         const job = await reclusterMutation.mutateAsync({ dryRun: true });
@@ -227,33 +239,37 @@ export const usePeople = ({
           delay: sleep,
           fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-          onSnapshot: () => undefined,
+          shouldStop: () => !guard.isMounted(),
+          signal: guard.signal(),
         });
+        if (!guard.isMounted()) return;
         if (final.status !== 'completed') {
           const message = `${dictionary.people.reclusterDryRunFailedLog}: ${final.error?.message ?? 'unknown error'}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setMutationError(message);
           return;
         }
         const parsed = facesReclusterOutputSchema.safeParse(final.result);
         if (!parsed.success) {
           const message = `${dictionary.people.reclusterDryRunFailedLog}: ${dictionary.people.reclusterReportUnavailable}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setMutationError(message);
           return;
         }
         setReclusterDryRunReport(parsed.data);
-        addLine(dictionary.people.reclusterDryRunReadyLog, 'success');
+        log(dictionary.people.reclusterDryRunReadyLog, 'success');
         await invalidate();
       } catch (error) {
-        const message = `${dictionary.people.reclusterDryRunFailedLog}: ${messageOf(error)}`;
-        addLine(message, 'error');
-        setMutationError(message);
+        if (guard.isMounted()) {
+          const message = `${dictionary.people.reclusterDryRunFailedLog}: ${messageOf(error)}`;
+          log(message, 'error');
+          setMutationError(message);
+        }
       } finally {
-        setActiveJobLabel(null);
+        if (guard.isMounted()) setActiveJobLabel(null);
       }
     })();
-  }, [activeJobLabel, addLine, dictionary, intervalMs, invalidate, queryClient, reclusterMutation]);
+  }, [activeJobLabel, log, dictionary, intervalMs, invalidate, queryClient, reclusterMutation, guard]);
 
   const confirmRecluster = useCallback(() => {
     setReclusterDryRunReport(null);

@@ -7,6 +7,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { actions } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 
 export interface WhisperRuntimeState {
   available: boolean;
@@ -37,6 +38,8 @@ export const useWhisperRuntime = ({
   addLine,
   intervalMs = 1000,
 }: UseWhisperRuntimeOptions): WhisperRuntimeState => {
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const status = useQuery({ ...actions.whisperRuntime, enabled: open });
@@ -47,7 +50,7 @@ export const useWhisperRuntime = ({
   const install = useCallback(() => {
     if (isInstalling) return;
     setIsInstalling(true);
-    addLine(dictionary.models.terminal.buildingWhisperRuntime, 'info');
+    log(dictionary.models.terminal.buildingWhisperRuntime, 'info');
     void (async () => {
       try {
         const accepted = await mutation.mutateAsync(undefined);
@@ -56,13 +59,15 @@ export const useWhisperRuntime = ({
           delay: sleep,
           fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-          onSnapshot: () => undefined,
+          shouldStop: () => !guard.isMounted(),
+          signal: guard.signal(),
         });
         if (final.status === 'completed') {
-          addLine(dictionary.models.terminal.whisperRuntimeReady, 'success');
+          if (!guard.isMounted()) return;
+          log(dictionary.models.terminal.whisperRuntimeReady, 'success');
           await refetch();
         } else {
-          addLine(
+          log(
             dictionary.models.terminal.failedWhisperRuntimeInstall(
               final.error?.message ?? dictionary.models.terminal.unknownError,
             ),
@@ -70,12 +75,12 @@ export const useWhisperRuntime = ({
           );
         }
       } catch (error) {
-        addLine(dictionary.models.terminal.failedWhisperRuntimeInstall(messageOf(error)), 'error');
+        log(dictionary.models.terminal.failedWhisperRuntimeInstall(messageOf(error)), 'error');
       } finally {
-        setIsInstalling(false);
+        if (guard.isMounted()) setIsInstalling(false);
       }
     })();
-  }, [isInstalling, addLine, mutation, intervalMs, queryClient, refetch, dictionary]);
+  }, [isInstalling, log, mutation, intervalMs, queryClient, refetch, dictionary, guard]);
 
   return {
     available: status.data?.available ?? false,

@@ -10,6 +10,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import {
   buildPhotoTreeForRoot,
   ownerRootFor,
@@ -116,6 +117,8 @@ export interface PhotosAnalysisState {
 }
 
 export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }: UsePhotosAnalysisOptions): PhotosAnalysisState => {
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
   const [scopePreference, setScopePreference] = useState<PhotosAnalysisScope>(() => readScope());
@@ -124,7 +127,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const [activeAnalyzeJobId, setActiveAnalyzeJobId] = useState<string | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
   const [folderProgress, setFolderProgress] = useState<{ current: number; total: number } | null>(null);
-  const [processingFingerprints, setProcessingFingerprints] = useState<ReadonlySet<string>>(() => new Set());
+  const [processingFingerprints, setProcessingFingerprints] = useState<ReadonlySet<string>>(new Set());
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false, isBatch: false });
   const [jobError, setJobError] = useState<string | null>(null);
   const processingSetRef = useRef<Set<string>>(new Set());
@@ -186,8 +189,9 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const selectVariantMutation = useMutation(actions.photosVariantsSelect);
 
   const invalidate = useCallback(async () => {
+    if (!guard.isMounted()) return;
     await queryClient.invalidateQueries();
-  }, [queryClient]);
+  }, [queryClient, guard]);
 
   const runJob = useCallback(
     (
@@ -202,7 +206,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       if (activeJobLabel !== null) return Promise.resolve(false);
       setActiveJobLabel(label);
       setJobError(null);
-      addLine(label, 'info');
+      log(label, 'info');
       return (async () => {
         try {
           const job = await submit();
@@ -212,20 +216,23 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
             delay: sleep,
             fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
             isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-            onSnapshot: onSnapshot ?? (() => undefined),
+            shouldStop: () => !guard.isMounted(),
+            signal: guard.signal(),
+            ...(onSnapshot === undefined ? {} : { onSnapshot }),
           });
+          if (!guard.isMounted()) return false;
           if (final.status === 'completed') {
             if (final.kind === 'photo_process') {
               const summary = photoProcessSummarySchema.safeParse(final.result);
               if (summary.success && summary.data.failed > 0) {
                 if (summary.data.analysed === 0) {
                   const message = dictionary.photos.analyzeAllFailedLog(summary.data.failed);
-                  addLine(message, 'error');
+                  log(message, 'error');
                   setJobError(message);
                   await invalidate();
                   return false;
                 }
-                addLine(
+                log(
                   dictionary.photos.analyzeCompletedWithFailuresLog(summary.data.analysed, summary.data.failed),
                   'success',
                 );
@@ -233,31 +240,34 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
                 return true;
               }
             }
-            addLine(success, 'success');
+            log(success, 'success');
             await invalidate();
             return true;
           } else if (final.status === 'cancelled') {
-            addLine(dictionary.photos.analysisCancelled, 'info');
+            log(dictionary.photos.analysisCancelled, 'info');
             await invalidate();
             return false;
           } else {
             const message = `${failure}: ${final.error?.message ?? 'unknown error'}`;
-            addLine(message, 'error');
+            log(message, 'error');
             setJobError(message);
             return false;
           }
         } catch (error) {
+          if (!guard.isMounted()) return false;
           const message = `${failure}: ${messageOf(error)}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setJobError(message);
           return false;
         } finally {
-          setActiveJobLabel(null);
-          onSettled?.();
+          if (guard.isMounted()) {
+            setActiveJobLabel(null);
+            onSettled?.();
+          }
         }
       })();
     },
-    [activeJobLabel, addLine, dictionary, intervalMs, invalidate, queryClient],
+    [activeJobLabel, log, dictionary, intervalMs, invalidate, queryClient, guard],
   );
 
   const scanFolder = useCallback((): Promise<boolean> => {
@@ -314,6 +324,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   }, []);
 
   const handleAnalyzeSnapshot = useCallback((snapshot: JobOutput) => {
+    if (!guard.isMounted()) return;
     let processingChanged = false;
     let sawCompletion = false;
     for (const event of snapshot.progressEvents) {
@@ -348,7 +359,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       if (step === 'photo-analysis-failed') {
         updateFolderProgress(data?.['path']);
         const failedPath = data?.['path'];
-        if (typeof failedPath === 'string') addLine(dictionary.photos.analyzeFileFailedLog(failedPath), 'error');
+        if (typeof failedPath === 'string') log(dictionary.photos.analyzeFileFailedLog(failedPath), 'error');
         const fingerprint = data?.['fingerprint'];
         if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
         sawCompletion = true;
@@ -356,7 +367,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     }
     if (processingChanged) setProcessingFingerprints(new Set(processingSetRef.current));
     if (sawCompletion) void invalidatePhotosQueries(queryClient);
-  }, [addLine, dictionary, queryClient, updateFolderProgress]);
+  }, [log, dictionary, queryClient, updateFolderProgress, guard]);
 
   const analyzePhotos = useCallback(() => {
     if (!canAnalyze || selectedRoot === null) return;
@@ -415,9 +426,9 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     const jobId = analyzeJobIdRef.current;
     setCancelConfirmation({ open: false, isBatch: false });
     if (jobId === null) return;
-    addLine(dictionary.photos.cancelAnalysisAction, 'info');
+    log(dictionary.photos.cancelAnalysisAction, 'info');
     void cancelAnalysisMutation.mutateAsync({ jobId });
-  }, [addLine, cancelAnalysisMutation, dictionary]);
+  }, [log, cancelAnalysisMutation, dictionary]);
 
   const closeCancelConfirmation = useCallback(() => {
     setCancelConfirmation((current) => ({ ...current, open: false }));
@@ -439,13 +450,14 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
         try {
           await selectVariantMutation.mutateAsync({ fingerprint: selectedFingerprint, configId });
         } catch (error) {
+          if (!guard.isMounted()) return;
           const message = `${dictionary.photos.variantPickerLabel}: ${messageOf(error)}`;
-          addLine(message, 'error');
+          log(message, 'error');
           setJobError(message);
         }
       })();
     },
-    [addLine, dictionary, selectedFingerprint, selectVariantMutation],
+    [log, dictionary, selectedFingerprint, selectVariantMutation, guard],
   );
 
   const error = useMemo(() => {

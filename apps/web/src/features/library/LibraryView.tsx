@@ -10,6 +10,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { TrashConfirmationDialog, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
@@ -141,6 +142,7 @@ export const LibraryView = ({
   const [searchDismissed, setSearchDismissed] = useState(false);
   const [viewerFingerprint, setViewerFingerprint] = useState<string | null>(null);
   const [selection, dispatchSelection] = useReducer(librarySelectionReducer, undefined, emptyLibrarySelection);
+  const guard = useMountGuard();
   const [trashScope, setTrashScope] = useState<LibrarySelectionScope | null>(null);
   const [trashChecked, setTrashChecked] = useState(false);
   const [trashReadOnlyRootNames, setTrashReadOnlyRootNames] = useState<string[]>([]);
@@ -282,13 +284,14 @@ export const LibraryView = ({
       try {
         if (restore) await unhideAsync({ scope });
         else await hideAsync({ scope });
+        if (!guard.isMounted()) return;
         dispatchSelection({ type: 'clear' });
         setMutationError(null);
       } catch (error) {
-        setMutationError(`${restore ? dictionary.library.restoreFailed : dictionary.library.hideFailed}: ${messageOf(error)}`);
+        if (guard.isMounted()) setMutationError(`${restore ? dictionary.library.restoreFailed : dictionary.library.hideFailed}: ${messageOf(error)}`);
       }
     })();
-  }, [unhideAsync, hideAsync, dictionary.library.restoreFailed, dictionary.library.hideFailed]);
+  }, [unhideAsync, hideAsync, dictionary.library.restoreFailed, dictionary.library.hideFailed, guard]);
   const openTrashDialog = (scope: LibrarySelectionScope): void => {
     setTrashScope(scope);
     setTrashChecked(false);
@@ -308,12 +311,14 @@ export const LibraryView = ({
             delay: sleep,
             fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
             isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-            onSnapshot: () => undefined,
+            shouldStop: () => !guard.isMounted(),
+            signal: guard.signal(),
           });
           if (final.status !== 'completed') {
             throw new ApiError(final.error ?? { code: 'internal', message: dictionary.library.trashFailed });
           }
         }
+        if (!guard.isMounted()) return;
         clearSelection();
         setTrashScope(null);
         setTrashChecked(false);
@@ -321,6 +326,7 @@ export const LibraryView = ({
         setTrashOfflineRootNames([]);
         setMutationError(null);
       } catch (error) {
+        if (!guard.isMounted()) return;
         const readOnlyRootNames = rootNamesOf(error, 'target_read_only');
         const offlineRootNames = rootNamesOf(error, 'target_offline');
         if (readOnlyRootNames.length > 0) setTrashReadOnlyRootNames(readOnlyRootNames);
@@ -330,8 +336,10 @@ export const LibraryView = ({
           ? `${dictionary.library.trashFailed}: ${messageOf(error)}`
           : `${dictionary.library.trashFailed}: ${dictionary.library.trashIncompleteCounts(summary.filesTrashed, summary.filesFailed, summary.filesNotAttempted)}`);
       } finally {
-        await invalidateLibraryVisibilityConsumers(queryClient);
-        setActiveTrashJobId(null);
+        if (guard.isMounted()) {
+          await invalidateLibraryVisibilityConsumers(queryClient);
+          setActiveTrashJobId(null);
+        }
       }
     })();
   };
