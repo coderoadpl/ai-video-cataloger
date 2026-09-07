@@ -19,6 +19,7 @@ import { cleanupIpcHandlers, registerIpcHandlers } from './ipc.js';
 import { createApplicationMenu } from './menu.js';
 import { registerMediaProtocolHandler, registerMediaScheme } from './media-protocol.js';
 import { catalogMediaRoots } from './media-scope.js';
+import { windowPresentation } from './window-presentation.js';
 import { attachWindowStateHandlers, loadWindowState, windowStatePath } from './window-state.js';
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -33,7 +34,12 @@ if (userDataDirectory !== null) {
 
 process.env.PATH = buildDesktopPath(process.env.PATH);
 
-if (process.platform === 'darwin' && !app.isPackaged) {
+const presentation = windowPresentation();
+
+if (presentation.hideDock) {
+  app.setActivationPolicy('accessory');
+  app.dock?.hide();
+} else if (process.platform === 'darwin' && !app.isPackaged) {
   app.dock?.setIcon(path.join(currentDirectory, '..', 'build', 'icon.png'));
 }
 
@@ -67,7 +73,7 @@ const createWindow = async (): Promise<void> => {
     height: windowState.height,
     minWidth: 1280,
     minHeight: 600,
-    show: true,
+    show: !presentation.inactive,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7',
     titleBarStyle: 'default',
     webPreferences: {
@@ -80,6 +86,7 @@ const createWindow = async (): Promise<void> => {
 
   attachWindowStateHandlers(statePath, mainWindow);
   if (windowState.isMaximized === true) mainWindow.maximize();
+  if (presentation.inactive) mainWindow.showInactive();
   logWindowVisible();
   mainWindow.once('ready-to-show', logFirstPaint);
   mainWindow.webContents.once('did-finish-load', resolveRendererReady);

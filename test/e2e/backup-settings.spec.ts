@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT } from './helpers.js';
+import { desktopLaunchEnv, dismissSetupWizard, ELECTRON_MAIN, expectInactiveWindow, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -29,14 +29,12 @@ async function launch(workdir: string): Promise<Session> {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
     cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
+    env: desktopLaunchEnv({
       DB_DRIVER: 'memory',
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
       AVC_TEST_BACKUP_UPLOAD_HOLD: uploadHoldPath,
-    },
+    }),
   });
 
   await app.evaluate(({ app: electronApp, dialog }, savePath) => {
@@ -51,6 +49,7 @@ async function launch(workdir: string): Promise<Session> {
 
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  await expectInactiveWindow(app);
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
   await dismissSetupWizard(page);

@@ -8,6 +8,8 @@ import {
   RENDERER_HTML,
   REPO_ROOT,
   addSampleTo,
+  desktopLaunchEnv,
+  expectInactiveWindow,
   readCatalog,
   removeTempDir,
   runCli,
@@ -91,11 +93,12 @@ test(CELL, { tag: '@gui' }, async () => {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userData}`],
     cwd: REPO_ROOT,
-    env: { ...environment, NODE_ENV: 'production', AVC_RENDERER_HTML: RENDERER_HTML },
+    env: desktopLaunchEnv({ AVC_RENDERER_HTML: RENDERER_HTML }, environment),
   });
   try {
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
+    await expectInactiveWindow(app);
     await page.waitForFunction(() => window.desktopBridge !== undefined);
 
     await stubOpenDialog(app, root);
