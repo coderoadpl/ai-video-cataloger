@@ -7,11 +7,12 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { describe, expect, it } from 'vitest';
 
-import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js';
+import { PHOTOS_SCHEMA_VERSION, SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import {
   appError,
+  GLOBAL_CATALOG_SCHEMA_VERSION,
   ok,
   type AppError,
   type BackupManifest,
@@ -494,7 +495,7 @@ const createRestoreFixture = async (): Promise<{
   const restoreDeps: BackupRestoreDeps = {
     homeDirectory: target.home,
     owner: TEST_OWNER,
-    supportedSchemaVersions: { globalCatalog: 18, photos: 7 },
+    supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
     fs: target.fs,
     globalCatalog: target.globalCatalog,
     photos: target.photos,
