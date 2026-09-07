@@ -35,6 +35,7 @@ export const CONFIG_IDENTITY_CLASSIFICATION = {
   local_model: 'identity',
   analyzer_provider: 'identity',
   faces_enabled: 'excluded',
+  faces_pair_scope: 'excluded',
   gemini_batch_mode: 'excluded',
   gemini_monthly_budget_usd: 'excluded',
   output_language: 'identity',

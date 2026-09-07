@@ -96,6 +96,101 @@ describe('SqlJsGlobalCatalogStore', () => {
     tempRoots.length = 0;
   });
 
+  it.each([18, 19])('W99 A1 upgrades v%s losslessly and opens twice', async (version) => {
+    const home = await tempHome();
+    const seed = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await seed.upsertFolder(folder);
+    await seed.upsertFile(file);
+    const databasePath = seed.databasePath();
+    await seed.dispose();
+    const SQL = await initSqlJs();
+    const before = new SQL.Database(await readFile(databasePath));
+    before.run('DROP TABLE IF EXISTS people_pair_decisions');
+    before.run('UPDATE schema_meta SET version = ?', [version]);
+    const tables = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_observations', 'face_index_state', 'analysis_configs', 'search_documents', 'grid_thumbnail_state', 'pending_face_crop_cleanup'];
+    const snapshot = snapshotAllTables(before, tables);
+    await writeFile(databasePath, before.export());
+    before.close();
+    for (let opening = 0; opening < 2; opening += 1) {
+      const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+      expect((await store.counts()).ok).toBe(true);
+      expect((await store.dispose()).ok).toBe(true);
+      const after = new SQL.Database(await readFile(databasePath));
+      try {
+        expect(after.exec('SELECT * FROM people_pair_decisions')).toEqual([]);
+        expect(after.exec('SELECT version FROM schema_meta')[0]?.values).toEqual([[19]]);
+        expect(snapshotAllTables(after, tables)).toEqual(snapshot);
+      } finally { after.close(); }
+    }
+  });
+
+  it('W99 A1 normalizes upserts, selects the latest user row and deletes either anchor', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const row = { obsAId: 'a', obsBId: 'b', personAId: 'pa', personBId: null, decision: 'different' as const, decidedAt: '2026-01-01T00:00:00.000Z', source: 'user' as const };
+    expect((await store.recordPeoplePairDecision(row)).ok).toBe(true);
+    expect((await store.recordPeoplePairDecision({ ...row, obsAId: 'b', obsBId: 'a', personAId: null, personBId: 'pa', decision: 'skip' })).ok).toBe(true);
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([{ ...row, decision: 'skip' }]));
+    await store.recordPeoplePairDecision({ ...row, obsAId: 'c', obsBId: 'd', source: 'import', decidedAt: '2026-02-01T00:00:00.000Z' });
+    expect(await store.latestUserPeoplePairDecision()).toEqual(ok({ ...row, decision: 'skip' }));
+    await store.deletePeoplePairDecisionsForObservations(['b']);
+    expect(await store.latestUserPeoplePairDecision()).toEqual(ok(null));
+    await store.deletePeoplePairDecisionsForObservations(['c']);
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.recordPeoplePairDecision(row);
+    await store.deletePeoplePairDecision('b', 'a');
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.dispose();
+  });
+
+  it('W99 A5 refreshes decision person columns inside replacement and retains unassigned anchors', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    await store.upsertPerson({ personId: 'old', displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: embedding, exemplarCount: 2 });
+    for (const obsId of ['a', 'b']) await store.upsertFaceObservation({ obsId, fingerprint: obsId, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, personId: 'old', cropPath: null });
+    const decision = { obsAId: 'a', obsBId: 'b', personAId: 'old', personBId: 'old', decision: 'different' as const, source: 'user' as const, decidedAt: '2026-01-01T00:00:00.000Z' };
+    await store.recordPeoplePairDecision(decision);
+    await store.replaceFaceClustering({ people: [{ personId: 'new', displayName: null, kind: 'face', createdAt: decision.decidedAt, centroid: embedding, exemplarCount: 1 }], assignments: [{ obsId: 'a', personId: 'new' }, { obsId: 'b', personId: null }] });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([{ ...decision, personAId: 'new', personBId: null }]));
+    await store.dispose();
+  });
+
+  it.each(['forget-person', 'delete-photo', 'forget-video', 'purge', 'hide'])('W99 A6 maintains decisions during %s', async (action) => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    await store.upsertFolder(folder);
+    for (const id of ['a', 'b', 'c', 'd']) {
+      await store.upsertFile({ ...file, fingerprint: id });
+      await store.upsertPerson({ personId: id, displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: embedding, exemplarCount: 1 });
+      await store.upsertFaceObservation({ obsId: id, fingerprint: id, personId: id, kind: 'face', media: action === 'delete-photo' ? 'photo' : 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, cropPath: null });
+    }
+    const row = { obsAId: 'a', obsBId: 'b', personAId: 'a', personBId: 'b', decision: 'different' as const, source: 'user' as const, decidedAt: '2026-01-01T00:00:00.000Z' };
+    const unrelated = { ...row, obsAId: 'c', obsBId: 'd', personAId: 'c', personBId: 'd' };
+    await store.recordPeoplePairDecision(row);
+    await store.recordPeoplePairDecision(unrelated);
+    if (action === 'forget-person') await store.forgetPerson('a');
+    if (action === 'delete-photo') await store.deleteFaceObservationsForFile('a');
+    if (action === 'forget-video') await store.forgetEntry('a');
+    if (action === 'purge') await store.purgeFaces();
+    if (action === 'hide') await store.setHidden(['a'], 1);
+    expect(await store.listPeoplePairDecisions()).toEqual(ok(action === 'purge' ? [] : action === 'hide' ? [row, unrelated] : [unrelated]));
+    await store.dispose();
+  });
+
+  it('W99 A6 rekeys merges and invalidates only different rows made equal by this merge', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    for (const personId of ['a', 'b', 'c']) await store.upsertPerson({ personId, displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: Array.from({ length: 128 }, () => 0), exemplarCount: 0 });
+    const row = { obsAId: 'o-a', obsBId: 'o-b', personAId: 'a', personBId: 'b', decision: 'different' as const, source: 'user' as const, decidedAt: '2026-01-01T00:00:00.000Z' };
+    await store.recordPeoplePairDecision(row);
+    await store.recordPeoplePairDecision({ ...row, obsBId: 'o-c', personBId: 'c' });
+    await store.recordPeoplePairDecision({ ...row, obsAId: 'old-mixed-a', obsBId: 'old-mixed-b', personAId: 'b', personBId: 'b' });
+    expect(await store.mergePeople({ fromPersonId: 'a', toPersonId: 'b' })).toMatchObject({ value: { decisionsInvalidated: 1 } });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([
+      { ...row, obsBId: 'o-c', personAId: 'b', personBId: 'c' },
+      { ...row, obsAId: 'old-mixed-a', obsBId: 'old-mixed-b', personAId: 'b', personBId: 'b' },
+    ]));
+    await store.dispose();
+  });
+
   it('PE03 defers competing flushes and serializes unrelated batches', async () => {
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
     await store.upsertFolder(folder);

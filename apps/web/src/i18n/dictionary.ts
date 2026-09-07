@@ -513,6 +513,12 @@ export interface Dictionary {
     reclusterUnassigned: string;
     reclusterWithoutExemplar: string;
     reclusterNamesDropped: string;
+    reclusterNamesCarried: string;
+    reclusterMustLink: string;
+    reclusterCannotLink: string;
+    reclusterConstraintConflicts: string;
+    reclusterConstraintsStale: string;
+    reclusterNameConflicts: string;
     reclusterLargestClusters: string;
     reclusterNoClusters: string;
     deleteAllFaceData: string;
@@ -1612,6 +1618,12 @@ export const en: Dictionary = {
     reclusterUnassigned: 'Unassigned observations',
     reclusterWithoutExemplar: 'Without exemplar',
     reclusterNamesDropped: 'Names dropped',
+    reclusterNamesCarried: 'Names carried',
+    reclusterMustLink: 'Must-link constraints',
+    reclusterCannotLink: 'Cannot-link constraints',
+    reclusterConstraintConflicts: 'Constraint conflicts',
+    reclusterConstraintsStale: 'Stale constraints',
+    reclusterNameConflicts: 'Name conflicts',
     reclusterLargestClusters: 'Largest clusters',
     reclusterNoClusters: 'No clusters',
     deleteAllFaceData: 'Delete all face data',
@@ -2779,6 +2791,12 @@ export const pl: Dictionary = {
     reclusterUnassigned: 'Nieprzypisane obserwacje',
     reclusterWithoutExemplar: 'Bez przykładu',
     reclusterNamesDropped: 'Usunięte nazwy',
+    reclusterNamesCarried: 'Zachowane nazwy',
+    reclusterMustLink: 'Nakazy połączenia',
+    reclusterCannotLink: 'Zakazy połączenia',
+    reclusterConstraintConflicts: 'Konflikty decyzji',
+    reclusterConstraintsStale: 'Nieaktualne decyzje',
+    reclusterNameConflicts: 'Konflikty nazw',
     reclusterLargestClusters: 'Największe klastry',
     reclusterNoClusters: 'Brak klastrów',
     deleteAllFaceData: 'Usuń wszystkie dane twarzy',

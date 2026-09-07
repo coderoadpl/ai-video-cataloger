@@ -658,3 +658,31 @@ describe('research thresholds are pinned', () => {
     expect(FACE_ENGINE_VERSION).toBe(2);
   });
 });
+
+describe('W99 A5 constrained clustering', () => {
+  const pool = [0, 0, 0, 0].map((angle, i) => ({ obsId: `o${i}`, embedding: unitAtAngleDeg(angle), quality: 0.9 }));
+  it('rejects every merge spanning a cannot-link pair', () => {
+    expect(clusterFaceObservations(pool).clusters).toHaveLength(1);
+    const result = clusterFaceObservations(pool, { constraints: { mustLink: [], cannotLink: [['o0', 'o3']] } });
+    expect(result.clusters.some((c) => c.memberObsIds.includes('o0') && c.memberObsIds.includes('o3'))).toBe(false);
+    expect(result.constraintsApplied.cannotLink).toBe(1);
+  });
+  it('pre-unions must-links, computes the union centroid and stays deterministic', () => {
+    const observations = [
+      { obsId: 'a', embedding: [1, 0], quality: 0.9 },
+      { obsId: 'b', embedding: [0, 1], quality: 0.9 },
+      { obsId: 'c', embedding: [0, 1], quality: 0.9 },
+    ];
+    const constraints = { mustLink: [['a', 'b'], ['b', 'c']], cannotLink: [] } as const;
+    const result = clusterFaceObservations(observations, { constraints });
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0]?.centroid).toEqual(normalizeEmbedding([1, 2]));
+    expect(clusterFaceObservations([...observations].reverse(), { constraints })).toEqual(result);
+  });
+  it('reports conflicting and stale constraints without splitting a must-link component', () => {
+    const result = clusterFaceObservations(pool, { constraints: { mustLink: [['o0', 'o1'], ['o1', 'o3'], ['missing', 'o2']], cannotLink: [['o0', 'o3']] } });
+    expect(result.constraintConflicts).toBe(1);
+    expect(result.constraintsStale).toBe(1);
+    expect(result.clusters.some((c) => c.memberObsIds.includes('o0') && c.memberObsIds.includes('o3'))).toBe(true);
+  });
+});

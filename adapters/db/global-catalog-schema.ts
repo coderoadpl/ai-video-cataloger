@@ -1,4 +1,4 @@
-import { blob, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const folders = sqliteTable('folders', {
   folderId: text('folder_id').primaryKey(),
@@ -129,6 +129,20 @@ export const faceIndexState = sqliteTable('face_index_state', {
   engineVersion: integer('engine_version').notNull(),
 });
 
+export const peoplePairDecisions = sqliteTable('people_pair_decisions', {
+  obsAId: text('obs_a_id').notNull(),
+  obsBId: text('obs_b_id').notNull(),
+  personAId: text('person_a_id'),
+  personBId: text('person_b_id'),
+  decision: text('decision').notNull(),
+  decidedAt: text('decided_at').notNull(),
+  source: text('source').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.obsAId, table.obsBId] }),
+  index('people_pair_decisions_person_a_idx').on(table.personAId),
+  index('people_pair_decisions_person_b_idx').on(table.personBId),
+]);
+
 export const globalCatalogSchema = {
   folders,
   files,
@@ -142,6 +156,7 @@ export const globalCatalogSchema = {
   people,
   faceObservations,
   faceIndexState,
+  peoplePairDecisions,
 };
 
 export const createGlobalCatalogSchemaSqlV1 = [
@@ -397,4 +412,19 @@ export const migrateGlobalCatalogSchemaSqlV17 = [
 
 export const migrateGlobalCatalogSchemaSqlV18 = [
   'CREATE INDEX IF NOT EXISTS idx_face_observations_fingerprint ON face_observations(fingerprint)',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV19 = [
+  `CREATE TABLE IF NOT EXISTS people_pair_decisions (
+    obs_a_id TEXT NOT NULL,
+    obs_b_id TEXT NOT NULL,
+    person_a_id TEXT,
+    person_b_id TEXT,
+    decision TEXT NOT NULL,
+    decided_at TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (obs_a_id, obs_b_id)
+  )`,
+  'CREATE INDEX IF NOT EXISTS people_pair_decisions_person_a_idx ON people_pair_decisions(person_a_id)',
+  'CREATE INDEX IF NOT EXISTS people_pair_decisions_person_b_idx ON people_pair_decisions(person_b_id)',
 ] as const;

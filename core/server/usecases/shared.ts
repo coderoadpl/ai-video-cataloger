@@ -223,6 +223,8 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
     }
     case 'faces_enabled':
       return configValueSchema.shape.faces_enabled.parse(value);
+    case 'faces_pair_scope':
+      return configValueSchema.shape.faces_pair_scope.parse(value);
     case 'gemini_batch_mode':
       return configValueSchema.shape.gemini_batch_mode.parse(value);
     case 'gemini_monthly_budget_usd':
@@ -274,6 +276,7 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   local_model: null,
   analyzer_provider: null,
   faces_enabled: null,
+  faces_pair_scope: null,
   gemini_batch_mode: null,
   gemini_monthly_budget_usd: null,
   output_language: null,
@@ -304,6 +307,7 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   local_model: stringifyConfigDefault('local_model'),
   analyzer_provider: stringifyConfigDefault('analyzer_provider'),
   faces_enabled: stringifyConfigDefault('faces_enabled'),
+  faces_pair_scope: stringifyConfigDefault('faces_pair_scope'),
   gemini_batch_mode: stringifyConfigDefault('gemini_batch_mode'),
   gemini_monthly_budget_usd: stringifyConfigDefault('gemini_monthly_budget_usd'),
   output_language: stringifyConfigDefault('output_language'),

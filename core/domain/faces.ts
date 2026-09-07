@@ -388,11 +388,15 @@ export interface FaceCluster {
 }
 
 export interface FaceClusteringOutcome {
+  constraintsApplied: { mustLink: number; cannotLink: number };
+  constraintConflicts: number;
+  constraintsStale: number;
   clusters: FaceCluster[];
   unassignedObsIds: string[];
 }
 
 export interface FaceClusteringOptions {
+  constraints?: { mustLink: readonly (readonly [string, string])[]; cannotLink: readonly (readonly [string, string])[] };
   clusterCutSimilarity?: number | undefined;
   minStrongFraction?: number | undefined;
   onSimilarityBlock?: ((candidatePairs: number) => void) | undefined;
@@ -407,6 +411,7 @@ const personIdFromSeed = (seedObsId: string, taken: ReadonlySet<string>): string
 };
 
 interface AgglomerativeCluster {
+  constrained: Set<number>;
   id: number;
   members: number[];
   minObsId: string;
@@ -848,36 +853,81 @@ function* clusterPreparedFaceObservationSteps(
   const ordered = prepared.ordered;
   const unassignedObsIds = [...prepared.unassignedObsIds];
 
+  const indices = new Map(ordered.map((o, i) => [o.obsId, i]));
+  const existing = new Set([...indices.keys(), ...unassignedObsIds]);
+  const parents = Uint32Array.from(ordered.map((_, i) => i));
+  const root = (index: number): number => {
+    let current = index;
+    while (at(parents, current) !== current) {
+      parents[current] = at(parents, at(parents, current));
+      current = at(parents, current);
+    }
+    return current;
+  };
+  const constraintsApplied = { mustLink: 0, cannotLink: 0 };
+  let constraintsStale = 0;
+  let constraintConflicts = 0;
+  for (const [a, b] of options.constraints?.mustLink ?? []) {
+    if (!existing.has(a) || !existing.has(b)) { constraintsStale += 1; continue; }
+    constraintsApplied.mustLink += 1;
+    const left = indices.get(a);
+    const right = indices.get(b);
+    if (left === undefined || right === undefined) continue;
+    const leftRoot = root(left);
+    const rightRoot = root(right);
+    parents[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+  }
+  const forbidden = new Map<number, Set<number>>();
+  for (const [a, b] of options.constraints?.cannotLink ?? []) {
+    if (!existing.has(a) || !existing.has(b)) { constraintsStale += 1; continue; }
+    constraintsApplied.cannotLink += 1;
+    const left = indices.get(a);
+    const right = indices.get(b);
+    if (left === undefined || right === undefined) continue;
+    if (root(left) === root(right)) { constraintConflicts += 1; continue; }
+    const leftSet = forbidden.get(left) ?? new Set<number>();
+    leftSet.add(right);
+    forbidden.set(left, leftSet);
+    const rightSet = forbidden.get(right) ?? new Set<number>();
+    rightSet.add(left);
+    forbidden.set(right, rightSet);
+  }
   const clusters = new Map<number, AgglomerativeCluster>();
   for (let index = 0; index < ordered.length; index += 1) {
     const observation = ordered[index];
     if (observation === undefined) continue;
-    clusters.set(index, {
-      id: index,
-      members: [index],
-      minObsId: observation.obsId,
-      totals: [...observation.embedding],
-    });
+    const id = root(index);
+    const cluster = clusters.get(id);
+    if (cluster === undefined) {
+      clusters.set(id, { id, members: [index], minObsId: observation.obsId, totals: [...observation.embedding], constrained: new Set(forbidden.has(index) ? [index] : []) });
+    } else {
+      cluster.members.push(index);
+      cluster.totals = cluster.totals.map((value, i) => value + at(observation.embedding, i));
+      if (forbidden.has(index)) cluster.constrained.add(index);
+    }
   }
 
   const maxClusterCount = Math.max(1, ordered.length * 2);
   const alive = new Uint8Array(maxClusterCount);
   const neighbours: number[][] = Array.from({ length: maxClusterCount }, () => []);
-  for (let index = 0; index < ordered.length; index += 1) alive[index] = 1;
+  for (const id of clusters.keys()) alive[id] = 1;
   const pairSums = new FacePairSumStore(prepared.edges.count + ordered.length);
   const heap = new MergeHeap(prepared.edges.count + ordered.length);
   for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
     if (edgeIndex % 512 === 0) yield 'clustering';
-    const leftId = at(prepared.edges.leftIds, edgeIndex);
-    const rightId = at(prepared.edges.rightIds, edgeIndex);
+    const leftId = root(at(prepared.edges.leftIds, edgeIndex));
+    const rightId = root(at(prepared.edges.rightIds, edgeIndex));
+    if (leftId === rightId) continue;
     const similarity = at(prepared.edges.similarities, edgeIndex);
-    pairSums.set(leftId, rightId, similarity, 1, similarity >= clusterCutSimilarity ? 1 : 0);
-    neighbours[leftId]?.push(rightId);
-    neighbours[rightId]?.push(leftId);
+    const previous = pairSums.get(leftId, rightId);
+    pairSums.set(leftId, rightId, previous.sum + similarity, previous.count + 1, previous.strongCount + (similarity >= clusterCutSimilarity ? 1 : 0));
+    if (previous.count === 0) {
+      neighbours[leftId]?.push(rightId);
+      neighbours[rightId]?.push(leftId);
+    }
   }
-  for (let edgeIndex = 0; edgeIndex < prepared.edges.count; edgeIndex += 1) {
-    if (edgeIndex % 512 === 0) yield 'clustering';
-    pushMergeCandidate(heap, clusters, pairSums, at(prepared.edges.leftIds, edgeIndex), at(prepared.edges.rightIds, edgeIndex));
+  for (const leftId of clusters.keys()) for (const rightId of neighbours[leftId] ?? []) {
+    if (leftId < rightId) pushMergeCandidate(heap, clusters, pairSums, leftId, rightId);
   }
 
   let nextClusterId = ordered.length;
@@ -892,6 +942,14 @@ function* clusterPreparedFaceObservationSteps(
     const left = clusters.get(candidate.leftId);
     const right = clusters.get(candidate.rightId);
     if (left === undefined || right === undefined) continue;
+    const constrained = left.constrained.size <= right.constrained.size ? left : right;
+    const other = constrained === left ? right : left;
+    let blocked = false;
+    for (const index of constrained.constrained) {
+      for (const endpoint of forbidden.get(index) ?? []) if (other.constrained.has(endpoint)) { blocked = true; break; }
+      if (blocked) break;
+    }
+    if (blocked) continue;
     const currentPairSum = pairSums.get(left.id, right.id);
     const currentDenominator = left.members.length * right.members.length;
     const currentScore = currentPairSum.sum / currentDenominator;
@@ -903,6 +961,7 @@ function* clusterPreparedFaceObservationSteps(
     const members = [...left.members, ...right.members].sort((leftMember, rightMember) =>
       (ordered[leftMember]?.obsId ?? '').localeCompare(ordered[rightMember]?.obsId ?? ''));
     const merged: AgglomerativeCluster = {
+      constrained: new Set([...left.constrained, ...right.constrained]),
       id: nextClusterId,
       members,
       minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
@@ -966,7 +1025,7 @@ function* clusterPreparedFaceObservationSteps(
     });
   }
 
-  return { clusters: finalClusters, unassignedObsIds: unassignedObsIds.sort() };
+  return { clusters: finalClusters, unassignedObsIds: unassignedObsIds.sort(), constraintsApplied, constraintConflicts, constraintsStale };
 }
 
 export const shouldMergePeople = (

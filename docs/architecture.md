@@ -1422,6 +1422,12 @@ decisions in one pass — the CLI parses the file and posts the parsed pairs, so
 the server never opens a caller-supplied path and the contract stays the only
 bridge.
 
+The composition owns a single cached queue keyed by a people-revision token
+covering the loaded people, observation projections, exemplar vectors, active
+decisions, scope and limit. Reads still load current evidence before comparing
+the token, so visibility changes and the exact skip-expiry boundary invalidate
+the cache without introducing a timer or a background job.
+
 **The rebuild reads the rows.** `faces recluster` is now a constrained
 clustering: `same` rows are must-link pairs pre-unioned before the
 agglomerative loop, `different` rows are cannot-link pairs that reject any
@@ -1437,6 +1443,10 @@ rebuild, unassigned or freshly indexed, do not break that mapping — and to kee
 dropping and reporting it in every other case. The recluster report grows
 `constraintsApplied`, `constraintConflicts`, `constraintsStale` and
 `nameConflicts`, and `namesCarried` stops being permanently zero.
+
+The exported `shouldMergePeople` helper has no production caller. Wiring it
+into automatic merging requires resolving and honoring cannot-link decisions
+first; the live constrained clusterer and candidate generator already do so.
 
 **No new taxonomy.** `not_found` covers an unknown person id, `validation` a
 malformed corpus or a person with no observations, and the existing

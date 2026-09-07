@@ -278,6 +278,7 @@ describe('faces people management', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.movedObservations).toBe(2);
+    expect(result.value.decisionsInvalidated).toBe(0);
     const people = await deps.globalCatalog.listPeople();
     expect(people.ok && people.value.map((person) => person.personId)).toEqual(['to']);
   });
@@ -1103,6 +1104,7 @@ describe('facesIndex stale-version re-indexing', () => {
       fingerprint: 'fp-clip',
       embedding: unit128(5),
     }));
+    await deps.globalCatalog.recordPeoplePairDecision({ obsAId: 'fp-clip:face:9:9', obsBId: 'other-anchor', personAId: null, personBId: null, decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
     await deps.globalCatalog.completeFaceIndex('fp-clip', 1);
 
     const beforeStatus = await facesStatus(deps);
@@ -1120,6 +1122,8 @@ describe('facesIndex stale-version re-indexing', () => {
     expect(observations.value.map((observation) => observation.obsId)).not.toContain('fp-clip:face:9:9');
     expect(observations.value.length).toBe(3);
 
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+    expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { constraintsStale: 0 } });
     const afterStatus = await facesStatus(deps);
     expect(afterStatus.ok).toBe(true);
     if (!afterStatus.ok) throw new Error(afterStatus.error.message);
@@ -2255,4 +2259,37 @@ it('PE07 reports applied cleanup failure and retries the retained crops', async 
   expect(await facesForget(deps, { personId: 'person-a', force: true })).toMatchObject({ ok: true, value: { cropPathsDeleted: 1 } });
   expect(deletion).toHaveBeenCalledTimes(2);
   deletion.mockRestore();
+});
+
+describe('W99 A5 constrained rebuild and names', () => {
+  it.each([null, 'other'])('carries an intact name when absorbed evidence was assigned to %s', async (oldPersonId) => {
+    const deps = buildDeps();
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'named', displayName: 'Label' }));
+    for (const obsId of ['a', 'b']) await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId, personId: 'named', embedding: unit128(0) }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'c', personId: oldPersonId, embedding: unit128(0) }));
+    const dry = await runFacesReclusterPass(deps, { dryRun: true });
+    expect(dry).toMatchObject({ value: { namesCarried: oldPersonId === null ? 1 : 0, namesDropped: oldPersonId === null ? [] : ['Label'] } });
+    expect(await deps.globalCatalog.getPerson('named')).toMatchObject({ value: { displayName: 'Label' } });
+    const real = await runFacesReclusterPass(deps, { dryRun: false });
+    if (!dry.ok || !real.ok) throw new Error('Fixture failed');
+    expect({ ...real.value, elapsedMs: 0, dryRun: true }).toEqual({ ...dry.value, elapsedMs: 0 });
+  });
+  it('counts a name conflict instead of selecting one of two old names', async () => {
+    const deps = buildDeps();
+    for (const id of ['a', 'b']) {
+      await deps.globalCatalog.upsertPerson(personFixture({ personId: id, displayName: `Label ${id}` }));
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: id, personId: id, embedding: unit128(0) }));
+    }
+    expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { namesCarried: 0, namesDropped: ['Label a', 'Label b'], nameConflicts: 1 } });
+  });
+  it('applies stored constraints, refreshes null anchors and preserves the next rebuild constraint', async () => {
+    const deps = buildDeps();
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'old' }));
+    for (const obsId of ['a', 'b', 'c']) await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId, personId: 'old', embedding: unit128(0), quality: obsId === 'c' ? 0.7 : 0.9 }));
+    await deps.globalCatalog.recordPeoplePairDecision({ obsAId: 'a', obsBId: 'c', personAId: 'old', personBId: 'old', decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
+    const result = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(result).toMatchObject({ value: { constraintsApplied: { cannotLink: 1 }, constraintsStale: 0 } });
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toMatchObject({ value: [{ obsAId: 'a', obsBId: 'c', personAId: 'person-a', personBId: null }] });
+    expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { constraintsApplied: { cannotLink: 1 }, constraintsStale: 0 } });
+  });
 });
