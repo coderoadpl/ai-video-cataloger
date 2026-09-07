@@ -15,6 +15,24 @@ interface Session {
   page: Page;
 }
 
+const personCard = (page: Page, personId: string) =>
+  page.locator(`[data-testid="people-card"][data-person-id="${personId}"]`);
+
+const topmostElementAtCheckbox = async (page: Page, personId: string): Promise<string> =>
+  personCard(page, personId).locator('input[type="checkbox"]').evaluate((input) => {
+    const rect = input.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    if (hit === null) return 'none';
+    if (hit === input) return 'checkbox';
+    return hit.getAttribute('data-testid') ?? hit.tagName.toLowerCase();
+  });
+
+const selectPerson = async (page: Page, personId: string): Promise<void> => {
+  const card = personCard(page, personId);
+  await card.hover();
+  await card.locator('input[type="checkbox"]').check();
+};
+
 async function launch(workdir: string): Promise<Session> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'avc-people-userdata-'));
   mkdirSync(userDataDir, { recursive: true });
@@ -118,6 +136,7 @@ test.describe('People: enable faces, index, and rename a real grouping', () => {
       await expect(renameInput).toBeVisible({ timeout: 10_000 });
       await renameInput.fill('E2E person one');
       await session.page.getByTestId('people-rename-save').click();
+      await expect(renameInput).toBeHidden({ timeout: 15_000 });
 
       await expect(card.getByText('E2E person one')).toBeVisible({ timeout: 15_000 });
     } finally {
@@ -250,22 +269,26 @@ test.describe('People: merging several selected groupings into the named one', (
       await session.page.getByTestId('subnav-people').click();
       await expect(session.page.getByTestId('people-card')).toHaveCount(3, { timeout: 30_000 });
 
-      const alphaCard = session.page.locator('[data-testid="people-card"][data-person-id="person-alpha"]');
+      const alphaCard = personCard(session.page, 'person-alpha');
       await alphaCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
       await session.page.getByTestId('people-rename').click();
       const renameInput = session.page.getByTestId('people-rename-input');
       await expect(renameInput).toBeVisible({ timeout: 10_000 });
       await renameInput.fill('E2E Alpha');
       await session.page.getByTestId('people-rename-save').click();
+      await expect(renameInput).toBeHidden({ timeout: 15_000 });
       await expect(alphaCard.getByText('E2E Alpha')).toBeVisible({ timeout: 15_000 });
 
+      await personCard(session.page, 'person-beta').hover();
+      expect(await topmostElementAtCheckbox(session.page, 'person-beta')).toBe('checkbox');
+
       const mergeButton = session.page.getByTestId('people-merge-selected');
-      await session.page.locator('[data-person-id="person-beta"] input[type="checkbox"]').check();
+      await selectPerson(session.page, 'person-beta');
       await expect(mergeButton).toBeDisabled();
       await expect(session.page.getByTestId('people-merge-hint')).toBeVisible();
 
-      await session.page.locator('[data-person-id="person-alpha"] input[type="checkbox"]').check();
-      await session.page.locator('[data-person-id="person-gamma"] input[type="checkbox"]').check();
+      await selectPerson(session.page, 'person-alpha');
+      await selectPerson(session.page, 'person-gamma');
       await expect(session.page.getByTestId('people-merge-hint')).toHaveCount(0);
       await expect(mergeButton).toBeEnabled();
 
