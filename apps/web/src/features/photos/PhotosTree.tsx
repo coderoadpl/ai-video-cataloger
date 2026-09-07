@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { Box, CircularProgress, List, ListItemButton, Tooltip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
@@ -20,11 +20,12 @@ import {
   type PhotoTreeNode,
   type PhotoTreeRow,
 } from './core/index.js';
+import { PHOTO_ROW_HEIGHT } from '../../theme.js';
 import { PhotoRow } from './PhotoRow.js';
 
 const FOLDER_ROW_HEIGHT = 40;
 const STATUS_ROW_HEIGHT = 52;
-const PHOTO_ITEM_ROW_HEIGHT = 96;
+const PHOTO_ITEM_ROW_HEIGHT = PHOTO_ROW_HEIGHT;
 const INDENT = 18;
 
 const rowHeightOf = (row: PhotoTreeRow): number => {
@@ -88,17 +89,26 @@ const PhotoItemRowView = ({
   selected,
   isProcessing,
   onSelect,
+  onContextMenu,
   dictionary,
 }: {
   row: PhotoItemRow;
   selected: boolean;
   isProcessing: boolean;
   onSelect: () => void;
+  onContextMenu: (event: MouseEvent, path: string) => void;
   dictionary: Dictionary;
 }) => (
   <Box sx={{ position: 'relative', pl: `${row.depth * INDENT + 8}px` }}>
     <TreeRowGuides row={row} />
-    <PhotoRow item={row.item} selected={selected} isProcessing={isProcessing} onSelect={onSelect} dictionary={dictionary} />
+    <PhotoRow
+      item={row.item}
+      selected={selected}
+      isProcessing={isProcessing}
+      onSelect={onSelect}
+      onContextMenu={onContextMenu}
+      dictionary={dictionary}
+    />
   </Box>
 );
 
@@ -124,9 +134,10 @@ interface PhotosTreeProps {
   selectedFingerprint: string | null;
   processingFingerprints: ReadonlySet<string>;
   onSelect: (fingerprint: string) => void;
+  onContextMenu: (event: MouseEvent, path: string) => void;
 }
 
-export const PhotosTree = ({ root, selectedFingerprint, processingFingerprints, onSelect }: PhotosTreeProps) => {
+export const PhotosTree = ({ root, selectedFingerprint, processingFingerprints, onSelect, onContextMenu }: PhotosTreeProps) => {
   const dictionary = useDictionary();
   const rootKey = photoFolderKey(root.root, '');
   const roots = useMemo(() => [root], [root]);
@@ -211,6 +222,7 @@ export const PhotosTree = ({ root, selectedFingerprint, processingFingerprints, 
                   selected={row.item.fingerprint === selectedFingerprint}
                   isProcessing={processingFingerprints.has(row.item.fingerprint)}
                   onSelect={() => onSelect(row.item.fingerprint)}
+                  onContextMenu={onContextMenu}
                   dictionary={dictionary}
                 />
               );

@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CssBaseline,
   ListItemButton,
   Typography,
@@ -11,9 +10,15 @@ import {
 import { ThemeProvider } from '@mui/material/styles';
 
 import { DuplicateBadge } from '../components/ui/DuplicateBadge.js';
-import { FolderIcon, PlayCircleIcon } from '../components/ui/icons.js';
+import { EmptyState } from '../components/ui/EmptyState.js';
+import { FilmIcon, FolderIcon, PlayCircleIcon } from '../components/ui/icons.js';
 import { MediaThumbnail } from '../components/ui/MediaThumbnail.js';
+import { PageHeader } from '../components/ui/PageHeader.js';
+import { SliderField } from '../components/ui/SliderField.js';
+import { TagChipRow } from '../components/ui/TagChipRow.js';
+import { TileBadge } from '../components/ui/TileBadge.js';
 import { VideoStatusBadge } from '../components/ui/VideoStatusBadge.js';
+import { PhotoStatusBadge } from '../features/photos/PhotoStatusBadge.js';
 import { type WhisperModelEntry } from '../features/models/models-model.js';
 import { WhisperModelRow } from '../features/models/WhisperModelRow.js';
 import { getDict } from '../i18n/dictionary.js';
@@ -146,15 +151,149 @@ const badgeSpecimens: readonly Specimen[] = [
   { id: 'badge-duplicate', label: 'Duplicate', node: <DuplicateBadge canonicalPath={CANONICAL} /> },
 ];
 
+const photoBadgeSpecimens: readonly Specimen[] = [
+  { id: 'photo-badge-pending', label: 'Pending', node: <PhotoStatusBadge status="pending" dictionary={dictionary} testId="spec-photo-pending" /> },
+  { id: 'photo-badge-analysed', label: 'Analyzed', node: <PhotoStatusBadge status="analysed" dictionary={dictionary} testId="spec-photo-analysed" /> },
+  { id: 'photo-badge-analyzing', label: 'Analyzing', node: <PhotoStatusBadge status="analyzing" dictionary={dictionary} testId="spec-photo-analyzing" /> },
+  { id: 'photo-badge-failed', label: 'Analysis failed', node: <PhotoStatusBadge status="analysisFailed" dictionary={dictionary} testId="spec-photo-failed" /> },
+  { id: 'photo-badge-duplicate', label: 'Duplicate', node: <PhotoStatusBadge status="duplicate" dictionary={dictionary} testId="spec-photo-duplicate" /> },
+  { id: 'photo-badge-proxy-failed', label: 'Preview failed', node: <PhotoStatusBadge status="proxyFailed" dictionary={dictionary} testId="spec-photo-proxy" /> },
+  { id: 'photo-badge-exif-missing', label: 'No EXIF', node: <PhotoStatusBadge status="exifMissing" dictionary={dictionary} testId="spec-photo-exif" /> },
+  { id: 'photo-badge-missing', label: 'File missing', node: <PhotoStatusBadge status="missing" dictionary={dictionary} testId="spec-photo-missing" /> },
+];
+
+const crossMediaBadgeSpecimens: readonly Specimen[] = [
+  {
+    id: 'badge-analyzed-video-vs-photo',
+    label: 'Analyzed: video vs photo',
+    node: (
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <VideoStatusBadge status="completed" variant="details" />
+        <PhotoStatusBadge status="analysed" dictionary={dictionary} testId="spec-cross-analysed" />
+      </Box>
+    ),
+  },
+  {
+    id: 'badge-failed-video-vs-photo',
+    label: 'Failed: video vs photo',
+    node: (
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <VideoStatusBadge status="error" variant="details" />
+        <PhotoStatusBadge status="analysisFailed" dictionary={dictionary} testId="spec-cross-failed" />
+      </Box>
+    ),
+  },
+];
+
+const TileSpecimen = ({ children }: { children: ReactNode }) => (
+  <Box sx={{ position: 'relative', width: 120, height: 120, borderRadius: 1, bgcolor: 'library.tileBackground' }}>
+    {children}
+  </Box>
+);
+
+const tileSpecimens: readonly Specimen[] = [
+  {
+    id: 'tile-video-offline',
+    label: 'Video tile (drive offline)',
+    node: (
+      <TileSpecimen>
+        <TileBadge testId="spec-tile-offline" placement="top-right" token="notTracked" icon={<FilmIcon />} label={dictionary.library.offlineFolderBadge} />
+        <TileBadge testId="spec-tile-video-kind" placement="bottom-left" token="notTracked" iconOnly icon={<FilmIcon />} label={dictionary.library.videoBadge} />
+      </TileSpecimen>
+    ),
+  },
+  {
+    id: 'tile-video-missing',
+    label: 'Video tile (file missing)',
+    node: (
+      <TileSpecimen>
+        <TileBadge testId="spec-tile-missing" placement="top-right" token="error" icon={<FilmIcon />} label={dictionary.library.missingBadge} />
+        <TileBadge testId="spec-tile-missing-kind" placement="bottom-left" token="notTracked" iconOnly icon={<FilmIcon />} label={dictionary.library.videoBadge} />
+      </TileSpecimen>
+    ),
+  },
+];
+
+const emptyStateSpecimens: readonly Specimen[] = [
+  {
+    id: 'empty-state-page',
+    label: 'Empty state (page)',
+    node: (
+      <Box sx={{ width: 460 }}>
+        <EmptyState
+          testId="spec-empty-page"
+          title={dictionary.library.emptyCatalogTitle}
+          body={dictionary.library.emptyCatalogBody}
+          action={<Button variant="contained" size="small">{dictionary.library.emptyCatalogAction}</Button>}
+        />
+      </Box>
+    ),
+  },
+  {
+    id: 'empty-state-pane',
+    label: 'Empty state (pane)',
+    node: (
+      <Box sx={{ width: 460 }}>
+        <EmptyState
+          variant="pane"
+          testId="spec-empty-pane"
+          title={dictionary.library.mediaVideo}
+          body={dictionary.analysisEmptyState.selectVideo}
+          icon={<FilmIcon sx={{ color: 'status.notTracked.main' }} />}
+        />
+      </Box>
+    ),
+  },
+];
+
+const layoutSpecimens: readonly Specimen[] = [
+  {
+    id: 'page-header',
+    label: 'Page header',
+    node: (
+      <Box sx={{ width: 460 }}>
+        <PageHeader
+          testId="spec-page-header"
+          title={dictionary.library.title}
+          subtitle={dictionary.library.countHeader(12, 12)}
+          actions={<Button variant="outlined" size="small">{dictionary.library.selectAll}</Button>}
+        />
+      </Box>
+    ),
+  },
+  {
+    id: 'slider-field',
+    label: 'Slider field',
+    node: (
+      <Box sx={{ width: 320 }}>
+        <SliderField
+          label={dictionary.settingsModal.frameCount}
+          valueLabel={dictionary.settingsModal.frameCountValue(3)}
+          helper={dictionary.settingsModal.frameCountHelper}
+          testId="spec-slider"
+          min={1}
+          max={10}
+          step={1}
+          value={3}
+          onChange={noop}
+        />
+      </Box>
+    ),
+  },
+];
+
 const tagSpecimens: readonly Specimen[] = [
   {
     id: 'tag-chips',
     label: 'Tag chips',
     node: (
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-        {['interview', 'b-roll', 'outdoor', 'sunset'].map((tag) => (
-          <Chip key={tag} label={tag} size="small" clickable onClick={() => undefined} />
-        ))}
+      <Box sx={{ width: 320 }}>
+        <TagChipRow
+          tags={['interview', 'b-roll', 'outdoor', 'sunset']}
+          label={dictionary.details.videoTags}
+          testId="spec-tag-chip"
+          onTagSearch={noop}
+        />
       </Box>
     ),
   },
@@ -285,6 +424,11 @@ const controlSpecimens: readonly Specimen[] = [
 
 const sections: readonly { title: string; specimens: readonly Specimen[] }[] = [
   { title: 'Status badges', specimens: badgeSpecimens },
+  { title: 'Photo status badges', specimens: photoBadgeSpecimens },
+  { title: 'Badges: video versus photo', specimens: crossMediaBadgeSpecimens },
+  { title: 'Library tile badges', specimens: tileSpecimens },
+  { title: 'Empty states', specimens: emptyStateSpecimens },
+  { title: 'Page header and slider field', specimens: layoutSpecimens },
   { title: 'Tag chips', specimens: tagSpecimens },
   { title: 'Thumbnails', specimens: thumbnailSpecimens },
   { title: 'Rows', specimens: rowSpecimens },

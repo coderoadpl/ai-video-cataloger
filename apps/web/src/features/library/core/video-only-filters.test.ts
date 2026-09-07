@@ -15,6 +15,7 @@ const labels: LibraryFilterChipLabels = {
   dateRange: (from, to) => `${from} – ${to}`,
   dateFrom: (from) => `from ${from}`,
   dateTo: (to) => `until ${to}`,
+  formatDay: (day) => day,
 };
 
 describe('videoOnlyFilterChips', () => {

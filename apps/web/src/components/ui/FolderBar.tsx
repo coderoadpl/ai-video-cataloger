@@ -12,6 +12,7 @@ interface FolderBarProps {
   onClearRecentFolders?: (() => void) | undefined;
   secondaryAction?: { label: string; onSelect: () => void; disabled?: boolean } | undefined;
   fullWidth?: boolean;
+  variant?: 'contained' | 'outlined';
 }
 
 const dedupeFolders = (folders: readonly string[]): string[] => [...new Set(folders)];
@@ -28,6 +29,7 @@ export const FolderBar = ({
   onClearRecentFolders,
   secondaryAction,
   fullWidth = false,
+  variant = 'contained',
 }: FolderBarProps) => {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -51,7 +53,7 @@ export const FolderBar = ({
 
   return (
     <Box sx={fullWidth ? { width: '100%' } : undefined}>
-      <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation fullWidth={fullWidth}>
+      <ButtonGroup ref={anchorRef} variant={variant} size="small" disableElevation fullWidth={fullWidth}>
         <Button onClick={onOpenFolder} disabled={isCheckingFolder} sx={fullWidth ? growingOpenSegmentSx : undefined}>
           {isCheckingFolder ? dictionary.folderBar.checking : dictionary.folderBar.openFolder}
         </Button>

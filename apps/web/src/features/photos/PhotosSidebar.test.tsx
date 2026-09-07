@@ -297,6 +297,40 @@ describe('PhotosSidebar', () => {
     expect(image?.getAttribute('src')).not.toContain('grid.jpg');
   });
 
+  it('renders the shared thumbnail states instead of a blank square when a photo has no proxy yet', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({
+          items: [
+            item({ fingerprint: 'a', thumbPath: null, thumbState: 'pending' }),
+            item({ fingerprint: 'b', thumbPath: null, thumbState: 'failed' }),
+          ],
+        })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    const [pending, failed] = screen.getAllByTestId('photos-sidebar-row');
+    if (pending === undefined || failed === undefined) throw new Error('missing rows');
+    expect(within(pending).getByTestId('media-thumbnail').getAttribute('data-thumbnail-state')).toBe('loading');
+    expect(within(failed).getByTestId('media-thumbnail').getAttribute('data-thumbnail-state')).toBe('placeholder');
+  });
+
+  it('offers Reveal in Finder on a photo row, like the video rows already do', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ items: [item({ fingerprint: 'a' })] })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    const row = screen.getAllByTestId('photos-sidebar-row')[0];
+    if (row === undefined) throw new Error('missing row');
+    fireEvent.contextMenu(row);
+
+    expect(screen.getByTestId('reveal-in-finder-item')).toBeDefined();
+  });
+
   it('renders the capture date localized instead of a raw ISO timestamp', () => {
     renderThemed(<PhotosSidebar
       state={baseState({ items: [item({ fingerprint: 'a', capturedAt: '2026-08-10T17:46:06.740Z' })] })}

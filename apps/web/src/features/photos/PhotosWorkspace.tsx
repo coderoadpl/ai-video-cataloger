@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Box } from '@mui/material';
+import { Box, ButtonBase } from '@mui/material';
 
 import { MediaDetailLayout } from '../../components/layout/MediaDetailLayout.js';
 import { AnalysisEmptyState } from '../../components/ui/AnalysisEmptyState.js';
 import { AnalysisWelcome } from '../../components/ui/AnalysisWelcome.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { adjacentFingerprint, detailToListItem, flattenOrder, sidebarSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
@@ -17,6 +18,7 @@ interface PhotosWorkspaceProps {
 }
 
 export const PhotosWorkspace = ({ active, state, onSearchTag }: PhotosWorkspaceProps) => {
+  const dictionary = useDictionary();
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const sections = useMemo(
@@ -55,13 +57,24 @@ export const PhotosWorkspace = ({ active, state, onSearchTag }: PhotosWorkspaceP
             mediaTestId="media-detail-media"
             belowTestId="media-detail-below"
             media={proxySource === null ? null : (
-              <Box
-                component="img"
-                alt={selectedItem.fileName}
-                src={mediaUrl(proxySource, selectedItem.fingerprint)}
+              <ButtonBase
+                data-testid="photos-open-viewer"
+                aria-label={dictionary.photos.openPreview}
                 onClick={() => setViewerOpen(true)}
-                sx={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain', cursor: 'zoom-in', alignSelf: 'flex-start' }}
-              />
+                sx={{
+                  alignSelf: 'flex-start',
+                  cursor: 'zoom-in',
+                  borderRadius: 1,
+                  '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+                }}
+              >
+                <Box
+                  component="img"
+                  alt={selectedItem.fileName}
+                  src={mediaUrl(proxySource, selectedItem.fingerprint)}
+                  sx={{ maxWidth: '100%', maxHeight: 420, objectFit: 'contain' }}
+                />
+              </ButtonBase>
             )}
             main={(
               <PhotoDetailPane

@@ -56,7 +56,7 @@ export const BatchSummaryDialog = ({ open, results, onClose }: BatchSummaryDialo
         </Box>
         {failed.length > 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            <Typography variant="subtitle2">
               {dictionary.batchSummary.failedVideos}
             </Typography>
             <List

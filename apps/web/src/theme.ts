@@ -178,6 +178,17 @@ const RADIUS = 8;
 const CHIP_ICON_INSET = 8;
 const CHIP_ICON_GAP = -4;
 export const CHIP_ICON_SPACING = { marginLeft: CHIP_ICON_INSET, marginRight: CHIP_ICON_GAP } as const;
+const STATUS_CHIP_ICON_GAP = 3;
+export const STATUS_CHIP_ICON_SPACING = { marginLeft: CHIP_ICON_INSET, marginRight: STATUS_CHIP_ICON_GAP } as const;
+export const STATUS_CHIP_ICON_SX = { color: 'inherit', fontSize: '0.9rem', ...STATUS_CHIP_ICON_SPACING } as const;
+
+export const COMPACT_LABEL_FONT_SIZE = '0.6875rem';
+
+export const LIBRARY_TILE_SIZE = 168;
+export const LIBRARY_TILE_GAP = 8;
+export const LIBRARY_SECTION_HEADER_HEIGHT = 36;
+export const PHOTO_ROW_THUMB_BOX = 56;
+export const PHOTO_ROW_HEIGHT = 96;
 
 export const createAppTheme = (mode: ThemeMode): Theme => {
   const c = mode === 'dark' ? DARK : LIGHT;
@@ -200,6 +211,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       fontFamily: FONT_SANS,
       h1: { fontSize: '1.125rem', fontWeight: 600, letterSpacing: '-0.01em' },
       h2: { fontSize: '0.95rem', fontWeight: 600 },
+      subtitle2: { fontSize: '0.8125rem', fontWeight: 600 },
       body2: { fontSize: '0.8125rem' },
       caption: { fontSize: '0.75rem', color: c.inkSoft },
       button: { textTransform: 'none', fontWeight: 500, letterSpacing: 0 },

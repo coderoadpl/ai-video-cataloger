@@ -126,7 +126,7 @@ const DependencyRow = ({ dependency, dictionary }: { dependency: DependencyStatu
     )}
     <Box sx={{ minWidth: 0, flex: 1 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        <Typography variant="subtitle2">
           {dependencyDisplayName(dictionary, dependency.name)}
         </Typography>
         {dependency.available && dependency.source !== null ? (

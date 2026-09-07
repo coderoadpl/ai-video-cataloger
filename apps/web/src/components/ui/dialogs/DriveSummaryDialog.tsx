@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 
 import { useDictionary } from '../../../i18n/use-dictionary.js';
+import { formatUsd } from '../../../lib/format.js';
 
 export interface DriveSummaryCounts {
   foldersDone: number;
@@ -55,7 +56,7 @@ export const DriveSummaryDialog = ({ open, counts, onClose }: DriveSummaryDialog
         {counts.estimatedCostUsd === null ? null : (
           <Stat
             testId="drive-estimated-cost"
-            value={`$${counts.estimatedCostUsd.toFixed(4)}`}
+            value={formatUsd(counts.estimatedCostUsd, dictionary.locale, 4)}
             label={dictionary.driveSummary.estimatedCost(counts.costedFiles)}
           />
         )}

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  createFilterOptions,
   MenuItem,
   Stack,
   TextField,
@@ -15,6 +16,7 @@ import {
 import type { LibraryFacetsOutput } from '@core/client/index.js';
 
 import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
+import { useAutocompleteText } from '../../components/ui/use-autocomplete-text.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { labelWithCount } from '../../lib/format.js';
 import { libraryFilterChips, libraryFilterIsEmpty, type LibraryFilterAction, type LibraryFilterChipLabels, type LibraryFilterState } from './core/filter-state.js';
@@ -30,6 +32,10 @@ export interface LibraryMediaTotals {
 }
 
 const PLACE_DEBOUNCE_MS = 250;
+const OPTION_RENDER_LIMIT = 100;
+const CUSTOM_DATE_PRESET = 'custom';
+
+const limitedOptions = createFilterOptions<string>({ limit: OPTION_RENDER_LIMIT });
 
 interface FilterBarProps {
   state: LibraryFilterState;
@@ -73,8 +79,8 @@ const FilterBarView = ({
   onHiddenChange,
 }: FilterBarProps) => {
   const dictionary = useDictionary();
+  const autocompleteText = useAutocompleteText();
   const [placeInput, setPlaceInput] = useState(state.place ?? '');
-  const [preset, setPreset] = useState('');
 
   useEffect(() => {
     if (placeInput === (state.place ?? '')) return undefined;
@@ -118,8 +124,13 @@ const FilterBarView = ({
     return person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
   };
 
+  const activePreset = state.from === null && state.to === null
+    ? ''
+    : presets.find((entry) => state.from === `${entry.value}-01-01` && state.to === `${entry.value}-12-31`)?.value
+      ?? CUSTOM_DATE_PRESET;
+
   const applyPreset = (year: string) => {
-    setPreset(year);
+    if (year === CUSTOM_DATE_PRESET) return;
     if (year.length === 0) {
       dispatch({ type: 'setDateRange', from: null, to: null });
       return;
@@ -135,6 +146,8 @@ const FilterBarView = ({
           size="small"
           sx={{ minWidth: 200 }}
           options={tagOptions}
+          filterOptions={limitedOptions}
+          {...autocompleteText}
           getOptionLabel={(tag) => tag}
           renderOption={(props, tag) => {
             const { key, ...optionProps } = props;
@@ -145,13 +158,23 @@ const FilterBarView = ({
             for (const tag of next) if (!state.tags.includes(tag)) dispatch({ type: 'addTag', tag });
             for (const tag of state.tags) if (!next.includes(tag)) dispatch({ type: 'removeTag', tag });
           }}
-          renderInput={(params) => <TextField {...params} label={dictionary.library.filterTags} data-testid="library-filter-tags" />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={dictionary.library.filterTags}
+              placeholder={dictionary.library.filterTags}
+              slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }}
+              data-testid="library-filter-tags"
+            />
+          )}
         />
         <Autocomplete
           multiple
           size="small"
           sx={{ minWidth: 200 }}
           options={personOptions}
+          filterOptions={limitedOptions}
+          {...autocompleteText}
           getOptionLabel={personLabel}
           renderOption={(props, personId) => {
             const { key, ...optionProps } = props;
@@ -170,25 +193,45 @@ const FilterBarView = ({
             }
             for (const personId of state.personIds) if (!next.includes(personId)) dispatch({ type: 'removePerson', personId });
           }}
-          renderInput={(params) => <TextField {...params} label={dictionary.library.filterPeople} data-testid="library-filter-people" />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={dictionary.library.filterPeople}
+              placeholder={dictionary.library.filterPeople}
+              slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }}
+              data-testid="library-filter-people"
+            />
+          )}
         />
         <Autocomplete
           freeSolo
           size="small"
           sx={{ minWidth: 200 }}
           options={placeOptions}
+          filterOptions={limitedOptions}
+          {...autocompleteText}
           renderOption={(props, name) => {
             const { key, ...optionProps } = props;
             return <li key={key} {...optionProps}>{labelWithCount(name, placeCounts.get(name) ?? 0)}</li>;
           }}
           inputValue={placeInput}
           onInputChange={(_event, next) => setPlaceInput(next)}
-          renderInput={(params) => <TextField {...params} label={dictionary.library.filterPlace} data-testid="library-filter-place" />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={dictionary.library.filterPlace}
+              placeholder={dictionary.library.filterPlace}
+              slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }}
+              data-testid="library-filter-place"
+            />
+          )}
         />
         <Autocomplete
           size="small"
           sx={{ minWidth: 200 }}
           options={folderOptions}
+          filterOptions={limitedOptions}
+          {...autocompleteText}
           getOptionLabel={(folderId) => foldersById.get(folderId)?.displayName ?? folderId}
           renderOption={(props, folderId) => {
             const { key, ...optionProps } = props;
@@ -200,7 +243,15 @@ const FilterBarView = ({
             const folder = next === null ? null : foldersById.get(next);
             dispatch({ type: 'setFolder', folderId: next, displayName: folder?.displayName ?? next });
           }}
-          renderInput={(params) => <TextField {...params} label={dictionary.library.filterFolder} data-testid="library-filter-folder" />}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={dictionary.library.filterFolder}
+              placeholder={dictionary.library.filterFolder}
+              slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }}
+              data-testid="library-filter-folder"
+            />
+          )}
         />
         <TextField
           size="small"
@@ -224,7 +275,7 @@ const FilterBarView = ({
           size="small"
           select
           label={dictionary.library.filterDatePreset}
-          value={presets.some((entry) => entry.value === preset) ? preset : ''}
+          value={activePreset}
           onChange={(event) => applyPreset(event.target.value)}
           data-testid="library-filter-date-preset"
           sx={{ minWidth: 150 }}
@@ -233,6 +284,9 @@ const FilterBarView = ({
           {presets.map((entry) => (
             <MenuItem key={entry.value} value={entry.value}>{entry.label}</MenuItem>
           ))}
+          {activePreset === CUSTOM_DATE_PRESET ? (
+            <MenuItem value={CUSTOM_DATE_PRESET}>{dictionary.library.filterDatePresetCustom}</MenuItem>
+          ) : null}
         </TextField>
         <TextField
           size="small"
@@ -258,14 +312,11 @@ const FilterBarView = ({
             label={chip.label}
             size="small"
             data-testid={`library-chip-${chip.id}`}
-            onDelete={() => {
-              if (chip.id === 'date') setPreset('');
-              dispatch(chip.remove);
-            }}
+            onDelete={() => dispatch(chip.remove)}
           />
         ))}
         {libraryFilterIsEmpty(state) ? null : (
-          <Button size="small" onClick={() => { setPreset(''); dispatch({ type: 'clearAll' }); }} data-testid="library-filter-clear-all">
+          <Button size="small" variant="outlined" onClick={() => dispatch({ type: 'clearAll' })} data-testid="library-filter-clear-all">
             {dictionary.library.filterClearAll}
           </Button>
         )}
@@ -297,6 +348,7 @@ const FilterBarView = ({
           groupTestId="library-media-filter"
           optionTestIdPrefix="library-media"
         />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }} data-testid="library-arrangement-cluster">
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -329,6 +381,7 @@ const FilterBarView = ({
             {hasQuery && media !== 'all' ? <MenuItem value="relevance">{dictionary.library.sortRelevance}</MenuItem> : null}
           </TextField>
         </Tooltip>
+        </Box>
       </Stack>
     </Stack>
   );

@@ -283,8 +283,7 @@ test.describe('People across media', () => {
       await expect(session.page.getByTestId('people-media-video')).toContainText('(2)');
 
       const sharedCard = session.page.locator('[data-testid="people-card"][data-person-id="person-shared"]');
-      await sharedCard.getByRole('button', { name: /more actions|więcej działań/i }).click();
-      await session.page.getByTestId('people-preview-files').click();
+      await sharedCard.getByTestId('people-card-media').click();
 
       const personMedia = session.page.getByTestId('person-media-panel');
       await expect(personMedia).toBeVisible({ timeout: 30_000 });

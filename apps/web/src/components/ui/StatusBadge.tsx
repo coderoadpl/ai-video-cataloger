@@ -1,7 +1,7 @@
 import { Chip, CircularProgress, type SvgIconProps } from '@mui/material';
 import type { ReactElement } from 'react';
 
-import { CHIP_ICON_SPACING, type StatusToken } from '../../theme.js';
+import { CHIP_ICON_SPACING, STATUS_CHIP_ICON_SX, type StatusToken } from '../../theme.js';
 
 interface StatusBadgeProps {
   icon: ReactElement<SvgIconProps>;
@@ -24,7 +24,7 @@ export const StatusBadge = ({ icon, label, token, testId }: StatusBadgeProps) =>
     sx={(theme) => ({
       bgcolor: theme.palette.status[token].soft,
       color: theme.palette.status[token].main,
-      '& .MuiChip-icon': { color: 'inherit', fontSize: '0.9rem', marginLeft: '8px', marginRight: '3px' },
+      '& .MuiChip-icon': STATUS_CHIP_ICON_SX,
     })}
   />
 );

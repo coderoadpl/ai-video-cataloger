@@ -17,9 +17,17 @@ interface MediaFilterToggleProps {
   onChange: (value: MediaFilterValue) => void;
   groupTestId: string;
   optionTestIdPrefix: string;
+  groupLabel?: string;
 }
 
-export const MediaFilterToggle = ({ value, counts, onChange, groupTestId, optionTestIdPrefix }: MediaFilterToggleProps) => {
+export const MediaFilterToggle = ({
+  value,
+  counts,
+  onChange,
+  groupTestId,
+  optionTestIdPrefix,
+  groupLabel,
+}: MediaFilterToggleProps) => {
   const dictionary = useDictionary();
 
   return (
@@ -29,6 +37,7 @@ export const MediaFilterToggle = ({ value, counts, onChange, groupTestId, option
       value={value}
       onChange={(_event, next: MediaFilterValue | null) => { if (next !== null) onChange(next); }}
       data-testid={groupTestId}
+      {...(groupLabel === undefined ? {} : { 'aria-label': groupLabel })}
     >
       <ToggleButton value="all" data-testid={`${optionTestIdPrefix}-all`}>
         {labelWithCount(dictionary.library.mediaAll, counts.all)}

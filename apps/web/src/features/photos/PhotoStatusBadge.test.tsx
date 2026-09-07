@@ -19,7 +19,7 @@ describe('PhotoStatusBadge', () => {
       </ThemeProvider>,
     );
 
-    expect(screen.getByTestId('pending').textContent).toBe('Not analyzed');
+    expect(screen.getByTestId('pending').textContent).toBe('Pending');
     expect(screen.getByTestId('analysed').textContent).toBe('Analyzed');
     expect(screen.getByTestId('analysis-failed').textContent).toBe('Analysis failed');
   });
@@ -33,7 +33,7 @@ describe('PhotoStatusBadge', () => {
       </ThemeProvider>,
     );
 
-    expect(screen.getByTestId('pending').textContent).toBe('Nieprzeanalizowane');
+    expect(screen.getByTestId('pending').textContent).toBe('Oczekuje');
     expect(screen.getByTestId('analysed').textContent).toBe('Przeanalizowane');
     expect(screen.getByTestId('analysis-failed').textContent).toBe('Błąd analizy');
   });

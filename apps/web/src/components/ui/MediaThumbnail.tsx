@@ -3,7 +3,7 @@ import { Box, Skeleton } from '@mui/material';
 
 import { mediaUrl } from '../../lib/media-url.js';
 import { thumbnailBoxForSource, type SourceAspectInput } from '../../lib/thumbnail-aspect.js';
-import { FilmIcon } from './icons.js';
+import { FilmIcon, ImageIcon } from './icons.js';
 
 interface MediaThumbnailProps {
   path: string | null;
@@ -15,6 +15,7 @@ interface MediaThumbnailProps {
   selected?: boolean;
   square?: boolean;
   loading?: boolean;
+  kind?: 'video' | 'photo';
 }
 
 export const MediaThumbnail = ({
@@ -27,6 +28,7 @@ export const MediaThumbnail = ({
   selected = false,
   square = false,
   loading = false,
+  kind = 'video',
 }: MediaThumbnailProps) => {
   const src = path === null ? null : mediaUrl(path, mtime);
   const [failed, setFailed] = useState(false);
@@ -89,7 +91,9 @@ export const MediaThumbnail = ({
           data-testid="media-thumbnail-shimmer"
         />
       ) : (
-        <FilmIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+        kind === 'video'
+          ? <FilmIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+          : <ImageIcon fontSize="small" sx={{ color: 'text.secondary' }} />
       )}
     </Box>
   );

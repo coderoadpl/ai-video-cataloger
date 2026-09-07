@@ -13,12 +13,12 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Slider,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
 
+import { SliderField } from '../../components/ui/SliderField.js';
 import { SettingsBackupSection } from './SettingsBackupSection.js';
 import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
@@ -31,6 +31,7 @@ import {
 } from './settings-model.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
+import { formatUsd } from '../../lib/format.js';
 import { useSettings } from './use-settings.js';
 
 interface SettingsModalProps {
@@ -66,8 +67,22 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
           <DialogContentText data-testid="settings-no-folder">
             {dictionary.settingsModal.selectFolderFirst}
           </DialogContentText>
+        ) : settings.loadError !== null ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, py: 2 }}>
+            <Alert severity="error" data-testid="settings-load-error">
+              {`${dictionary.settingsModal.loadFailed} ${settings.loadError}`}
+            </Alert>
+            <Box>
+              <Button variant="outlined" onClick={settings.retry} data-testid="settings-load-retry">
+                {dictionary.common.retry}
+              </Button>
+            </Box>
+          </Box>
         ) : settings.isLoading || draft === null ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 4 }}>
+          <Box
+            data-testid="settings-loading"
+            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 4 }}
+          >
             <CircularProgress size={20} />
             <Typography variant="body2">{dictionary.settingsModal.loading}</Typography>
           </Box>
@@ -75,6 +90,8 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{formatAnalyzerError(settings.error, dictionary.errors)}</Alert>}
 
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Typography variant="subtitle2">{dictionary.settingsModal.analyzerSectionTitle}</Typography>
             <SettingsAnalyzerSection
               backend={draft.analyzer_backend}
               localModel={draft.local_model}
@@ -93,12 +110,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               forgetCredentialNotice={settings.forgetCredentialNotice}
               onForgetCredential={settings.forgetCredential}
             />
+            </Box>
 
             {nativeAnalyzer ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="gemini-budget-section">
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.geminiBudgetSectionTitle}
-                </Typography>
+                <Typography variant="subtitle2">{dictionary.settingsModal.geminiBudgetSectionTitle}</Typography>
                 <TextField
                   fullWidth
                   size="small"
@@ -119,7 +135,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   <Typography variant="caption" data-testid="gemini-spend-readout">
                     {dictionary.settingsModal.geminiSpendReadout(
                       settings.monthlySpend.month,
-                      settings.monthlySpend.estimatedCostUsd,
+                      formatUsd(settings.monthlySpend.estimatedCostUsd, dictionary.locale, 4),
                       settings.monthlySpend.entries,
                     )}
                   </Typography>
@@ -127,51 +143,29 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               </Box>
             ) : null}
 
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.frameCount}
-                </Typography>
-                <Typography variant="caption">{dictionary.settingsModal.frameCountValue(draft.frames)}</Typography>
-              </Box>
-              <Slider
-                aria-label={dictionary.settingsModal.frameCount}
-                data-testid="frames-slider"
-                min={1}
-                max={10}
-                step={1}
-                value={draft.frames}
-                onChange={(_event, value) =>
-                  patch({ frames: Array.isArray(value) ? (value[0] ?? draft.frames) : value })
-                }
-              />
-              <Typography variant="caption">
-                {dictionary.settingsModal.frameCountHelper}
-              </Typography>
-            </Box>
+            <SliderField
+              label={dictionary.settingsModal.frameCount}
+              valueLabel={dictionary.settingsModal.frameCountValue(draft.frames)}
+              helper={dictionary.settingsModal.frameCountHelper}
+              testId="frames-slider"
+              min={1}
+              max={10}
+              step={1}
+              value={draft.frames}
+              onChange={(value) => patch({ frames: value })}
+            />
 
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.analyzerTimeout}
-                </Typography>
-                <Typography variant="caption">{dictionary.settingsModal.secondsValue(draft.timeout)}</Typography>
-              </Box>
-              <Slider
-                aria-label={dictionary.settingsModal.analyzerTimeout}
-                data-testid="analyzer-timeout-slider"
-                min={30}
-                max={600}
-                step={10}
-                value={draft.timeout}
-                onChange={(_event, value) =>
-                  patch({ timeout: Array.isArray(value) ? (value[0] ?? draft.timeout) : value })
-                }
-              />
-              <Typography variant="caption">
-                {dictionary.settingsModal.analyzerTimeoutHelper}
-              </Typography>
-            </Box>
+            <SliderField
+              label={dictionary.settingsModal.analyzerTimeout}
+              valueLabel={dictionary.settingsModal.secondsValue(draft.timeout)}
+              helper={dictionary.settingsModal.analyzerTimeoutHelper}
+              testId="analyzer-timeout-slider"
+              min={30}
+              max={600}
+              step={10}
+              value={draft.timeout}
+              onChange={(value) => patch({ timeout: value })}
+            />
 
             <FormControl fullWidth size="small">
               <InputLabel id="whisper-mode-label">{dictionary.settingsModal.transcriptionMode}</InputLabel>
@@ -282,9 +276,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             ) : null}
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {dictionary.settings.languageSectionTitle}
-              </Typography>
+              <Typography variant="subtitle2">{dictionary.settings.languageSectionTitle}</Typography>
               <FormControl fullWidth size="small">
                 <InputLabel id="ui-language-label">{dictionary.language.uiLabel}</InputLabel>
                 <Select
@@ -336,9 +328,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             </Box>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {dictionary.settingsModal.facesSectionTitle}
-              </Typography>
+              <Typography variant="subtitle2">{dictionary.settingsModal.facesSectionTitle}</Typography>
               <FormControlLabel
                 control={
                   <Switch
@@ -356,9 +346,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
 
             {nativeAnalyzer ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.geminiBatchSectionTitle}
-                </Typography>
+                <Typography variant="subtitle2">{dictionary.settingsModal.geminiBatchSectionTitle}</Typography>
                 <FormControlLabel
                   control={
                     <Switch
@@ -375,26 +363,31 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               </Box>
             ) : null}
 
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={draft.skip_rename}
-                  data-testid="skip-rename-switch"
-                  onChange={(event) => patch({ skip_rename: event.target.checked })}
-                />
-              }
-              label={dictionary.settingsModal.skipAutoRename}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              <Typography variant="subtitle2">{dictionary.settingsModal.renameSectionTitle}</Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={draft.skip_rename}
+                    data-testid="skip-rename-switch"
+                    onChange={(event) => patch({ skip_rename: event.target.checked })}
+                  />
+                }
+                label={dictionary.settingsModal.skipAutoRename}
+              />
+              <Typography variant="caption">{dictionary.settingsModal.renameHelper}</Typography>
+            </Box>
+
+            <Box sx={{ pt: 1 }}>
+              <SettingsBackupSection open={open} />
+            </Box>
           </Box>
         )}
-        <Box sx={{ pt: 3 }}>
-          <SettingsBackupSection open={open} />
-        </Box>
       </DialogContent>
       <DialogActions>
         {onRunWizard === undefined ? null : (
           <Button
-            color="inherit"
+            variant="outlined"
             onClick={onRunWizard}
             disabled={settings.isSaving}
             data-testid="settings-run-wizard"
@@ -404,7 +397,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
           </Button>
         )}
         {settings.hasChanges ? (
-          <Button color="inherit" onClick={settings.reset} disabled={settings.isSaving} data-testid="settings-reset">
+          <Button variant="outlined" onClick={settings.reset} disabled={settings.isSaving} data-testid="settings-reset">
             {dictionary.settingsModal.reset}
           </Button>
         ) : null}
@@ -413,7 +406,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             {dictionary.settingsModal.savingKeychainHint}
           </Typography>
         ) : null}
-        <Button color="inherit" onClick={onClose} disabled={settings.isSaving} data-testid="settings-cancel">
+        <Button variant="outlined" onClick={onClose} disabled={settings.isSaving} data-testid="settings-cancel">
           {dictionary.common.cancel}
         </Button>
         <Button

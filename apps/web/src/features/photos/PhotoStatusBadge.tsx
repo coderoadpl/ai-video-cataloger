@@ -18,9 +18,9 @@ export type PhotoStatus = PhotoBadge | 'pending' | 'analyzing';
 const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
   switch (status) {
     case 'analysed':
-      return dictionary.photosSidebar.badgeAnalyzed;
+      return dictionary.mediaStatus.analyzed;
     case 'analysisFailed':
-      return dictionary.photosSidebar.badgeAnalysisFailed;
+      return dictionary.mediaStatus.failed;
     case 'duplicate':
       return dictionary.catalog.duplicateBadge;
     case 'proxyFailed':
@@ -30,9 +30,9 @@ const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
     case 'missing':
       return dictionary.photosSidebar.badgeMissing;
     case 'pending':
-      return dictionary.photosSidebar.badgePending;
+      return dictionary.mediaStatus.pending;
     case 'analyzing':
-      return dictionary.photosSidebar.badgeAnalyzing;
+      return dictionary.mediaStatus.processing;
   }
 };
 

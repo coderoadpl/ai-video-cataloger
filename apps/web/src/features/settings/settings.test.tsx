@@ -218,6 +218,38 @@ describe('settings modal', () => {
     expect(screen.getByTestId('settings-no-folder')).toBeDefined();
   });
 
+  it('reports a failed initial config load with a retry instead of spinning forever', async () => {
+    let attempts = 0;
+    server.use(
+      http.get('/api/config', () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'config unreadable' } }, { status: 500 });
+        }
+        return HttpResponse.json({ ok: true, data: { config: emptyConfig, effective: defaults, sources: {} } });
+      }),
+    );
+
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    expect(await screen.findByTestId('settings-load-error')).toBeDefined();
+    expect(screen.queryByTestId('settings-loading')).toBeNull();
+
+    stubEndpoints(emptyConfig);
+    fireEvent.click(screen.getByTestId('settings-load-retry'));
+    expect(await screen.findByTestId('whisper-mode-select')).toBeDefined();
+  });
+
+  it('gives the analyzer group and the rename switch the section title every sibling has', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    await screen.findByTestId('whisper-mode-select');
+    expect(screen.getByText(en.settingsModal.analyzerSectionTitle)).toBeDefined();
+    expect(screen.getByText(en.settingsModal.renameSectionTitle)).toBeDefined();
+    expect(screen.getByText(en.settingsModal.renameHelper)).toBeDefined();
+  });
+
   it('loads config and shows the whisper model control only in local mode', async () => {
     stubEndpoints(emptyConfig);
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
@@ -557,11 +589,11 @@ describe('settings modal', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
 
     const budget = await screen.findByTestId('gemini-budget-input');
-    expect(screen.getByTestId('settings-analyzer-section').nextElementSibling)
+    expect(screen.getByTestId('settings-analyzer-section').parentElement?.nextElementSibling)
       .toBe(screen.getByTestId('gemini-budget-section'));
     await waitFor(() =>
       expect(screen.getByTestId('gemini-spend-readout').textContent)
-        .toBe(en.settingsModal.geminiSpendReadout('2026-08', 1.2345, 4)));
+        .toBe(en.settingsModal.geminiSpendReadout('2026-08', '$1.2345', 4)));
 
     fireEvent.change(budget, { target: { value: '25.5' } });
     fireEvent.click(screen.getByTestId('settings-save'));
@@ -768,7 +800,7 @@ describe('settings modal', () => {
     const onClose = vi.fn();
     renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
 
-    expect(await screen.findByText('usage will be charged by your API provider')).toBeDefined();
+    expect(await screen.findByText('Usage will be charged by your API provider.')).toBeDefined();
     const credential = screen.getByLabelText('API credential');
     expect(credential.getAttribute('type')).toBe('password');
     fireEvent.change(credential, { target: { value: 'secret-from-ui' } });

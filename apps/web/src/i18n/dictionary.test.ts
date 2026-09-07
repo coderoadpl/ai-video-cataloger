@@ -64,8 +64,8 @@ describe('dictionary', () => {
     expect(pl.photos.analyzeAllFailedLog(5)).toBe(
       'Analiza zdjęć nie powiodła się: 5 nieudanych zdjęć',
     );
-    expect(pl.settingsModal.geminiSpendReadout('2026-08', 1, 1)).toContain('w 1 analizie');
-    expect(pl.settingsModal.geminiSpendReadout('2026-08', 1, 3)).toContain('w 3 analizach');
+    expect(pl.settingsModal.geminiSpendReadout('2026-08', '$1.00', 1)).toContain('w 1 analizie');
+    expect(pl.settingsModal.geminiSpendReadout('2026-08', '$1.00', 3)).toContain('w 3 analizach');
     expect(pl.batchSummary.successful(1)).toBe('udany film');
     expect(pl.batchSummary.successful(3)).toBe('udane filmy');
     expect(pl.batchSummary.failed(5)).toBe('nieudanych filmów');
@@ -109,8 +109,8 @@ describe('dictionary', () => {
     expect(en.people.reclusterConfirmWithNames(2)).toBe('Rebuild and drop 2 names');
     expect(en.settingsModal.frameCountValue(1)).toBe('1 frame');
     expect(en.settingsModal.frameCountValue(2)).toBe('2 frames');
-    expect(en.settingsModal.geminiSpendReadout('2026-08', 1, 1)).toContain('across 1 analysis');
-    expect(en.settingsModal.geminiSpendReadout('2026-08', 1, 2)).toContain('across 2 analyses');
+    expect(en.settingsModal.geminiSpendReadout('2026-08', '$1.00', 1)).toContain('across 1 analysis');
+    expect(en.settingsModal.geminiSpendReadout('2026-08', '$1.00', 2)).toContain('across 2 analyses');
     expect(en.batchSummary.successful(1)).toBe('successful video');
     expect(en.batchSummary.successful(2)).toBe('successful videos');
     expect(en.driveSummary.folders(1)).toBe('folder');
@@ -149,8 +149,8 @@ describe('dictionary', () => {
     expect(en.readinessNotice.title).toBe('Analysis setup is incomplete');
     expect(pl.readinessNotice.title).toBe('Konfiguracja analizy jest niepełna');
     expect(pl.cancelDialog.continueProcessing).toBe('Kontynuuj analizę');
-    expect(pl.people.mergeBody(2, 'Ala')).toBe('Scal 2 osoby w «Ala»? Pozostałe grupy znikną. Tego nie można cofnąć.');
-    expect(pl.people.mergeBody(5, 'Ala')).toBe('Scal 5 osób w «Ala»? Pozostałe grupy znikną. Tego nie można cofnąć.');
+    expect(pl.people.mergeBody(2, 'Ala')).toBe('Scal 2 osoby w „Ala”? Pozostałe grupy znikną. Tego nie można cofnąć.');
+    expect(pl.people.mergeBody(5, 'Ala')).toBe('Scal 5 osób w „Ala”? Pozostałe grupy znikną. Tego nie można cofnąć.');
     expect(pl.people.mergeSelectHint).toBe('Zaznacz co najmniej dwie osoby.');
   });
 
@@ -188,5 +188,44 @@ describe('dictionary', () => {
     walk(srcRoot);
 
     expect(violations).toEqual([]);
+  });
+  it('uses one ellipsis character and Polish quotation marks across both locales', () => {
+    for (const dictionary of [en, pl]) {
+      for (const value of leafValues(dictionary)) {
+        expect(value).not.toContain('...');
+        expect(value).not.toContain('\u00ab');
+        expect(value).not.toContain('\u00bb');
+      }
+    }
+  });
+
+  it('selects the English singular for a one-file collection header', () => {
+    expect(en.library.countHeader(0, 0)).toBe('0 files');
+    expect(en.library.countHeader(1, 1)).toBe('1 file');
+    expect(en.library.countHeader(2, 2)).toBe('2 files');
+    expect(en.library.countHeader(1, 2)).toBe('1 of 2 files');
+  });
+
+  it('keeps the Polish collection header on the three-form plural', () => {
+    expect(pl.library.countHeader(1, 1)).toContain('1 plik');
+    expect(pl.library.countHeader(2, 2)).toContain('2 pliki');
+    expect(pl.library.countHeader(5, 5)).toContain('5 plików');
+    expect(pl.library.countHeader(12, 12)).toContain('12 plików');
+    expect(pl.library.countHeader(22, 22)).toContain('22 pliki');
+  });
+
+  it('shares one status vocabulary between video and photo badges', () => {
+    for (const dictionary of [en, pl]) {
+      expect(dictionary.mediaStatus.analyzed.length).toBeGreaterThan(0);
+      expect(dictionary.mediaStatus.failed.length).toBeGreaterThan(0);
+      expect(dictionary.mediaStatus.pending.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('describes every implemented map location source in the empty state', () => {
+    expect(pl.map.emptyBody).not.toContain('nigdy');
+    expect(pl.map.emptyBody).toContain('osi czasu');
+    expect(en.map.emptyBody).toContain('timeline');
+    expect(en.map.emptyBody).not.toContain('never');
   });
 });

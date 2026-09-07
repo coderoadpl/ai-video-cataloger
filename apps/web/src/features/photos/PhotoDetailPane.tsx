@@ -1,8 +1,9 @@
-import { Box, Button, Chip, CircularProgress, MenuItem, Paper, Select, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, MenuItem, Paper, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { DetailStatusCard } from '../../components/ui/DetailStatusCard.js';
+import { TagChipRow } from '../../components/ui/TagChipRow.js';
 import { VariantControl } from '../../components/ui/VariantControl.js';
 import { ClockIcon, DescriptionIcon, ErrorIcon } from '../../components/ui/icons.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
@@ -171,21 +172,12 @@ export const PhotoDetailPane = ({
             <Row label={dictionary.photos.detailScene} value={sceneLabel(dictionary, analysis.scene)} />
             <Row label={dictionary.photos.detailQuality} value={qualityLabel(dictionary, analysis.quality)} />
           </Paper>
-          <Box>
-            <Typography variant="caption" color="text.secondary">{dictionary.photos.detailTags}</Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-              {analysis.tags.map((tag) => (
-                <Chip
-                  key={tag}
-                  label={tag}
-                  size="small"
-                  clickable={onSearchTag !== undefined}
-                  onClick={onSearchTag === undefined ? undefined : () => onSearchTag(tag)}
-                  data-testid="photo-tag-chip"
-                />
-              ))}
-            </Box>
-          </Box>
+          <TagChipRow
+            tags={analysis.tags}
+            label={dictionary.photos.detailTags}
+            testId="photo-tag-chip"
+            onTagSearch={onSearchTag}
+          />
           <Typography variant="caption" color="text.secondary">{dictionary.photos.variantPickerLabel}</Typography>
           <VariantControl
             testId="photo-variant-control"

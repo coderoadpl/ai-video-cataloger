@@ -5,6 +5,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse, delay } from 'msw';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -344,6 +345,52 @@ describe('MapView', () => {
 
     fireEvent.click(screen.getByTestId('map-media-filter-all'));
     await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
+  });
+
+  it('uses the shared pressed-state media toggle with counts and a localized group name', async () => {
+    respondWith({
+      totalFiles: 1,
+      locatedFiles: 1,
+      totalPhotos: 2,
+      locatedPhotos: 1,
+      locations: [
+        location({ fingerprint: 'fp-video', media: 'video', lat: 10, lon: 10 }),
+        location({ fingerprint: 'fp-photo', media: 'photo', fileName: 'a.jpg', lat: -30, lon: -60 }),
+      ],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenPreview={vi.fn()} onOpenPhoto={vi.fn()} />,
+    );
+
+    const group = await screen.findByTestId('map-media-filter');
+    expect(group.getAttribute('aria-label')).toBe(en.map.mediaFilterLabel);
+    expect(screen.getByTestId('map-media-filter-all').textContent).toBe('All (2)');
+    expect(screen.getByTestId('map-media-filter-photo').getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(screen.getByTestId('map-media-filter-photo'));
+    await waitFor(() =>
+      expect(screen.getByTestId('map-media-filter-photo').getAttribute('aria-pressed')).toBe('true'));
+  });
+
+  it('explains a medium with no located files instead of rendering a pinless map', async () => {
+    respondWith({
+      totalFiles: 1,
+      locatedFiles: 1,
+      totalPhotos: 2,
+      locatedPhotos: 0,
+      locations: [location({ fingerprint: 'fp-video', media: 'video' })],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenPreview={vi.fn()} onOpenPhoto={vi.fn()} />,
+    );
+
+    fireEvent.click(await screen.findByTestId('map-media-filter-photo'));
+    expect(await screen.findByTestId('map-media-empty-state')).toBeDefined();
+
+    fireEvent.click(screen.getByTestId('map-media-empty-show-all'));
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(1));
   });
 
   it('does not show the photos coverage line or filter chips when the catalog has no photos', async () => {

@@ -1,7 +1,7 @@
 import { Box, Skeleton } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { LIBRARY_SECTION_HEADER_HEIGHT, LIBRARY_TILE_GAP, LIBRARY_TILE_SIZE } from './tile-metrics.js';
+import { LIBRARY_SECTION_HEADER_HEIGHT, LIBRARY_TILE_GAP, LIBRARY_TILE_SIZE } from '../../theme.js';
 
 const SKELETON_TILES = 12;
 const skeletonKeys = Array.from({ length: SKELETON_TILES }, (_, index) => `library-skeleton-${String(index)}`);

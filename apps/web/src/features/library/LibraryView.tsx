@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, LinearProgress, Snackbar, TextField, Typography } from '@mui/material';
 import { ApiError, isTerminalJobStatus, invalidateLibraryVisibilityConsumers } from '@core/client/index.js';
@@ -10,6 +10,9 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { EmptyState } from '../../components/ui/EmptyState.js';
+import { NoticePanel } from '../../components/ui/NoticePanel.js';
+import { PageHeader } from '../../components/ui/PageHeader.js';
 import { useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { TrashConfirmationDialog, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
@@ -46,7 +49,7 @@ import {
   type LibrarySelectionScope,
 } from './core/selection.js';
 import type { LibrarySort } from './core/folder-groups.js';
-import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
+import { LibraryGrid, type LibraryGridSection, type LibrarySelectionModifiers } from './LibraryGrid.js';
 import { LibraryGridSkeleton } from './LibraryGridSkeleton.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
@@ -171,16 +174,25 @@ export const LibraryView = ({
   useEffect(() => {
     if (seed === null) return;
     if (seed.kind === 'person') {
-      dispatch({ type: 'addPerson', personId: seed.personId, displayName: seed.label });
+      dispatch({ type: 'openPerson', personId: seed.personId, displayName: seed.label });
       setMedia(seed.media);
+      setHiddenActive(false);
+      setHideUnavailable(false);
     } else if (seed.kind === 'tag') {
       dispatch({ type: 'addTag', tag: seed.tag });
     } else {
       setMedia(seed.media);
     }
     onSeedConsumed?.();
-  }, [seed, onSeedConsumed, setMedia]);
+  }, [seed, onSeedConsumed, setMedia, setHideUnavailable]);
 
+  const hidden: 'only' | 'exclude' = hiddenActive ? 'only' : 'exclude';
+  const library = useLibrary({ active, filters, sort, media, hideUnavailable, hidden });
+  const facetsState = useLibraryFacets({ active });
+  const facetPeopleById = useMemo(
+    () => new Map(facetsState.facets.people.map((person) => [person.personId, person])),
+    [facetsState.facets.people],
+  );
   const chipLabels: LibraryFilterChipLabels = useMemo(() => ({
     hasGps: dictionary.library.chipHasGps,
     noGps: dictionary.library.chipNoGps,
@@ -189,11 +201,13 @@ export const LibraryView = ({
     dateRange: dictionary.library.chipDateRange,
     dateFrom: dictionary.library.chipDateFrom,
     dateTo: dictionary.library.chipDateTo,
-  }), [dictionary]);
-
-  const hidden: 'only' | 'exclude' = hiddenActive ? 'only' : 'exclude';
-  const library = useLibrary({ active, filters, sort, media, hideUnavailable, hidden });
-  const facetsState = useLibraryFacets({ active });
+    formatDay: (day: string) => formatDayLabel(day, dictionary.locale),
+    personDisplayName: (personId: string) => {
+      const person = facetPeopleById.get(personId);
+      if (person === undefined) return null;
+      return person.displayName ?? dictionary.people.personName(person.fallbackIndex);
+    },
+  }), [dictionary, facetPeopleById]);
   const photoRoots = usePhotoRoots({ active });
   const backfillFolders = useMemo(
     () => [...new Set(
@@ -381,8 +395,8 @@ export const LibraryView = ({
   }, [onOpenResult, onOpenPhotoInAnalysis, photoRoots]);
 
   const openViewer = useCallback((item: LibraryItem): void => setViewerFingerprint(item.fingerprint), []);
-  const selectTile = useCallback((item: LibraryItem, event: ReactMouseEvent): void => {
-    if (event.shiftKey) {
+  const selectTile = useCallback((item: LibraryItem, modifiers: LibrarySelectionModifiers): void => {
+    if (modifiers.shiftKey) {
       dispatchSelection({ type: 'extendTo', fingerprint: item.fingerprint, order: viewerOrder });
       return;
     }
@@ -400,10 +414,13 @@ export const LibraryView = ({
 
   if (!active) return null;
 
-  const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
-    && libraryFilterIsEmpty(filters) && !hideUnavailable && !hiddenActive && library.total === 0;
-  const isHiddenEmpty = !library.isLoading && library.error === null && hiddenActive && library.total === 0;
-  const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog && !isHiddenEmpty;
+  const isUnfiltered = library.debouncedQuery.length === 0
+    && libraryFilterIsEmpty(filters) && !hideUnavailable && !hiddenActive;
+  const settled = !library.isLoading && library.error === null;
+  const isEmptyCatalog = settled && isUnfiltered && library.mediaTotals.all === 0;
+  const isHiddenEmpty = settled && hiddenActive && library.total === 0;
+  const isMediumEmpty = settled && isUnfiltered && library.total === 0 && library.mediaTotals.all > 0;
+  const isNoMatch = settled && library.total === 0 && !isEmptyCatalog && !isHiddenEmpty && !isMediumEmpty;
   const videoOnlyFilterActive = filters.place !== null || filters.hasGps !== null;
   const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
   const body = () => {
@@ -413,80 +430,59 @@ export const LibraryView = ({
     if (library.isLoading) return <LibraryGridSkeleton />;
     if (isEmptyCatalog) {
       return (
-        <Box
-          data-testid="library-empty-catalog"
-          sx={{
-            flex: 1,
-            minHeight: 260,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            gap: 1,
-            color: 'text.secondary',
-          }}
-        >
-          <Typography variant="h2" color="text.primary">{dictionary.library.emptyCatalogTitle}</Typography>
-          <Typography variant="body2" sx={{ maxWidth: 420 }}>{dictionary.library.emptyCatalogBody}</Typography>
-          <Button variant="contained" onClick={onGoToVideos} data-testid="library-empty-go-videos" sx={{ mt: 1 }}>
-            {dictionary.library.emptyCatalogAction}
-          </Button>
-        </Box>
+        <EmptyState
+          testId="library-empty-catalog"
+          title={dictionary.library.emptyCatalogTitle}
+          body={dictionary.library.emptyCatalogBody}
+          action={(
+            <Button variant="contained" onClick={onGoToVideos} data-testid="library-empty-go-videos">
+              {dictionary.library.emptyCatalogAction}
+            </Button>
+          )}
+        />
+      );
+    }
+    if (isMediumEmpty) {
+      return (
+        <EmptyState
+          testId="library-media-empty"
+          title={dictionary.library.mediaEmptyTitle}
+          body={dictionary.library.mediaEmptyBody}
+          action={(
+            <Button variant="outlined" onClick={() => setMedia('all')} data-testid="library-media-empty-show-all">
+              {dictionary.library.showAllMedia}
+            </Button>
+          )}
+        />
       );
     }
     if (isNoMatch) {
       return (
-        <Box
-          data-testid="library-no-match"
-          sx={{
-            flex: 1,
-            minHeight: 260,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            gap: 1,
-            color: 'text.secondary',
-          }}
-        >
-          <Typography variant="h2" color="text.primary">{dictionary.library.noMatchTitle(library.debouncedQuery)}</Typography>
-          <Typography variant="body2" sx={{ maxWidth: 420 }} data-testid="library-no-match-body">
-            {noMatchSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.noMatchBody)}
-          </Typography>
-          <Button
-            variant="outlined"
-            onClick={() => { library.setQuery(''); dispatch({ type: 'clearAll' }); setHideUnavailable(false); }}
-            data-testid="library-no-match-clear"
-            sx={{ mt: 1 }}
-          >
-            {dictionary.library.noMatchClearAction}
-          </Button>
-        </Box>
+        <EmptyState
+          testId="library-no-match"
+          title={dictionary.library.noMatchTitle(library.debouncedQuery)}
+          bodyTestId="library-no-match-body"
+          body={noMatchSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.noMatchBody)}
+          action={(
+            <Button
+              variant="outlined"
+              onClick={() => { library.setQuery(''); dispatch({ type: 'clearAll' }); setHideUnavailable(false); }}
+              data-testid="library-no-match-clear"
+            >
+              {dictionary.library.noMatchClearAction}
+            </Button>
+          )}
+        />
       );
     }
     if (isHiddenEmpty) {
       return (
-        <Box
-          data-testid="library-hidden-empty"
-          sx={{
-            flex: 1,
-            minHeight: 260,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            gap: 1,
-            color: 'text.secondary',
-          }}
-        >
-          <Typography variant="h2" color="text.primary">{dictionary.library.hiddenEmptyTitle}</Typography>
-          <Typography variant="body2" sx={{ maxWidth: 420 }} data-testid="library-hidden-empty-body">
-            {noHiddenSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.hiddenEmptyBody)}
-          </Typography>
-        </Box>
+        <EmptyState
+          testId="library-hidden-empty"
+          title={dictionary.library.hiddenEmptyTitle}
+          bodyTestId="library-hidden-empty-body"
+          body={noHiddenSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.hiddenEmptyBody)}
+        />
       );
     }
     return (
@@ -497,9 +493,12 @@ export const LibraryView = ({
           ) : null}
         </Box>
         {showVideoOnlyFilterNotice ? (
-          <Alert severity="info" data-testid="library-video-only-filter-notice" sx={{ mx: 2, mt: 1 }}>
-            {dictionary.library.videoOnlyFilterNotice(videoOnlyFilterChips(filters, chipLabels).map((chip) => chip.label).join(', '))}
-          </Alert>
+          <Box sx={{ mx: 2, mt: 1 }}>
+            <NoticePanel
+              testId="library-video-only-filter-notice"
+              message={dictionary.library.videoOnlyFilterNotice(videoOnlyFilterChips(filters, chipLabels).map((chip) => chip.label).join(', '))}
+            />
+          </Box>
         ) : null}
         <LibraryGrid
           sections={sections}
@@ -531,11 +530,11 @@ export const LibraryView = ({
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h1">{dictionary.library.title}</Typography>
-        <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
-          {library.isLoading ? dictionary.library.subtitle : dictionary.library.countHeader(library.items.length, library.total)}
-        </Typography>
+      <PageHeader
+        testId="library-header"
+        title={dictionary.library.title}
+        subtitle={library.isLoading ? dictionary.library.subtitle : dictionary.library.countHeader(library.items.length, library.total)}
+      >
         <Autocomplete
           freeSolo
           clearOnBlur={false}
@@ -689,11 +688,11 @@ export const LibraryView = ({
           </Box>
         ) : null}
         {activeTrashJobId === null ? null : (
-          <Alert severity="info" data-testid="library-trash-active-job" sx={{ mt: 1 }}>
-            {dictionary.library.trashStarted}
-          </Alert>
+          <Box sx={{ mt: 1 }}>
+            <NoticePanel testId="library-trash-active-job" message={dictionary.library.trashStarted} />
+          </Box>
         )}
-      </Box>
+      </PageHeader>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>
       {viewerItem === null ? null : (
         <LibraryMediaViewer

@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { hexToRgb, ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -391,6 +391,69 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByTestId('library-empty-go-videos'));
 
     expect(onGoToVideos).toHaveBeenCalledOnce();
+  });
+
+  it('offers a medium switch instead of the first-use empty state when only the other medium has files', async () => {
+    stubCollection([photoItem({ fingerprint: 'ph_0000000000000001' })]);
+    window.localStorage.setItem('avc.library.media', 'video');
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    expect(await screen.findByTestId('library-media-empty')).toBeDefined();
+    expect(screen.queryByTestId('library-empty-catalog')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('library-media-empty-show-all'));
+    expect(await screen.findByTestId('library-tile')).toBeDefined();
+  });
+
+  it('moves, opens and toggles tiles from the keyboard with a roving active descendant', async () => {
+    const items = [
+      videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' }),
+      videoItem({ fingerprint: 'fp-2', capturedAt: '2026-01-02T09:00:00.000Z' }),
+      videoItem({ fingerprint: 'fp-3', capturedAt: '2026-01-02T08:00:00.000Z' }),
+    ];
+    stubCollection(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+    const grid = screen.getByTestId('library-grid');
+
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    const activeFingerprint = () => {
+      const id = grid.getAttribute('aria-activedescendant');
+      if (id === null) throw new Error('grid exposes no active descendant');
+      return document.getElementById(id)?.getAttribute('data-fingerprint');
+    };
+    expect(activeFingerprint()).toBe('fp-1');
+
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    expect(activeFingerprint()).toBe('fp-2');
+
+    fireEvent.keyDown(grid, { key: 'End' });
+    expect(activeFingerprint()).toBe('fp-3');
+
+    fireEvent.keyDown(grid, { key: 'Home' });
+    expect(activeFingerprint()).toBe('fp-1');
+
+    fireEvent.keyDown(grid, { key: ' ', ctrlKey: true });
+    expect(await screen.findByTestId('library-selection-count')).toBeDefined();
+
+    fireEvent.keyDown(grid, { key: 'Enter' });
+    expect(await screen.findByTestId('library-media-viewer')).toBeDefined();
+  });
+
+  it('marks every tile with its medium so a missing video keeps its film marker', async () => {
+    stubCollection([
+      videoItem({ fingerprint: 'fp-missing', missing: true }),
+      photoItem({ fingerprint: 'ph_0000000000000001' }),
+    ]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    await screen.findAllByTestId('library-tile');
+    expect(screen.getByTestId('library-missing-badge')).toBeDefined();
+    expect(screen.getByTestId('library-tile-video-badge')).toBeDefined();
+    expect(screen.getByTestId('library-tile-photo-badge')).toBeDefined();
   });
 
   it('renders tiles grouped by capture day with the file count header', async () => {
@@ -1033,6 +1096,50 @@ describe('LibraryView', () => {
     expect(screen.queryByText(/person-abc123/)).toBeNull();
   });
 
+  it('reads the date preset back from the applied dates and admits a custom range', async () => {
+    stubFacets({ years: [{ year: '2024', count: 2 }] });
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const preset = screen.getByTestId('library-filter-date-preset');
+    fireEvent.mouseDown(within(preset).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: '2024 (2)' }));
+    await waitFor(() => expect(within(preset).getByRole('combobox').textContent).toBe('2024 (2)'));
+
+    const from = screen.getByTestId('library-filter-from').querySelector('input');
+    fireEvent.change(from ?? preset, { target: { value: '2024-06-01' } });
+
+    await waitFor(() =>
+      expect(within(preset).getByRole('combobox').textContent).toBe(en.library.filterDatePresetCustom));
+  });
+
+  it('caps the mounted option list of a large people facet instead of rendering every person', async () => {
+    stubFacets({
+      people: Array.from({ length: 400 }, (_, index) => ({
+        personId: `person-${String(index)}`,
+        displayName: `Person ${String(index)}`,
+        count: 1,
+        fallbackIndex: index,
+      })),
+    });
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const peopleField = screen.getByTestId('library-filter-people');
+    const input = peopleField.querySelector('input');
+    fireEvent.mouseDown(within(peopleField).getByRole('button', { name: en.common.autocompleteOpen }));
+    fireEvent.change(input ?? peopleField, { target: { value: 'Person' } });
+
+    const personOptions = () => screen.getAllByRole('option')
+      .filter((option) => option.textContent?.startsWith('Person ') === true);
+    await waitFor(() => expect(personOptions().length).toBeGreaterThan(0));
+    expect(personOptions().length).toBeLessThanOrEqual(100);
+  });
+
   it('debounces the free-text place filter into a single search request', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
@@ -1470,6 +1577,91 @@ describe('LibraryView', () => {
       const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
       expect(fingerprints).toEqual(['ph_0000000000000001', 'ph_0000000000000002', 'ph_0000000000000003']);
     });
+  });
+
+  it('omits the selection and hide controls it cannot honour in the person preview', async () => {
+    server.use(
+      http.get('/api/library/collection', () => HttpResponse.json({
+        ok: true,
+        data: {
+          query: null,
+          media: 'photo',
+          limit: 200,
+          total: 1,
+          videoTotal: 0,
+          photoTotal: 1,
+          mediaTotals: { all: 1, video: 0, photo: 1 },
+          count: 1,
+          items: [photoItem({ fingerprint: 'ph_0000000000000001' })],
+          nextCursor: null,
+        },
+      })),
+    );
+
+    renderThemed(
+      <PersonMediaPanel
+        personId="person-abc123"
+        label="Anna"
+        media="photo"
+        onClose={vi.fn()}
+        onOpenResult={vi.fn()}
+        onOpenPhotoInAnalysis={vi.fn()}
+      />,
+    );
+
+    const tile = await screen.findByTestId('library-tile');
+    expect(tile.querySelector('input[type="checkbox"]')).toBeNull();
+
+    fireEvent.contextMenu(tile);
+    expect(await screen.findByTestId('library-tile-menu-open-analysis')).toBeDefined();
+    expect(screen.queryByTestId('library-tile-menu-hide')).toBeNull();
+  });
+
+  it('explains a failed person-media load and retries it instead of claiming the person has no media', async () => {
+    let attempts = 0;
+    server.use(
+      http.get('/api/library/collection', () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'internal', message: 'collection unavailable' } },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'photo',
+            limit: 200,
+            total: 1,
+            videoTotal: 0,
+            photoTotal: 1,
+            mediaTotals: { all: 1, video: 0, photo: 1 },
+            count: 1,
+            items: [photoItem({ fingerprint: 'ph_0000000000000001' })],
+            nextCursor: null,
+          },
+        });
+      }),
+    );
+
+    renderThemed(
+      <PersonMediaPanel
+        personId="person-abc123"
+        label="Anna"
+        media="photo"
+        onClose={vi.fn()}
+        onOpenResult={vi.fn()}
+        onOpenPhotoInAnalysis={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByTestId('person-media-error')).toBeDefined();
+    expect(screen.queryByTestId('person-media-empty')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('person-media-retry'));
+    expect(await screen.findByTestId('library-tile')).toBeDefined();
   });
 
   it('shows supplied person file counts in the panel title and observations as a caption', async () => {

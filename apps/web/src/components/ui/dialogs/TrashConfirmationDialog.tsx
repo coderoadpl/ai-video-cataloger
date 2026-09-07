@@ -103,7 +103,7 @@ export const TrashConfirmationDialog = ({
             {skipSharedControl === undefined ? null : <Box>{skipSharedControl}</Box>}
             <DialogContentText>{dictionary.library.trashDialogErases}</DialogContentText>
             <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.library.trashDialogRoots}</Typography>
+              <Typography variant="subtitle2">{dictionary.library.trashDialogRoots}</Typography>
               <List dense disablePadding>
                 {roots.map((root) => (
                   <ListItem key={`${root.folderId}:${root.currentPath}`} disableGutters data-testid="library-trash-root">
@@ -117,14 +117,14 @@ export const TrashConfirmationDialog = ({
             </Box>
             {unavailableRoots.length > 0 ? (
               <Alert severity="warning" data-testid="library-trash-offline">
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.library.trashDialogOfflineTitle}</Typography>
+                <Typography variant="subtitle2">{dictionary.library.trashDialogOfflineTitle}</Typography>
                 <Typography variant="body2">{dictionary.library.trashDialogOfflineBody}</Typography>
                 <Typography variant="body2">{unavailableRoots.join(', ')}</Typography>
               </Alert>
             ) : null}
             {refusalRoots.length > 0 ? (
               <Alert severity="warning" data-testid="library-trash-read-only">
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.library.trashDialogReadOnlyTitle}</Typography>
+                <Typography variant="subtitle2">{dictionary.library.trashDialogReadOnlyTitle}</Typography>
                 <Typography variant="body2">{dictionary.library.trashDialogReadOnlyBody}</Typography>
                 <Typography variant="body2">{refusalRoots.join(', ')}</Typography>
               </Alert>

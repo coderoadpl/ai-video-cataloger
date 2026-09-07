@@ -10,9 +10,10 @@ interface PlaceholderTileProps {
   testId: string;
   caption?: ReactNode;
   captionTestId?: string;
+  glyph?: string;
 }
 
-export const PlaceholderTile = ({ name, testId, caption, captionTestId }: PlaceholderTileProps) => {
+export const PlaceholderTile = ({ name, testId, caption, captionTestId, glyph }: PlaceholderTileProps) => {
   const theme = useTheme();
   const dark = theme.palette.mode === 'dark';
   const gradients = dark ? placeholderGradients.dark : placeholderGradients.light;
@@ -35,13 +36,19 @@ export const PlaceholderTile = ({ name, testId, caption, captionTestId }: Placeh
         border: `1px solid ${alpha(foreground, 0.14)}`,
       }}
     >
-      <StorageIcon fontSize="small" sx={{ color: alpha(foreground, 0.72) }} />
-      <Typography
-        variant="caption"
-        sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: foreground, fontWeight: 600 }}
-      >
-        {middleEllipsis(name, 40)}
-      </Typography>
+      {glyph === undefined ? (
+        <>
+          <StorageIcon fontSize="small" sx={{ color: alpha(foreground, 0.72) }} />
+          <Typography
+            variant="caption"
+            sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: foreground, fontWeight: 600 }}
+          >
+            {middleEllipsis(name, 40)}
+          </Typography>
+        </>
+      ) : (
+        <Typography variant="h1" sx={{ color: foreground, fontSize: '1.75rem' }}>{glyph}</Typography>
+      )}
       {caption === undefined ? null : (
         <Typography variant="caption" data-testid={captionTestId} sx={{ color: alpha(foreground, 0.7) }}>
           {caption}

@@ -36,16 +36,16 @@ const isIntermediate = (status: VideoStatusValue): status is IntermediateStatus 
   status === 'analyzed';
 
 const labelFor = (status: VideoStatusValue, dictionary: Dictionary): string => {
-  if (isIntermediate(status)) return dictionary.videoStatus.incomplete;
+  if (isIntermediate(status)) return dictionary.mediaStatus.incomplete;
   switch (status) {
     case 'completed':
-      return dictionary.videoStatus.completed;
+      return dictionary.mediaStatus.analyzed;
     case 'error':
-      return dictionary.videoStatus.error;
+      return dictionary.mediaStatus.failed;
     case 'pending':
-      return dictionary.videoStatus.pending;
+      return dictionary.mediaStatus.pending;
     case 'not_tracked':
-      return dictionary.videoStatus.notTracked;
+      return dictionary.mediaStatus.notTracked;
   }
 };
 
@@ -81,7 +81,7 @@ export const VideoStatusBadge = ({
     return (
       <StatusBadge
         icon={<StatusBadgeSpinner />}
-        label={dictionary.videoStatus.processing}
+        label={dictionary.mediaStatus.processing}
         token="pending"
         testId="video-status-badge"
       />

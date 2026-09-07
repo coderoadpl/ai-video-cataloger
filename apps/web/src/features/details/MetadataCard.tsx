@@ -1,6 +1,7 @@
 import { Button, Chip, Paper, Typography } from '@mui/material';
 
-import { ClockIcon, FolderIcon, PlaceIcon, StorageIcon } from '../../components/ui/icons.js';
+import { CardHeader } from '../../components/ui/CardHeader.js';
+import { ClockIcon, FilmIcon, FolderIcon, PlaceIcon, StorageIcon } from '../../components/ui/icons.js';
 import { DetailMetadataRow } from '../../components/ui/DetailMetadataRow.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCoordinates } from '../../lib/format.js';
@@ -27,7 +28,7 @@ export const MetadataCard = ({ video, location, onShowOnMap }: MetadataCardProps
 
   return (
     <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography variant="h2">{dictionary.details.videoInformation}</Typography>
+      <CardHeader icon={<FilmIcon fontSize="small" />} title={dictionary.details.videoInformation} />
       <DetailMetadataRow
         icon={<ClockIcon fontSize="small" />}
         label={dictionary.details.duration}

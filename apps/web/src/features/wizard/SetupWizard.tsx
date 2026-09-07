@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { COMPACT_LABEL_FONT_SIZE } from '../../theme.js';
 import { useWizard } from './use-wizard.js';
 import { WIZARD_STEPS, wizardNextLabel, wizardStepLabels } from './wizard-model.js';
 import { WelcomeStep } from './WelcomeStep.js';
@@ -52,7 +53,7 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
         <Stepper
           activeStep={activeStep}
           alternativeLabel
-          sx={{ mb: 3, '& .MuiStepLabel-label': { fontSize: '0.6875rem' } }}
+          sx={{ mb: 3, '& .MuiStepLabel-label': { fontSize: COMPACT_LABEL_FONT_SIZE } }}
         >
           {WIZARD_STEPS.map((wizardStep) => (
             <Step key={wizardStep}>

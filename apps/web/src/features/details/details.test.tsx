@@ -380,7 +380,7 @@ describe('details panel', () => {
 
     pending.unmount();
     renderThemed(<DetailsPanel video={makeVideo({ status: 'completed' })} analyzing={false} />);
-    expect(screen.getByTestId('video-status-badge').textContent).toContain('Completed');
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Analyzed');
   });
 
   it('shows a duplicate video with the analyze-anyway affordance when idle', () => {

@@ -55,6 +55,7 @@ const labels: LibraryFilterChipLabels = {
   dateRange: (from, to) => `${from} – ${to}`,
   dateFrom: (from) => `from ${from}`,
   dateTo: (to) => `until ${to}`,
+  formatDay: (day) => day,
 };
 
 describe('libraryFilterChips', () => {
@@ -110,5 +111,48 @@ describe('noMatchSentence', () => {
 
   it('falls back to the generic body instead of repeating the query the title already names', () => {
     expect(noMatchSentence(EMPTY_LIBRARY_FILTERS, labels, () => 'unused', 'No results')).toBe('No results');
+  });
+});
+
+describe('openPerson navigation scope', () => {
+  it('replaces the whole filter set instead of stacking a second person', () => {
+    const withA = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'openPerson', personId: 'a', displayName: 'A' });
+    const dated = libraryFilterReducer(withA, { type: 'setDateRange', from: '2026-01-01', to: '2026-01-31' });
+    const withB = libraryFilterReducer(dated, { type: 'openPerson', personId: 'b', displayName: 'B' });
+
+    expect(withB.personIds).toEqual(['b']);
+    expect(withB.from).toBeNull();
+    expect(withB.to).toBeNull();
+  });
+
+  it('refreshes the stored fallback label when the same person is navigated to again', () => {
+    const first = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'addPerson', personId: 'a', displayName: 'Person 3' });
+    const again = libraryFilterReducer(first, { type: 'addPerson', personId: 'a', displayName: 'Person 2' });
+
+    expect(again.personIds).toEqual(['a']);
+    expect(again.personLabels['a']).toBe('Person 2');
+  });
+});
+
+describe('chip labels follow live data', () => {
+  it('prefers the current person name over the label captured at selection time', () => {
+    const state = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'addPerson', personId: 'a', displayName: 'Person 3' });
+    const chips = libraryFilterChips(state, { ...labels, personDisplayName: () => 'Alex' });
+
+    expect(chips[0]?.label).toBe('Person: Alex');
+  });
+
+  it('falls back to the stored label when the person is no longer in the facets', () => {
+    const state = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'addPerson', personId: 'a', displayName: 'Person 3' });
+    const chips = libraryFilterChips(state, { ...labels, personDisplayName: () => null });
+
+    expect(chips[0]?.label).toBe('Person: Person 3');
+  });
+
+  it('renders date chips through the localized day formatter, never the raw ISO day', () => {
+    const state = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'setDateRange', from: '2026-01-02', to: '2026-01-03' });
+    const chips = libraryFilterChips(state, { ...labels, formatDay: (day) => `day(${day})` });
+
+    expect(chips[0]?.label).toBe('day(2026-01-02) – day(2026-01-03)');
   });
 });

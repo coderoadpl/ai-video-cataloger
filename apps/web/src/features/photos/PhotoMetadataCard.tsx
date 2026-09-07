@@ -1,7 +1,8 @@
 import { type ReactNode } from 'react';
-import { Paper, Typography } from '@mui/material';
+import { Paper } from '@mui/material';
 import type { CapturedAtSource } from '@core/domain/index.js';
 
+import { CardHeader } from '../../components/ui/CardHeader.js';
 import { DetailMetadataRow } from '../../components/ui/DetailMetadataRow.js';
 import { CameraIcon, ClockIcon, FolderIcon, ImageIcon, IsoIcon, LensIcon, StarIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
@@ -62,7 +63,7 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
 
   return (
     <Paper variant="outlined" data-testid="photo-metadata-card" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography variant="h2">{dictionary.details.photoInformation}</Typography>
+      <CardHeader icon={<ImageIcon fontSize="small" />} title={dictionary.details.photoInformation} />
       <Row
         icon={<ImageIcon fontSize="small" />}
         label={dictionary.photos.detailDimensions}

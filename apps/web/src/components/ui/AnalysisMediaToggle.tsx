@@ -29,18 +29,18 @@ export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false }: Anal
       <ToggleButton
         value="videos"
         data-testid="analysis-media-videos"
-        title={dictionary.appFrame.mediaVideos}
+        title={dictionary.library.mediaVideo}
         sx={sidebarToggleButtonSx}
       >
-        <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaVideos}</Box>
+        <Box component="span" sx={labelSx}>{dictionary.library.mediaVideo}</Box>
       </ToggleButton>
       <ToggleButton
         value="photos"
         data-testid="analysis-media-photos"
-        title={dictionary.appFrame.mediaPhotos}
+        title={dictionary.library.mediaPhoto}
         sx={sidebarToggleButtonSx}
       >
-        <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaPhotos}</Box>
+        <Box component="span" sx={labelSx}>{dictionary.library.mediaPhoto}</Box>
       </ToggleButton>
     </ToggleButtonGroup>
   );
