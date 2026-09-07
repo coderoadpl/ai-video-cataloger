@@ -14,31 +14,36 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.34] - 2026-09-07
+
 ### Fixed
 
-- Osoby now follows a face indexing run started anywhere else in the app: the view watches the running job, refreshes while it works and once more when it ends, instead of staying on the state it read the moment it was opened.
-
-- Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process.
+- Osoby now follows a face indexing run started anywhere else in the app: the view watches the running job, refreshes while it works and once more when it ends, instead of staying on the state it read the moment it was opened
+  ([`6bc95ac`](https://github.com/coderoadpl/ai-video-cataloger/commit/6bc95ac3a5bfe06a43edd57ca0332e902eec54f6)).
+- Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process
+  ([`025e2bf`](https://github.com/coderoadpl/ai-video-cataloger/commit/025e2bf1b770e135c66c029781c42e49c0d7878b)).
 
 ### Added
 
-- `faces pairs list`, `faces pairs decide` and `faces pairs import` expose the pairwise people review from the CLI, including a one-off import of a labelled same/different pairs corpus.
-
-- `faces recluster` honours stored pairwise decisions as clustering constraints and carries a name across the rebuild when the old person maps one-to-one onto a new one.
-
-- Osoby can be reviewed pair by pair: the app proposes two people it believes may be the same, and the answer is stored — `same` merges them, `different` is a permanent constraint honoured by later rebuilds, `skip` hides the pair for 30 days.
-
-- `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
-
-- Osoby has a "Ta sama osoba?" review view: two people side by side with contact sheets, answered with Tak / Nie / Pomiń or the keys 1 / 2 / 3, undone with Backspace, and a header badge showing how many questions are pending.
-
-- Ustawienia can set how eagerly Osoby proposes people to compare (Ostrożnie / Standardowo / Szeroko).
-
-- `pnpm run test:e2e:people-pairs` drives the review surface with real clicks and keystrokes over a real faces pass and asserts the decisions survive a relaunch.
+- `faces pairs list`, `faces pairs decide` and `faces pairs import` expose the pairwise people review from the CLI, including a one-off import of a labelled same/different pairs corpus
+  ([`7b47de9`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b47de9c904cb8bfcd791446883a3e06c9af1412)).
+- `faces recluster` honours stored pairwise decisions as clustering constraints and carries a name across the rebuild when the old person maps one-to-one onto a new one
+  ([`7b47de9`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b47de9c904cb8bfcd791446883a3e06c9af1412)).
+- Osoby can be reviewed pair by pair: the app proposes two people it believes may be the same, and the answer is stored — `same` merges them, `different` is a permanent constraint honoured by later rebuilds, `skip` hides the pair for 30 days
+  ([`7b47de9`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b47de9c904cb8bfcd791446883a3e06c9af1412)).
+- `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare
+  ([`7b47de9`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b47de9c904cb8bfcd791446883a3e06c9af1412)).
+- Osoby has a "Ta sama osoba?" review view: two people side by side with contact sheets, answered with Tak / Nie / Pomiń or the keys 1 / 2 / 3, undone with Backspace, and a header badge showing how many questions are pending
+  ([`6bc95ac`](https://github.com/coderoadpl/ai-video-cataloger/commit/6bc95ac3a5bfe06a43edd57ca0332e902eec54f6)).
+- Ustawienia can set how eagerly Osoby proposes people to compare (Ostrożnie / Standardowo / Szeroko)
+  ([`6bc95ac`](https://github.com/coderoadpl/ai-video-cataloger/commit/6bc95ac3a5bfe06a43edd57ca0332e902eec54f6)).
+- `pnpm run test:e2e:people-pairs` drives the review surface with real clicks and keystrokes over a real faces pass and asserts the decisions survive a relaunch
+  ([`6bc95ac`](https://github.com/coderoadpl/ai-video-cataloger/commit/6bc95ac3a5bfe06a43edd57ca0332e902eec54f6)).
 
 ### Changed
 
-- Automated launches driven by the e2e suites and the release walkthrough set `AVC_WINDOW_INACTIVE=1`, which opens the app window inactive and off the macOS Dock so a long gate run never takes keyboard focus; a normal launch is unaffected.
+- Automated launches driven by the e2e suites and the release walkthrough set `AVC_WINDOW_INACTIVE=1`, which opens the app window inactive and off the macOS Dock so a long gate run never takes keyboard focus; a normal launch is unaffected
+  ([`4c62ac2`](https://github.com/coderoadpl/ai-video-cataloger/commit/4c62ac20246d95d6db7a913a08180b9cc6c6a48b)).
 
 ## [0.6.33] - 2026-09-07
 
