@@ -552,6 +552,8 @@ export interface Dictionary {
     trashPersonFiles: string;
     personSelectionTitle: (name: string) => string;
     personSelectionSummary: (total: number, shared: number) => string;
+    personHideActionSummary: (count: number) => string;
+    personTrashActionSummary: (count: number) => string;
     skipSharedWithOtherPeople: string;
     hidePersonConfirm: string;
     hiddenPersonFilesLog: (name: string) => string;
@@ -1651,6 +1653,8 @@ export const en: Dictionary = {
     personSelectionSummary: (total, shared) => shared === 0
       ? `${String(total)} ${total === 1 ? 'file' : 'files'}`
       : `${String(total)} ${total === 1 ? 'file' : 'files'}, including ${String(shared)} that also ${shared === 1 ? 'contains' : 'contain'} other recognized people`,
+    personHideActionSummary: (count) => `${String(count)} ${count === 1 ? 'file' : 'files'} will be hidden`,
+    personTrashActionSummary: (count) => `${String(count)} ${count === 1 ? 'file' : 'files'} will be moved to Trash`,
     skipSharedWithOtherPeople: 'Skip files with other people',
     hidePersonConfirm: 'Hide files',
     hiddenPersonFilesLog: (name) => `Hid files for ${name}`,
@@ -2816,6 +2820,8 @@ export const pl: Dictionary = {
     personSelectionSummary: (total, shared) => shared === 0
       ? `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}`
       : `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}, w tym ${String(shared)} z innymi osobami`,
+    personHideActionSummary: (count) => `${plPlural(count, 'Zostanie ukryty', 'Zostaną ukryte', 'Zostanie ukrytych')} ${String(count)} ${plPlural(count, 'plik', 'pliki', 'plików')}`,
+    personTrashActionSummary: (count) => `Do Kosza ${plPlural(count, 'trafi', 'trafią', 'trafi')} ${String(count)} ${plPlural(count, 'plik', 'pliki', 'plików')}`,
     skipSharedWithOtherPeople: 'Pomiń pliki z innymi osobami',
     hidePersonConfirm: 'Ukryj pliki',
     hiddenPersonFilesLog: (name) => `Ukryto pliki osoby ${name}`,

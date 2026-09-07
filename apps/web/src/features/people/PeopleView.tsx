@@ -231,12 +231,19 @@ export const PeopleView = ({
     sharedWithOtherPeople: libraryActionPreview.data.sharedWithOtherPeople,
   };
   const libraryActionRoots: TrashConfirmationRoot[] = libraryActionPreview.data?.roots ?? [];
-  const personSummary = libraryAction === null || libraryActionPreview.data === undefined
+  const libraryActionPending = libraryActionPreview.isLoading || libraryActionPreview.isFetching
+    || libraryActionSharedPreview.isLoading || libraryActionSharedPreview.isFetching;
+  const personSummary = libraryAction === null || libraryActionSharedPreview.data === undefined
     ? ''
     : dictionary.people.personSelectionSummary(
-      libraryActionPreview.data.total,
-      libraryActionSharedPreview.data?.sharedWithOtherPeople ?? libraryActionPreview.data.sharedWithOtherPeople,
+      libraryActionSharedPreview.data.total,
+      libraryActionSharedPreview.data.sharedWithOtherPeople,
     );
+  const personActionSummary = libraryAction === null || libraryActionPreview.data === undefined
+    ? ''
+    : libraryAction.kind === 'trash'
+      ? dictionary.people.personTrashActionSummary(libraryActionPreview.data.total)
+      : dictionary.people.personHideActionSummary(libraryActionPreview.data.total);
   const closeLibraryAction = (): void => {
     setLibraryAction(null);
     setTrashChecked(false);
@@ -786,12 +793,15 @@ export const PeopleView = ({
           {libraryAction === null ? dictionary.people.hidePersonFiles : dictionary.people.personSelectionTitle(libraryAction.name)}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {libraryActionPreview.isLoading || libraryActionPreview.isFetching ? (
+          {libraryActionPending ? (
             <DialogContentText>{dictionary.library.trashDialogLoading}</DialogContentText>
           ) : libraryActionPreview.isError ? (
             <Alert severity="error" data-testid="people-library-action-error">{messageOf(libraryActionPreview.error)}</Alert>
           ) : (
-            <DialogContentText data-testid="people-library-action-summary">{personSummary}</DialogContentText>
+            <>
+              <DialogContentText data-testid="people-library-action-summary">{personSummary}</DialogContentText>
+              <DialogContentText data-testid="people-library-action-scope">{personActionSummary}</DialogContentText>
+            </>
           )}
           {skipSharedControl}
           {libraryActionError === null ? null : (
@@ -815,13 +825,14 @@ export const PeopleView = ({
         open={libraryAction?.kind === 'trash'}
         counts={libraryActionCounts}
         roots={libraryActionRoots}
-        loading={libraryActionPreview.isLoading || libraryActionPreview.isFetching}
+        loading={libraryActionPending}
         error={libraryActionPreview.isError || libraryActionError !== null
           ? libraryActionError ?? messageOf(libraryActionPreview.error)
           : null}
         checked={trashChecked}
         confirming={trashMutation.isPending}
         personSummary={personSummary}
+        personActionSummary={personActionSummary}
         skipSharedControl={skipSharedControl}
         onCheckedChange={setTrashChecked}
         onClose={closeLibraryAction}
