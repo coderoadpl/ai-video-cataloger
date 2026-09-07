@@ -557,7 +557,7 @@ describe('PeopleView', () => {
         bodies.push(await request.json());
         return HttpResponse.json({
           ok: true,
-          data: { fromPersonId: 'p2', toPersonId: 'p1', movedObservations: 1, affectedFingerprints: [] },
+          data: { fromPersonId: 'p2', toPersonId: 'p1', movedObservations: 1, decisionsInvalidated: 0, affectedFingerprints: [] },
         });
       }),
       http.post('/api/faces/forget', async ({ request }) => {
@@ -625,7 +625,7 @@ describe('PeopleView', () => {
         bodies.push(await request.json());
         return HttpResponse.json({
           ok: true,
-          data: { fromPersonId: 'p1', toPersonId: 'p2', movedObservations: 1, affectedFingerprints: [] },
+          data: { fromPersonId: 'p1', toPersonId: 'p2', movedObservations: 1, decisionsInvalidated: 0, affectedFingerprints: [] },
         });
       }),
     );
@@ -694,7 +694,7 @@ describe('PeopleView', () => {
         bodies.push(await request.json());
         return HttpResponse.json({
           ok: true,
-          data: { fromPersonId: 'p2', toPersonId: 'p1', movedObservations: 1, affectedFingerprints: [] },
+          data: { fromPersonId: 'p2', toPersonId: 'p1', movedObservations: 1, decisionsInvalidated: 0, affectedFingerprints: [] },
         });
       }),
     );

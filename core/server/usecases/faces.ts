@@ -352,7 +352,7 @@ export const buildVisiblePeople = (people: readonly Person[], observations: read
     .filter((person) => person.observationCount > 0);
 };
 
-const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
+export const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
   const acquired = await jobs.acquireResource('faces-write');
   if (!acquired.ok) return acquired;
   try {
@@ -380,7 +380,7 @@ export const facesName = async (
 export const facesMerge = async (
   deps: FacesDeps,
   input: { fromPersonId: string; toPersonId: string },
-): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
+): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   if (input.fromPersonId === input.toPersonId) {

@@ -1689,7 +1689,7 @@ faces
       json,
       'faces_merge',
       () => api.facesMerge({ fromPersonId, toPersonId }),
-      (data) => `Merged ${data.fromPersonId} into ${data.toPersonId} (${data.movedObservations} observations moved)`,
+      (data) => `Merged ${data.fromPersonId} into ${data.toPersonId} (${data.movedObservations} observations moved; ${data.decisionsInvalidated} decisions invalidated)`,
       { raw: true },
     );
   });

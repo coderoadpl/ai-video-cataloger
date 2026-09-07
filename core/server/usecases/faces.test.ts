@@ -278,6 +278,7 @@ describe('faces people management', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.movedObservations).toBe(2);
+    expect(result.value.decisionsInvalidated).toBe(0);
     const people = await deps.globalCatalog.listPeople();
     expect(people.ok && people.value.map((person) => person.personId)).toEqual(['to']);
   });

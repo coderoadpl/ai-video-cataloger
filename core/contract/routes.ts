@@ -1,4 +1,4 @@
-import { PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
+import { peoplePairDecisionKindSchema, PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
 import { z } from 'zod';
 
 import {
@@ -2404,7 +2404,30 @@ export const facesMergeOutputSchema = z.object({
   fromPersonId: z.string().min(1),
   toPersonId: z.string().min(1),
   movedObservations: z.number().int().nonnegative(),
+  decisionsInvalidated: z.number().int().nonnegative(),
   affectedFingerprints: z.array(z.string()),
+});
+
+export const facesPairsDecideInputSchema = z.object({
+  personAId: z.string().min(1),
+  personBId: z.string().min(1),
+  decision: peoplePairDecisionKindSchema,
+  survivorPersonId: z.string().min(1).optional(),
+});
+export const facesPairsDecideOutputSchema = z.object({
+  decision: peoplePairDecisionKindSchema,
+  personAId: z.string().min(1),
+  personBId: z.string().min(1),
+  merge: facesMergeOutputSchema.nullable(),
+  survivingPersonId: z.string().min(1).nullable(),
+  pending: z.number().int().nonnegative(),
+});
+export const facesPairsUndoOutputSchema = z.object({
+  undone: z.boolean(),
+  reason: z.enum(['none_to_undo', 'merge_not_undoable']).nullable(),
+  personAId: z.string().min(1).nullable(),
+  personBId: z.string().min(1).nullable(),
+  pending: z.number().int().nonnegative(),
 });
 
 export const facesForgetInputSchema = z.object({
@@ -2706,6 +2729,8 @@ export const API_ROUTES = {
     output: translationImportOutputSchema,
   },
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
+  facesPairsDecide: { method: 'POST', path: '/api/faces/pairs/decide', input: facesPairsDecideInputSchema, output: facesPairsDecideOutputSchema },
+  facesPairsUndo: { method: 'POST', path: '/api/faces/pairs/undo', input: emptyInputSchema, output: facesPairsUndoOutputSchema },
   facesPairs: { method: 'GET', path: '/api/faces/pairs', input: facesPairsInputSchema, output: facesPairsOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
@@ -2915,6 +2940,8 @@ export const API_PATHS = {
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
   facesPairs: API_ROUTES.facesPairs.path,
+  facesPairsDecide: API_ROUTES.facesPairsDecide.path,
+  facesPairsUndo: API_ROUTES.facesPairsUndo.path,
   facesName: API_ROUTES.facesName.path,
   facesMerge: API_ROUTES.facesMerge.path,
   facesForget: API_ROUTES.facesForget.path,

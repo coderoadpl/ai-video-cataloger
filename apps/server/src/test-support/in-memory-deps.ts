@@ -687,6 +687,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   flush(): Promise<Result<void, AppError>> {
+    if (this.batchDepth > 0) return Promise.resolve({ ok: false, error: appError('internal', 'Flush inside batch') });
     return Promise.resolve(ok(undefined));
   }
 
@@ -694,8 +695,24 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
-  withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
-    return operation();
+  batchDepth = 0;
+
+  async withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    const people = new Map(this.people);
+    const observations = new Map(this.faceObservations);
+    const decisions = [...this.peoplePairDecisions];
+    this.batchDepth += 1;
+    try {
+      const result = await operation();
+      if (!result.ok) {
+        this.people.clear();
+        for (const [id, person] of people) this.people.set(id, person);
+        this.faceObservations.clear();
+        for (const [id, observation] of observations) this.faceObservations.set(id, observation);
+        this.peoplePairDecisions = decisions;
+      }
+      return result;
+    } finally { this.batchDepth -= 1; }
   }
 
   lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
@@ -1442,7 +1459,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
-  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> {
     const from = this.people.get(input.fromPersonId);
     const to = this.people.get(input.toPersonId);
     if (from === undefined || to === undefined) return Promise.resolve({ ok: false, error: appError('not_found', 'Person not found') });
@@ -1462,6 +1479,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       fromPersonId: input.fromPersonId,
       toPersonId: input.toPersonId,
       movedObservations,
+      decisionsInvalidated: 0,
       affectedFingerprints: [...affected],
     }));
   }

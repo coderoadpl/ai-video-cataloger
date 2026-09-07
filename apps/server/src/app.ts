@@ -30,6 +30,8 @@ import {
   facesName,
   facesPeople,
   facesPairs,
+  facesPairsDecide,
+  facesPairsUndo,
   type FacesPairsCache,
   facesPurge,
   facesExemplars,
@@ -790,6 +792,22 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.facesIndex.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesIndex.output);
     return respond(await withCatalogWriteLockForJob(deps, () => facesIndex(deps, input.value)), API_ROUTES.facesIndex.output);
+  });
+
+  app.post(API_ROUTES.facesPairsDecide.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPairsDecide.output);
+    const input = parseInput(API_ROUTES.facesPairsDecide.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPairsDecide.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsDecide(deps, input.value)), API_ROUTES.facesPairsDecide.output);
+  });
+
+  app.post(API_ROUTES.facesPairsUndo.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPairsUndo.output);
+    const input = parseInput(API_ROUTES.facesPairsUndo.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPairsUndo.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsUndo(deps)), API_ROUTES.facesPairsUndo.output);
   });
 
   app.get(API_ROUTES.facesPairs.path, async (context) => {

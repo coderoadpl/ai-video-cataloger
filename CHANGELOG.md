@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Osoby can be reviewed pair by pair: the app proposes two people it believes may be the same, and the answer is stored — `same` merges them, `different` is a permanent constraint honoured by later rebuilds, `skip` hides the pair for 30 days.
+
 - `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
 
 ### Fixed

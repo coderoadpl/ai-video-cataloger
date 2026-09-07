@@ -801,7 +801,7 @@ export interface GlobalCatalogStore {
   listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>>;
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
   assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
-  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>>;
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>>;
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>>;
   purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>>;
   faceStatus(): Promise<Result<FaceStatusCounts, AppError>>;

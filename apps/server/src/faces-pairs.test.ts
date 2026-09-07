@@ -110,3 +110,104 @@ it('W99 A3 caches generation by people revision and invalidates after a visibili
   expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(0);
   expect(generate).toHaveBeenCalledTimes(2);
 });
+
+const postPair = (app: ReturnType<typeof buildApp>, route: string, body: unknown = {}) => app.request(`/api/faces/pairs/${route}`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+const decidePair = (app: ReturnType<typeof buildApp>, decision: string, survivorPersonId?: string) => postPair(app, 'decide', { personAId: 'a', personBId: 'b', decision, survivorPersonId });
+
+describe('W99 A4 decide and undo', () => {
+  it.each(['decide', 'undo'])('guards disabled %s', async (route) => {
+    const response = await postPair(buildApp(createInMemoryDeps()), route, { personAId: 'a', personBId: 'b', decision: 'same' });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'faces_disabled' } });
+  });
+  it.each([
+    [null, 'Named', 3, 9, undefined, 'b'],
+    ['Named', null, 9, 3, 'b', 'b'],
+    [null, null, 2, 3, undefined, 'b'],
+    [null, null, 2, 2, undefined, 'a'],
+    ['First', 'Second', 2, 3, 'a', 'a'],
+  ])('merges with derived or overridden survivor (%s, %s, %s, %s, %s)', async (nameA, nameB, countA, countB, override, survivor) => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a', 1, nameA), countA);
+    await seedPairPerson(deps, pairTestPerson('b', 1, nameB), countB);
+    const app = buildApp(deps);
+    const before: unknown = await (await app.request('/api/faces/pairs')).json();
+    const response = await decidePair(app, 'same', override);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { survivingPersonId: survivor, merge: { toPersonId: survivor } } });
+    if (override === undefined) expect(before).toMatchObject({ data: { candidates: [{ survivorIfSame: survivor }] } });
+    const observations = await deps.globalCatalog.listFaceObservations({ personId: survivor });
+    expect(observations.ok && observations.value.length).toBe(countA + countB);
+    expect(await deps.globalCatalog.getPerson(survivor === 'a' ? 'b' : 'a')).toEqual(ok(null));
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toMatchObject({ value: [{ obsAId: 'a-0', obsBId: 'b-0', personAId: survivor, personBId: survivor, decision: 'same' }] });
+  });
+  it('rejects self-pairs, unknown people, invalid survivors and empty people without writes', async () => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'));
+    await seedPairPerson(deps, pairTestPerson('b'));
+    await deps.globalCatalog.upsertPerson(pairTestPerson('empty'));
+    const app = buildApp(deps);
+    for (const [a, b, survivor, status] of [['a', 'a', 'a', 400], ['a', 'missing', 'a', 404], ['a', 'b', 'outside', 400], ['a', 'empty', 'a', 400]]) {
+      expect((await postPair(app, 'decide', { personAId: a, personBId: b, decision: 'same', survivorPersonId: survivor })).status).toBe(status);
+    }
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+  });
+  it.each(['visible-crop', 'hidden-only', 'no-crops'])('anchors %s using the sheet fallback chain', async (mode) => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'), 2);
+    await seedPairPerson(deps, pairTestPerson('b'));
+    const summaries = await deps.globalCatalog.listFaceObservations({ personId: 'a' });
+    if (!summaries.ok) throw new Error('Fixture failed');
+    for (const observation of summaries.value) await deps.globalCatalog.upsertFaceObservation({ ...observation, cropPath: mode === 'no-crops' || observation.obsId === 'a-0' ? null : observation.cropPath });
+    if (mode === 'hidden-only') vi.spyOn(deps.globalCatalog, 'listHiddenFingerprints').mockResolvedValue(ok(['a-0', 'a-1']));
+    const app = buildApp(deps);
+    expect((await decidePair(app, 'different')).status).toBe(200);
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toMatchObject({ value: [{ obsAId: mode === 'no-crops' ? 'a-0' : 'a-1' }] });
+  });
+  it('upserts answers, suppresses the queue, and undoes only user decisions', async () => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'));
+    await seedPairPerson(deps, pairTestPerson('b'));
+    const app = buildApp(deps);
+    expect(await (await postPair(app, 'undo')).json()).toMatchObject({ data: { undone: false, reason: 'none_to_undo' } });
+    await deps.globalCatalog.recordPeoplePairDecision({ obsAId: 'import-a', obsBId: 'import-b', personAId: null, personBId: null, source: 'import', decision: 'different', decidedAt: '2099-01-01T00:00:00.000Z' });
+    expect(await (await postPair(app, 'undo')).json()).toMatchObject({ data: { reason: 'none_to_undo' } });
+    await decidePair(app, 'different');
+    expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(0);
+    await decidePair(app, 'skip');
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toMatchObject({ value: [expect.objectContaining({ source: 'import' }), expect.objectContaining({ decision: 'skip' })] });
+    expect(await (await postPair(app, 'undo')).json()).toMatchObject({ data: { undone: true, pending: 1 } });
+    await decidePair(app, 'different');
+    await decidePair(app, 'same');
+    expect(await (await postPair(app, 'undo')).json()).toMatchObject({ data: { undone: false, reason: 'merge_not_undoable' } });
+  });
+  it('preserves the merge error and writes no decision after an injected failure', async () => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'));
+    await seedPairPerson(deps, pairTestPerson('b'));
+    const domain = await import('@core/domain/index.js');
+    const error = domain.appError('internal', 'Injected merge failure');
+    vi.spyOn(deps.globalCatalog, 'mergePeople').mockResolvedValue({ ok: false, error });
+    const app = buildApp(deps);
+    expect(await (await decidePair(app, 'same')).json()).toMatchObject({ ok: false, error });
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+    expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(1);
+  });
+  it('merges inside one batch and never flushes inside it', async () => {
+    const deps = await pairTestDeps();
+    await seedPairPerson(deps, pairTestPerson('a'));
+    await seedPairPerson(deps, pairTestPerson('b'));
+    const batch = vi.spyOn(deps.globalCatalog, 'withBatch');
+    const mergeStore = deps.globalCatalog.mergePeople.bind(deps.globalCatalog);
+    const merge = vi.spyOn(deps.globalCatalog, 'mergePeople').mockImplementation((input) => {
+      expect(deps.globalCatalog.batchDepth).toBe(1);
+      return mergeStore(input);
+    });
+    const response = await decidePair(buildApp(deps), 'same');
+    expect(response.status).toBe(200);
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(merge).toHaveBeenCalledTimes(1);
+  });
+});

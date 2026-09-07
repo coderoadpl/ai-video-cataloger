@@ -1631,7 +1631,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
+  async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> {
     return this.write((db, client) => {
       const from = db.select().from(people).where(eq(people.personId, input.fromPersonId)).get();
       const to = db.select().from(people).where(eq(people.personId, input.toPersonId)).get();
@@ -1658,6 +1658,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         fromPersonId: input.fromPersonId,
         toPersonId: input.toPersonId,
         movedObservations: rows.length,
+        decisionsInvalidated: 0,
         affectedFingerprints,
       };
     });

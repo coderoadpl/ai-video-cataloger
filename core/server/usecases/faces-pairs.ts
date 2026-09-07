@@ -1,8 +1,9 @@
+import type { GlobalCatalogStore } from '../ports.js';
 import {
-  FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, buildPeoplePairCandidates, configValueSchema,
-  selectExemplars, pairDecisionIsActive, appError, ok, type AppError, type Result, type PeoplePairCandidate,
+  FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, PAIR_REVIEW_DEFAULT_LIMIT, buildPeoplePairCandidates, configValueSchema,
+  selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, appError, ok, type AppError, type Result, type PeoplePairCandidate,
 } from '@core/domain/index.js';
-import { buildVisiblePeople, ensureFacesEnabled, reanchorFaceCropPath, type FacesPeopleDeps } from './faces.js';
+import { buildVisiblePeople, ensureFacesEnabled, reanchorFaceCropPath, withFaceMutation, type FacesDeps, type FacesPeopleDeps } from './faces.js';
 import { resolveConfigValues } from './config-resolution.js';
 
 export interface FacesPairsOutput {
@@ -70,3 +71,89 @@ export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }
   if (cache !== undefined) { cache.revision = revision; cache.output = output; }
   return ok(output);
 };
+
+export interface FacesPairsDecideInput {
+  personAId: string;
+  personBId: string;
+  decision: PeoplePairDecision['decision'];
+  survivorPersonId?: string | undefined;
+}
+type PairMergeOutput = Extract<Awaited<ReturnType<GlobalCatalogStore['mergePeople']>>, { ok: true }>['value'];
+export interface FacesPairsDecideOutput {
+  personAId: string;
+  personBId: string;
+  decision: PeoplePairDecision['decision'];
+  merge: PairMergeOutput | null;
+  survivingPersonId: string | null;
+  pending: number;
+}
+export interface FacesPairsUndoOutput {
+  undone: boolean;
+  reason: 'none_to_undo' | 'merge_not_undoable' | null;
+  personAId: string | null;
+  personBId: string | null;
+  pending: number;
+}
+type PairMutationDeps = FacesPeopleDeps & Pick<FacesDeps, 'jobs'>;
+
+export const facesPairsDecide = async (deps: PairMutationDeps, input: FacesPairsDecideInput): Promise<Result<FacesPairsDecideOutput, AppError>> => withFaceMutation(deps.jobs, async () => {
+  const enabled = await ensureFacesEnabled(deps);
+  if (!enabled.ok) return enabled;
+  if (input.personAId === input.personBId) return { ok: false, error: appError('validation', 'Cannot decide a self-pair') };
+  if (input.survivorPersonId !== undefined && input.survivorPersonId !== input.personAId && input.survivorPersonId !== input.personBId) return { ok: false, error: appError('validation', 'Survivor must belong to the pair') };
+  const loaded = await loadPairReviewPeople(deps);
+  if (!loaded.ok) return loaded;
+  const a = loaded.value.allPeople.find((p) => p.personId === input.personAId);
+  const b = loaded.value.allPeople.find((p) => p.personId === input.personBId);
+  if (a === undefined || b === undefined) return { ok: false, error: appError('not_found', 'Person not found') };
+  const anchor = (id: string) => {
+    const visible = loaded.value.visible.filter((o) => o.personId === id);
+    const all = loaded.value.anchors.filter((o) => o.personId === id);
+    return { observation: selectPairReviewCrops(visible)[0] ?? selectPairReviewCrops(all)[0] ?? selectExemplars(all)[0], count: visible.length || all.length };
+  };
+  const anchorA = anchor(a.personId);
+  const anchorB = anchor(b.personId);
+  if (anchorA.observation === undefined || anchorB.observation === undefined) return { ok: false, error: appError('validation', 'A person without observations cannot be reviewed') };
+  const row: PeoplePairDecision = {
+    obsAId: anchorA.observation.obsId, obsBId: anchorB.observation.obsId,
+    personAId: a.personId, personBId: b.personId, decision: input.decision,
+    decidedAt: new Date().toISOString(), source: 'user',
+  };
+  let merge: PairMergeOutput | null = null;
+  let survivingPersonId: string | null = null;
+  if (input.decision === 'same') {
+    const survivor = input.survivorPersonId ?? pairReviewSurvivor({ ...a, observationCount: anchorA.count }, { ...b, observationCount: anchorB.count });
+    const merged = await deps.globalCatalog.withBatch(async () => {
+      const result = await deps.globalCatalog.mergePeople({ fromPersonId: survivor === a.personId ? b.personId : a.personId, toPersonId: survivor });
+      if (!result.ok) return result;
+      const recorded = await deps.globalCatalog.recordPeoplePairDecision({ ...row, personAId: survivor, personBId: survivor });
+      if (!recorded.ok) return recorded;
+      return result;
+    });
+    if (!merged.ok) return merged;
+    merge = merged.value;
+    survivingPersonId = survivor;
+  } else {
+    const recorded = await deps.globalCatalog.recordPeoplePairDecision(row);
+    if (!recorded.ok) return recorded;
+  }
+  const queue = await facesPairs(deps, { limit: PAIR_REVIEW_DEFAULT_LIMIT });
+  if (!queue.ok) return queue;
+  return ok({ personAId: a.personId, personBId: b.personId, decision: input.decision, merge, survivingPersonId, pending: queue.value.pending });
+});
+
+export const facesPairsUndo = async (deps: PairMutationDeps): Promise<Result<FacesPairsUndoOutput, AppError>> => withFaceMutation(deps.jobs, async () => {
+  const enabled = await ensureFacesEnabled(deps);
+  if (!enabled.ok) return enabled;
+  const latest = await deps.globalCatalog.latestUserPeoplePairDecision();
+  if (!latest.ok) return latest;
+  const row = latest.value;
+  const reason = row === null ? 'none_to_undo' : row.decision === 'same' ? 'merge_not_undoable' : null;
+  if (row !== null && reason === null) {
+    const deleted = await deps.globalCatalog.deletePeoplePairDecision(row.obsAId, row.obsBId);
+    if (!deleted.ok) return deleted;
+  }
+  const queue = await facesPairs(deps, { limit: PAIR_REVIEW_DEFAULT_LIMIT });
+  if (!queue.ok) return queue;
+  return ok({ undone: reason === null, reason, personAId: row?.personAId ?? null, personBId: row?.personBId ?? null, pending: queue.value.pending });
+});
