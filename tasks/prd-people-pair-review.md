@@ -235,7 +235,7 @@ observations, **so that** an answer outlives the person ids it was given about.
 - `core/domain/people-pairs.ts` (new, pure): `peoplePairDecisionKindSchema`
   (`'same' | 'different' | 'skip'`), `peoplePairDecisionSourceSchema`
   (`'user' | 'import'`), `peoplePairDecisionSchema`, the
-  `PeoplePairDecision` type, `orderObservationPair` and `orderPersonPair`
+  `PeoplePairDecision` type, `orderObservationPair`
   (canonical unordered ordering: lexicographically smaller id first), and
   `PAIR_REVIEW_SKIP_DAYS = 30` with `pairDecisionIsActive(decision, nowIso)`
   — a `skip` is active **iff `now < decided_at + PAIR_REVIEW_SKIP_DAYS`**, so

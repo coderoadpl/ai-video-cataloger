@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { orderObservationPair, orderPersonPair, pairDecisionIsActive, peoplePairDecisionSchema } from './people-pairs.js';
+import { orderObservationPair, pairDecisionIsActive, peoplePairDecisionSchema } from './people-pairs.js';
 
 describe('W99 A1 decision domain', () => {
   it('orders unordered ids canonically', () => {
     expect(orderObservationPair('b', 'a')).toEqual(['a', 'b']);
-    expect(orderPersonPair('b', 'a')).toEqual(['a', 'b']);
   });
   it.each([
     ['skip', 29, true], ['skip', 30, false], ['skip', 31, false],
