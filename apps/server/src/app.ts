@@ -29,6 +29,11 @@ import {
   facesMerge,
   facesName,
   facesPeople,
+  facesPairs,
+  facesPairsDecide,
+  facesPairsUndo,
+  facesPairsImport,
+  type FacesPairsCache,
   facesPurge,
   facesExemplars,
   facesRecluster,
@@ -170,6 +175,7 @@ export const handleUnhandledError: ErrorHandler = (error) =>
   );
 
 export const buildApp = (deps: AppDeps): Hono => {
+  const facesPairsCache: FacesPairsCache = { revision: null, output: null };
   const app = new Hono();
   const tracer = trace.getTracer('ai-video-cataloger');
   let pendingBackupConnect: AbortController | null = null;
@@ -787,6 +793,36 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.facesIndex.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesIndex.output);
     return respond(await withCatalogWriteLockForJob(deps, () => facesIndex(deps, input.value)), API_ROUTES.facesIndex.output);
+  });
+
+  app.post(API_ROUTES.facesPairsDecide.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPairsDecide.output);
+    const input = parseInput(API_ROUTES.facesPairsDecide.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPairsDecide.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsDecide(deps, input.value)), API_ROUTES.facesPairsDecide.output);
+  });
+
+  app.post(API_ROUTES.facesPairsUndo.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPairsUndo.output);
+    const input = parseInput(API_ROUTES.facesPairsUndo.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPairsUndo.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsUndo(deps)), API_ROUTES.facesPairsUndo.output);
+  });
+
+  app.post(API_ROUTES.facesPairsImport.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPairsImport.output);
+    const input = parseInput(API_ROUTES.facesPairsImport.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPairsImport.output);
+    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsImport(deps, input.value)), API_ROUTES.facesPairsImport.output);
+  });
+
+  app.get(API_ROUTES.facesPairs.path, async (context) => {
+    const input = parseInput(API_ROUTES.facesPairs.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.facesPairs.output);
+    return respond(await facesPairs(deps, input.value, facesPairsCache), API_ROUTES.facesPairs.output);
   });
 
   app.get(API_ROUTES.facesPeople.path, async () =>

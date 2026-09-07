@@ -91,7 +91,7 @@ const readReferencePartition = async (filePath: string): Promise<ReferencePartit
 
 const labelledPairsCsvSchema = z.array(z.tuple([z.string().min(1), z.string().min(1), z.enum(['same', 'different', 'unsure', 'not_face'])]));
 
-const readLabelledPairs = async (filePath: string): Promise<LabelledPair[]> => {
+export const readLabelledPairs = async (filePath: string): Promise<LabelledPair[]> => {
   const raw = await readJsonOrRows(filePath);
   const arrayParsed = z.array(labelledPairSchema).safeParse(raw);
   if (arrayParsed.success) return arrayParsed.data;

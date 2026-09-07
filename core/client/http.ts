@@ -1035,6 +1035,26 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  facesPairs: (input: z.input<typeof API_ROUTES.facesPairs.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairs.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairs.method, queryPath(API_ROUTES.facesPairs.path, [['limit', String(parsed.value.limit)]]), API_ROUTES.facesPairs.output, undefined, signal);
+  },
+  facesPairsDecide: (input: z.input<typeof API_ROUTES.facesPairsDecide.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairsDecide.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairsDecide.method, API_ROUTES.facesPairsDecide.path, API_ROUTES.facesPairsDecide.output, parsed.value, signal);
+  },
+  facesPairsUndo: (input: z.input<typeof API_ROUTES.facesPairsUndo.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairsUndo.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairsUndo.method, API_ROUTES.facesPairsUndo.path, API_ROUTES.facesPairsUndo.output, parsed.value, signal);
+  },
+  facesPairsImport: (input: z.input<typeof API_ROUTES.facesPairsImport.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairsImport.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairsImport.method, API_ROUTES.facesPairsImport.path, API_ROUTES.facesPairsImport.output, parsed.value, signal);
+  },
   facesPeople: (signal?: AbortSignal) =>
     request(
       options,

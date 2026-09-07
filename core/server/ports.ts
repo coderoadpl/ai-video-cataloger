@@ -33,6 +33,7 @@ import type {
   SpendLedgerEntry,
   MachineProfile,
   Person,
+  PeoplePairDecision,
   Result,
   RemoteBackup,
   TimelineIntervalKind,
@@ -791,10 +792,16 @@ export interface GlobalCatalogStore {
     fingerprint?: string | undefined;
     personId?: string | undefined;
   }): Promise<Result<FaceObservation[], AppError>>;
+  listPeoplePairDecisions(): Promise<Result<PeoplePairDecision[], AppError>>;
+  recordPeoplePairDecision(decision: PeoplePairDecision): Promise<Result<void, AppError>>;
+  deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>>;
+  latestUserPeoplePairDecision(): Promise<Result<PeoplePairDecision | null, AppError>>;
+  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>>;
+  listFaceObservationEmbeddings(obsIds: readonly string[]): Promise<Result<Map<string, Float32Array>, AppError>>;
   listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>>;
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
   assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
-  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>>;
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>>;
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>>;
   purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>>;
   faceStatus(): Promise<Result<FaceStatusCounts, AppError>>;

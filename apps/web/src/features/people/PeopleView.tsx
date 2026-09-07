@@ -873,6 +873,12 @@ const ReclusterReport = ({ report, dictionary }: { report: FacesReclusterReport;
     <ReportMetric label={dictionary.people.reclusterReassigned} value={report.observationsReassigned} />
     <ReportMetric label={dictionary.people.reclusterUnassigned} value={report.observationsUnassigned} />
     <ReportMetric label={dictionary.people.reclusterWithoutExemplar} value={report.personsWithoutExemplar} />
+    <ReportMetric label={dictionary.people.reclusterNamesCarried} value={report.namesCarried} />
+    <ReportMetric label={dictionary.people.reclusterMustLink} value={report.constraintsApplied.mustLink} />
+    <ReportMetric label={dictionary.people.reclusterCannotLink} value={report.constraintsApplied.cannotLink} />
+    <ReportMetric label={dictionary.people.reclusterConstraintConflicts} value={report.constraintConflicts} />
+    <ReportMetric label={dictionary.people.reclusterConstraintsStale} value={report.constraintsStale} />
+    <ReportMetric label={dictionary.people.reclusterNameConflicts} value={report.nameConflicts} />
     <ReportMetric label={dictionary.people.reclusterNamesDropped} value={report.namesDropped.length} />
     <Box sx={{ gridColumn: '1 / -1' }}>
       <Typography variant="caption" color="text.secondary">{dictionary.people.reclusterLargestClusters}</Typography>

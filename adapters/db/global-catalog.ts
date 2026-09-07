@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
   closeSync,
@@ -21,6 +21,10 @@ import { z } from 'zod';
 
 import {
   FACE_ENGINE_VERSION,
+  normalizePeoplePairDecision,
+  orderObservationPair,
+  peoplePairDecisionSchema,
+  type PeoplePairDecision,
   gridThumbnailStateSchema,
   type GridThumbnailState,
   updateCentroid,
@@ -109,6 +113,8 @@ import {
   migrateGlobalCatalogSchemaSqlV14,
   migrateGlobalCatalogSchemaSqlV17,
   migrateGlobalCatalogSchemaSqlV18,
+  migrateGlobalCatalogSchemaSqlV19,
+  peoplePairDecisions,
   schemaMeta,
   tagAliases,
   tags,
@@ -1344,13 +1350,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
       if (fileRow === undefined) return { fingerprint, deleted: false, folderId: null, cropPaths: [] };
       const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
       const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedPersonIds = affectedPersonIdsOf(observationRows);
       deleteSearchDocument(client, fingerprint);
+      deleteDecisionsAnchoredOnObservations(db, observationRows.map((row) => row.obsId));
       db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
       db.delete(faceIndexState).where(eq(faceIndexState.fingerprint, fingerprint)).run();
       db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
@@ -1358,7 +1365,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       db.delete(files).where(eq(files.fingerprint, fingerprint)).run();
       recomputeAffectedPersons(db, affectedPersonIds);
       return { fingerprint, deleted: true, folderId: fileRow.folderId, cropPaths };
-    });
+    }));
   }
 
   async startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
@@ -1451,15 +1458,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
       const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedPersonIds = affectedPersonIdsOf(observationRows);
+      deleteDecisionsAnchoredOnObservations(db, observationRows.map((row) => row.obsId));
       db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
       recomputeAffectedPersons(db, affectedPersonIds);
       syncSearchDocument(db, client, fingerprint);
       return { cropPaths };
-    });
+    }));
   }
 
   async listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>> {
@@ -1532,6 +1540,52 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async listPeoplePairDecisions(): Promise<Result<PeoplePairDecision[], AppError>> {
+    return this.read((db) => peoplePairDecisionSchema.array().parse(db.select().from(peoplePairDecisions)
+      .orderBy(asc(peoplePairDecisions.obsAId), asc(peoplePairDecisions.obsBId)).all()));
+  }
+
+  async recordPeoplePairDecision(decision: PeoplePairDecision): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const row = normalizePeoplePairDecision(decision);
+      db.insert(peoplePairDecisions).values(row).onConflictDoUpdate({
+        target: [peoplePairDecisions.obsAId, peoplePairDecisions.obsBId], set: row,
+      }).run();
+    });
+  }
+
+  async deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const [a, b] = orderObservationPair(z.string().min(1).parse(obsAId), z.string().min(1).parse(obsBId));
+      db.delete(peoplePairDecisions).where(and(eq(peoplePairDecisions.obsAId, a), eq(peoplePairDecisions.obsBId, b))).run();
+    });
+  }
+
+  async latestUserPeoplePairDecision(): Promise<Result<PeoplePairDecision | null, AppError>> {
+    return this.read((db) => {
+      const row = db.select().from(peoplePairDecisions).where(eq(peoplePairDecisions.source, 'user'))
+        .orderBy(desc(peoplePairDecisions.decidedAt), asc(peoplePairDecisions.obsAId), asc(peoplePairDecisions.obsBId)).get();
+      return row === undefined ? null : peoplePairDecisionSchema.parse(row);
+    });
+  }
+
+  async deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+    return this.write((db) => deleteDecisionsAnchoredOnObservations(db, obsIds));
+  }
+
+  async listFaceObservationEmbeddings(obsIds: readonly string[]): Promise<Result<Map<string, Float32Array>, AppError>> {
+    return this.read((db) => {
+      const ids = z.array(z.string().min(1)).parse(obsIds);
+      const result = new Map<string, Float32Array>();
+      for (let offset = 0; offset < ids.length; offset += 500) {
+        const rows = db.select({ obsId: faceObservations.obsId, embedding: faceObservations.embedding }).from(faceObservations)
+          .where(inArray(faceObservations.obsId, ids.slice(offset, offset + 500))).all();
+        for (const row of rows) result.set(z.string().min(1).parse(row.obsId), new Float32Array(z.array(z.number().finite()).length(128).parse(blobToEmbedding(z.instanceof(Uint8Array).parse(row.embedding)))));
+      }
+      return result;
+    });
+  }
+
   async listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
     return this.read((_db, client) => {
       const rows = client.exec(
@@ -1579,8 +1633,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
-    return this.write((db, client) => {
+  async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const from = db.select().from(people).where(eq(people.personId, input.fromPersonId)).get();
       const to = db.select().from(people).where(eq(people.personId, input.toPersonId)).get();
       if (from === undefined || to === undefined) throw new CatalogAppError(appError('not_found', 'Person not found'));
@@ -1591,6 +1645,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           ? db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
           : []),
       ]);
+      client.run(`DELETE FROM people_pair_decisions WHERE decision = 'different' AND
+        ((person_a_id = ? AND person_b_id = ?) OR (person_a_id = ? AND person_b_id = ?))`,
+      [input.fromPersonId, input.toPersonId, input.toPersonId, input.fromPersonId]);
+      const decisionsInvalidated = client.getRowsModified();
+      db.update(peoplePairDecisions).set({ personAId: input.toPersonId }).where(eq(peoplePairDecisions.personAId, input.fromPersonId)).run();
+      db.update(peoplePairDecisions).set({ personBId: input.toPersonId }).where(eq(peoplePairDecisions.personBId, input.fromPersonId)).run();
       db.update(faceObservations).set({ personId: input.toPersonId }).where(eq(faceObservations.personId, input.fromPersonId)).run();
       const embeddings = db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
         .map((row) => rowToFaceObservation(row).embedding);
@@ -1606,9 +1666,10 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         fromPersonId: input.fromPersonId,
         toPersonId: input.toPersonId,
         movedObservations: rows.length,
+        decisionsInvalidated,
         affectedFingerprints,
       };
-    });
+    }));
   }
 
   async forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
@@ -1619,6 +1680,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const cropPaths = rows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedFingerprints = uniqueFingerprints(rows);
       for (const cropPath of cropPaths) client.run('INSERT OR IGNORE INTO pending_face_crop_cleanup (crop_path, person_id) VALUES (?, ?)', [cropPath, personId]);
+      deleteDecisionsAnchoredOnObservations(db, rows.map((row) => row.obsId));
       db.delete(faceObservations).where(eq(faceObservations.personId, personId)).run();
       db.delete(people).where(eq(people.personId, personId)).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
@@ -1634,6 +1696,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       for (const row of observationRows) {
         if (row.cropPath !== null) client.run('INSERT OR IGNORE INTO pending_face_crop_cleanup (crop_path, person_id) VALUES (?, ?)', [row.cropPath, row.personId]);
       }
+      db.delete(peoplePairDecisions).run();
       db.delete(faceObservations).run();
       db.delete(people).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
@@ -1670,7 +1733,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     observationsReassigned: number;
     affectedFingerprints: string[];
   }, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const beforeObservations = new Map(
         db.select().from(faceObservations).all().map((row) => [row.obsId, row.personId]),
       );
@@ -1694,6 +1757,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         }
         db.update(faceObservations).set({ personId: assignment.personId }).where(eq(faceObservations.obsId, assignment.obsId)).run();
       }
+      client.run(`UPDATE people_pair_decisions SET
+        person_a_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_a_id),
+        person_b_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_b_id)`);
       for (const fingerprint of affected) syncSearchDocument(db, client, fingerprint);
       return {
         personsDeleted,
@@ -1701,7 +1767,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         observationsReassigned,
         affectedFingerprints: [...affected],
       };
-    });
+    }));
   }
 
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
@@ -1922,6 +1988,10 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
     client.run('CREATE INDEX IF NOT EXISTS idx_face_observations_person_fingerprint ON face_observations(person_id, fingerprint)');
     client.run('CREATE TABLE IF NOT EXISTS grid_thumbnail_state (output_path TEXT PRIMARY KEY, generation_version INTEGER NOT NULL, source_path TEXT NOT NULL, source_kind TEXT NOT NULL, is_primary INTEGER NOT NULL)');
     client.run('CREATE TABLE IF NOT EXISTS pending_face_crop_cleanup (crop_path TEXT PRIMARY KEY, person_id TEXT)');
+    migrated = true;
+  }
+  if (currentVersion < 19 || client.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'people_pair_decisions'").length === 0) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV19) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -2958,5 +3028,13 @@ const pendingCropPaths = (client: Database, personId?: string): string[] => {
     return paths;
   } finally {
     statement.free();
+  }
+};
+
+const deleteDecisionsAnchoredOnObservations = (db: GlobalDrizzle, obsIds: readonly string[]): void => {
+  const ids = z.array(z.string().min(1)).parse(obsIds);
+  for (let offset = 0; offset < ids.length; offset += 500) {
+    const batch = ids.slice(offset, offset + 500);
+    db.delete(peoplePairDecisions).where(or(inArray(peoplePairDecisions.obsAId, batch), inArray(peoplePairDecisions.obsBId, batch))).run();
   }
 };

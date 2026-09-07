@@ -476,6 +476,13 @@ const seedSmokeVariant = async (home: string, folder: string): Promise<string> =
 
 const driveCli = async (home: string, folder: string): Promise<void> => {
   const env = smokeCliEnv(home);
+  const enabledPairs = await run(['config', 'set', 'faces_enabled', 'true', '--json'], env, folder);
+  assert(enabledPairs.code === 0, 'pair review setup failed');
+  const pairList = await run(['faces', 'pairs', 'list', '--json'], env, folder);
+  assert(pairList.code === 0, 'empty pair queue must exit zero');
+  z.object({ pending: z.literal(0), candidates: z.array(z.unknown()).length(0) }).parse(completedData(pairList, 'faces pairs list'));
+  const disabledPairs = await run(['config', 'set', 'faces_enabled', 'false', '--json'], env, folder);
+  assert(disabledPairs.code === 0, 'pair review teardown failed');
 
   const doctor = await run(['doctor', '--json'], env, folder);
   const doctorOk = doctor.code === 0 || doctor.code === EXIT_CODE_BY_ERROR_CODE.prerequisites_failed;

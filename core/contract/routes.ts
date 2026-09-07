@@ -1,3 +1,4 @@
+import { labelledPairSchema, peoplePairDecisionKindSchema, PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
 import { z } from 'zod';
 
 import {
@@ -1056,6 +1057,10 @@ export const gpsBackfillSummarySchema = z.object({
 });
 
 export const facesReclusterOutputSchema = z.object({
+  constraintsApplied: z.object({ mustLink: z.number().int().nonnegative(), cannotLink: z.number().int().nonnegative() }),
+  constraintConflicts: z.number().int().nonnegative(),
+  constraintsStale: z.number().int().nonnegative(),
+  nameConflicts: z.number().int().nonnegative(),
   dryRun: z.boolean(),
   observations: z.number().int().nonnegative(),
   personsBefore: z.number().int().nonnegative(),
@@ -1166,6 +1171,7 @@ export const storedConfigSchema = z.object({
   local_model: z.string().nullable(),
   analyzer_provider: z.string().nullable(),
   faces_enabled: z.string().nullable(),
+  faces_pair_scope: z.string().nullable(),
   gemini_batch_mode: z.string().nullable(),
   gemini_monthly_budget_usd: z.string().nullable(),
   output_language: z.string().nullable(),
@@ -1196,6 +1202,7 @@ export const storedConfigDefaultsSchema = z.object({
   local_model: z.string(),
   analyzer_provider: z.string(),
   faces_enabled: z.string(),
+  faces_pair_scope: z.string(),
   gemini_batch_mode: z.string(),
   gemini_monthly_budget_usd: z.string(),
   output_language: z.string(),
@@ -1226,6 +1233,7 @@ export const configValueSourcesSchema = z.object({
   local_model: z.enum(['folder', 'home', 'default']),
   analyzer_provider: z.enum(['folder', 'home', 'default']),
   faces_enabled: z.enum(['folder', 'home', 'default']),
+  faces_pair_scope: z.enum(['folder', 'home', 'default']),
   gemini_batch_mode: z.enum(['folder', 'home', 'default']),
   gemini_monthly_budget_usd: z.enum(['folder', 'home', 'default']),
   output_language: z.enum(['folder', 'home', 'default']),
@@ -2350,6 +2358,36 @@ export const facesPeopleOutputSchema = z.object({
   people: z.array(facePersonSchema),
 });
 
+export const facesPairsInputSchema = z.object({
+  limit: z.coerce.number().int().positive().max(PAIR_REVIEW_MAX_LIMIT).default(PAIR_REVIEW_DEFAULT_LIMIT),
+});
+export const facesPairPersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+  fallbackIndex: z.number().int().nonnegative(),
+  observationCount: z.number().int().nonnegative(),
+  fileCounts: z.object({ video: z.number().int().nonnegative(), photo: z.number().int().nonnegative() }).strict(),
+  cropPaths: z.array(z.string().min(1)).max(PAIR_REVIEW_CROPS_PER_PERSON),
+});
+export const facesPairCandidateSchema = z.object({
+  a: facesPairPersonSchema,
+  b: facesPairPersonSchema,
+  similarity: z.number(),
+  centroidSimilarity: z.number(),
+  bestObservationSimilarity: z.number(),
+  expectedValue: z.number(),
+  aboveClusterCut: z.boolean(),
+  survivorIfSame: z.string().min(1),
+});
+export const facesPairsOutputSchema = z.object({
+  scope: z.enum(['careful', 'standard', 'wide']),
+  askLow: z.number(),
+  clusterCut: z.number(),
+  pending: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  candidates: z.array(facesPairCandidateSchema),
+});
+
 export const facesNameInputSchema = z.object({
   personId: z.string().min(1),
   displayName: z.string().trim().min(1),
@@ -2370,7 +2408,46 @@ export const facesMergeOutputSchema = z.object({
   fromPersonId: z.string().min(1),
   toPersonId: z.string().min(1),
   movedObservations: z.number().int().nonnegative(),
+  decisionsInvalidated: z.number().int().nonnegative(),
   affectedFingerprints: z.array(z.string()),
+});
+
+export const facesPairsDecideInputSchema = z.object({
+  personAId: z.string().min(1),
+  personBId: z.string().min(1),
+  decision: peoplePairDecisionKindSchema,
+  survivorPersonId: z.string().min(1).optional(),
+});
+export const facesPairsDecideOutputSchema = z.object({
+  decision: peoplePairDecisionKindSchema,
+  personAId: z.string().min(1),
+  personBId: z.string().min(1),
+  merge: facesMergeOutputSchema.nullable(),
+  survivingPersonId: z.string().min(1).nullable(),
+  pending: z.number().int().nonnegative(),
+});
+export const facesPairsUndoOutputSchema = z.object({
+  undone: z.boolean(),
+  reason: z.enum(['none_to_undo', 'merge_not_undoable']).nullable(),
+  personAId: z.string().min(1).nullable(),
+  personBId: z.string().min(1).nullable(),
+  pending: z.number().int().nonnegative(),
+});
+
+export const facesPairsImportInputSchema = z.object({
+  pairs: z.array(labelledPairSchema).min(1),
+  applyMerges: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
+}).strict();
+export const facesPairsImportOutputSchema = z.object({
+  dryRun: z.boolean(),
+  imported: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  unresolved: z.number().int().nonnegative(),
+  alreadyTogether: z.number().int().nonnegative(),
+  conflicting: z.number().int().nonnegative(),
+  merges: z.number().int().nonnegative(),
+  decisionsInvalidated: z.number().int().nonnegative(),
 });
 
 export const facesForgetInputSchema = z.object({
@@ -2672,6 +2749,10 @@ export const API_ROUTES = {
     output: translationImportOutputSchema,
   },
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
+  facesPairsDecide: { method: 'POST', path: '/api/faces/pairs/decide', input: facesPairsDecideInputSchema, output: facesPairsDecideOutputSchema },
+  facesPairsUndo: { method: 'POST', path: '/api/faces/pairs/undo', input: emptyInputSchema, output: facesPairsUndoOutputSchema },
+  facesPairsImport: { method: 'POST', path: '/api/faces/pairs/import', input: facesPairsImportInputSchema, output: facesPairsImportOutputSchema },
+  facesPairs: { method: 'GET', path: '/api/faces/pairs', input: facesPairsInputSchema, output: facesPairsOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
   facesMerge: { method: 'POST', path: '/api/faces/merge', input: facesMergeInputSchema, output: facesMergeOutputSchema },
@@ -2879,6 +2960,10 @@ export const API_PATHS = {
   variantsImportTranslation: API_ROUTES.variantsImportTranslation.path,
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
+  facesPairs: API_ROUTES.facesPairs.path,
+  facesPairsImport: API_ROUTES.facesPairsImport.path,
+  facesPairsDecide: API_ROUTES.facesPairsDecide.path,
+  facesPairsUndo: API_ROUTES.facesPairsUndo.path,
   facesName: API_ROUTES.facesName.path,
   facesMerge: API_ROUTES.facesMerge.path,
   facesForget: API_ROUTES.facesForget.path,
