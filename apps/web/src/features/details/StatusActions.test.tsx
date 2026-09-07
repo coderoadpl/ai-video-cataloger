@@ -44,7 +44,7 @@ const makeVideo = (overrides: Partial<DetailsVideo> = {}): DetailsVideo => ({
 const CONFIG_KEYS = [
   'whisper_binary_path', 'whisper_model', 'whisper_language', 'whisper_mode', 'whisper_api_base_url',
   'whisper_api_model', 'frames', 'timeout', 'skip_rename', 'analyzer_backend', 'local_model',
-  'analyzer_provider', 'faces_enabled', 'gemini_batch_mode', 'gemini_monthly_budget_usd',
+  'analyzer_provider', 'faces_enabled', 'faces_pair_scope', 'gemini_batch_mode', 'gemini_monthly_budget_usd',
   'output_language', 'tag_language', 'ui_language',
   'backup_enabled', 'backup_provider', 'backup_include_optional', 'backup_keep_last',
   'backup_keep_weekly', 'backup_folder_id', 'backup_shared_drive_id',

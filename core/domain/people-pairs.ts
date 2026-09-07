@@ -16,7 +16,6 @@ export const peoplePairDecisionSchema = z.object({
 export type PeoplePairDecision = z.output<typeof peoplePairDecisionSchema>;
 
 export const orderObservationPair = (a: string, b: string): [string, string] => a <= b ? [a, b] : [b, a];
-export const orderPersonPair = orderObservationPair;
 export const PAIR_REVIEW_SKIP_DAYS = 30;
 
 export const pairDecisionIsActive = (decision: PeoplePairDecision, nowIso: string): boolean =>
@@ -92,7 +91,7 @@ export const selectPairReviewCrops = <T extends ExemplarCandidate>(observations:
 export const pairReviewSurvivor = (a: Pick<PairReviewPerson, 'personId' | 'displayName' | 'observationCount'>, b: Pick<PairReviewPerson, 'personId' | 'displayName' | 'observationCount'>): string => {
   if ((a.displayName !== null) !== (b.displayName !== null)) return a.displayName !== null ? a.personId : b.personId;
   if (a.observationCount !== b.observationCount) return a.observationCount > b.observationCount ? a.personId : b.personId;
-  return orderPersonPair(a.personId, b.personId)[0];
+  return orderObservationPair(a.personId, b.personId)[0];
 };
 
 const unitVector = (values: ArrayLike<number>): number[] => {
@@ -126,7 +125,7 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
     const a = anchors.has(decision.obsAId) ? anchors.get(decision.obsAId) : decision.personAId;
     const b = anchors.has(decision.obsBId) ? anchors.get(decision.obsBId) : decision.personBId;
     if (a == null || b == null) continue;
-    const [left, right] = orderPersonPair(a, b);
+    const [left, right] = orderObservationPair(a, b);
     const partners = excluded.get(left) ?? new Set<string>();
     partners.add(right);
     excluded.set(left, partners);
