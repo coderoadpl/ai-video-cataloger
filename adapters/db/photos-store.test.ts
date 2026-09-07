@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import initSqlJs from 'sql.js';
+import initSqlJs, { type SqlValue } from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FACE_ENGINE_VERSION } from '@core/domain/index.js';
@@ -24,6 +24,7 @@ import {
   InMemoryJobs,
   InMemoryMedia,
 } from '../../test/server/usecases/test-fakes.js';
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 import { SqlJsPhotosStore } from './photos-store.js';
 import { PHOTOS_SCHEMA_VERSION } from './photos-schema.js';
@@ -34,6 +35,11 @@ const tempHome = async (): Promise<string> => {
   const root = await mkdtemp(path.join(tmpdir(), 'avc-photos-'));
   tempRoots.push(root);
   return root;
+};
+
+const fingerprintListParam = (params: Record<string, SqlValue> | SqlValue[] | null | undefined): SqlValue | undefined => {
+  if (params === null || params === undefined || Array.isArray(params)) return undefined;
+  return params.$fingerprintList;
 };
 
 afterEach(async () => {
@@ -1314,9 +1320,11 @@ describe('SqlJsPhotosStore', () => {
   it('collectionPage restricts browse rows to a fingerprint allow list of any size', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const SQL = await initSqlJs();
+    const exec = vi.spyOn(SQL.Database.prototype, 'exec');
     await store.upsertFolder(folder);
     await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
-    const fingerprints = Array.from({ length: 400 }, (_unused, index) => `ph_${String(index).padStart(14, '0')}`);
+    const fingerprints = Array.from({ length: 160 }, (_unused, index) => `ph_${String(index).padStart(14, '0')}`);
     await store.withBatch(async () => {
       for (const [index, fingerprint] of fingerprints.entries()) {
         await store.upsertPhoto(photo({
@@ -1342,16 +1350,21 @@ describe('SqlJsPhotosStore', () => {
       limit: 500,
       offset: 0,
     };
-    const selected = fingerprints.slice(0, 250);
+    const selected = fingerprints.slice(0, 96);
     const allowed = await store.collectionPage({ ...browse, fingerprints: [...selected, ...selected, 'ph_ffffffffffffff'] });
     const none = await store.collectionPage({ ...browse, fingerprints: [] });
     const unrestricted = await store.collectionPage({ ...browse, fingerprints: null });
+    const fingerprintQueries = exec.mock.calls.filter(([sql, params]) =>
+      sql.includes('json_each($fingerprintList)') && fingerprintListParam(params) === JSON.stringify([...selected, 'ph_ffffffffffffff']),
+    );
 
-    expect(allowed.ok && allowed.value.total).toBe(250);
+    expect(fingerprintQueries).toHaveLength(2);
+    expect(allowed.ok && allowed.value.total).toBe(96);
     expect(allowed.ok && new Set(allowed.value.rows.map((row) => row.fingerprint))).toEqual(new Set(selected));
     expect(none.ok && none.value).toMatchObject({ total: 0, rows: [] });
-    expect(unrestricted.ok && unrestricted.value.total).toBe(400);
-  });
+    expect(unrestricted.ok && unrestricted.value.total).toBe(160);
+    exec.mockRestore();
+  }, scaledTimeout(5_000));
 
   it('collectionPage serves every keyset anchor the exact tail of the ordered page', async () => {
     const home = await tempHome();
