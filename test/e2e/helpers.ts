@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -118,6 +118,21 @@ function stageCachedWhisperModels(appDir: string): void {
     rmSync(staged, { force: true });
     symlinkSync(cached, staged);
   }
+}
+
+export function desktopLaunchEnv(
+  overrides: NodeJS.ProcessEnv,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...base, NODE_ENV: 'production', AVC_WINDOW_INACTIVE: '1', ...overrides };
+}
+
+export async function expectInactiveWindow(app: ElectronApplication): Promise<void> {
+  const presentation = await app.evaluate(({ BrowserWindow, app: electronApp }) => ({
+    focused: BrowserWindow.getAllWindows().some((window) => window.isFocused()),
+    dock: process.platform === 'darwin' ? electronApp.dock?.isVisible() === true : false,
+  }));
+  expect(presentation).toEqual({ focused: false, dock: false });
 }
 
 export function cliEnv(workdir: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

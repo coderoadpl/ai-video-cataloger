@@ -28,6 +28,10 @@ Every run launches with:
   as well for development builds).
 - `HOME`/`USERPROFILE` — a throwaway temp home unless `--home` names a prepared
   QA home, so the home-scoped catalog, config and models are never the owner's.
+- `AVC_WINDOW_INACTIVE=1` — the app opens as an inactive accessory window with
+  no Dock icon, so a walkthrough run captures its screenshots without taking
+  keyboard focus from whoever is at the keyboard. Every automated e2e launch
+  sets the same flag.
 - `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` — the login keychain is never read,
   written or prompted for. Under that flag the composition
   (`apps/server/src/composition.ts`) gives the backup lifecycle and the Drive

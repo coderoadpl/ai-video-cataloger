@@ -5,8 +5,10 @@ import { join } from 'node:path';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
 import {
+  desktopLaunchEnv,
   dismissSetupWizard,
   ELECTRON_MAIN,
+  expectInactiveWindow,
   isolatedHome,
   readCatalog,
   RENDERER_HTML,
@@ -40,15 +42,14 @@ export class GuiDriver implements PipelineDriver {
       args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
       cwd: REPO_ROOT,
       slowMo,
-      env: {
-        ...process.env,
-        NODE_ENV: 'production',
+      env: desktopLaunchEnv({
         AVC_RENDERER_HTML: RENDERER_HTML,
         AVC_HOME_DIRECTORY: isolatedHome(workdir),
-      },
+      }),
     });
     this.page = await this.app.firstWindow();
     await this.page.waitForLoadState('domcontentloaded');
+    await expectInactiveWindow(this.app);
     await this.page.waitForFunction(() => window.desktopBridge !== undefined);
     await dismissSetupWizard(this.page);
     await this.enterAnalysisMode();

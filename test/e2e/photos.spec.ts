@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { REAL_JPEG_BLUE_LARGE, REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { desktopLaunchEnv, dismissSetupWizard, ELECTRON_MAIN, expectInactiveWindow, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { systemOllamaModelMissingReason } from './matrix-support.js';
 
 interface Session {
@@ -20,15 +20,14 @@ async function launch(workdir: string): Promise<Session> {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
     cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
+    env: desktopLaunchEnv({
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
-    },
+    }),
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  await expectInactiveWindow(app);
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
   await dismissSetupWizard(page);

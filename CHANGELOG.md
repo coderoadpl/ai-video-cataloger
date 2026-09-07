@@ -28,6 +28,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
 
+### Changed
+
+- Automated launches driven by the e2e suites and the release walkthrough set `AVC_WINDOW_INACTIVE=1`, which opens the app window inactive and off the macOS Dock so a long gate run never takes keyboard focus; a normal launch is unaffected.
+
 ## [0.6.33] - 2026-09-07
 
 ### Fixed
