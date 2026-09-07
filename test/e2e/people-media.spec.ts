@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +7,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -305,7 +305,7 @@ test.describe('People across media', () => {
       await expect(session.page.getByTestId('people-card')).toHaveAttribute('data-person-id', 'person-shared');
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 
@@ -337,7 +337,7 @@ test.describe('People across media', () => {
       await expect(grid.locator('[data-testid="library-tile"]')).toHaveCount(3, { timeout: 30_000 });
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 });

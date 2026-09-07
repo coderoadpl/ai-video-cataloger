@@ -10,6 +10,7 @@ const PIPELINE_TIMEOUT_MS = 420_000;
 export class CliDriver implements PipelineDriver {
   readonly kind = 'cli' as const;
   private workdir = '';
+  private closed = false;
 
   async open(workdir: string): Promise<void> {
     this.workdir = workdir;
@@ -81,7 +82,12 @@ export class CliDriver implements PipelineDriver {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     return Promise.resolve();
+  }
+
+  isClosed(): boolean {
+    return this.closed;
   }
 }
 

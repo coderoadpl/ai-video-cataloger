@@ -19,6 +19,7 @@ import { createRequire } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
 import { z } from 'zod';
@@ -389,6 +390,15 @@ export async function dismissSetupWizard(page: Page): Promise<void> {
   }
   await page.getByTestId('wizard-configure-later').click();
   await wizard.waitFor({ state: 'hidden', timeout: 10_000 });
+}
+
+export async function removeTempDir(dir: string): Promise<void> {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    await delay(500);
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export function makeEmptyWorkdir(tag: string): string {

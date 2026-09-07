@@ -24,6 +24,7 @@ import {
   listVideos,
   makeEmptyWorkdir,
   readCatalog,
+  removeTempDir,
   runCli,
   stubOpenDialog,
   type CliResult,
@@ -552,8 +553,8 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
     expect(existsSync(join(workdir, 'summaries', `${basename(rows[0]?.new_name ?? '', extname(rows[0]?.new_name ?? ''))}.txt`))).toBe(true);
   } finally {
     await app.close().catch(() => undefined);
-    rmSync(workdir, { recursive: true, force: true });
-    rmSync(freshHome, { recursive: true, force: true });
-    rmSync(userData, { recursive: true, force: true });
+    await removeTempDir(workdir);
+    await removeTempDir(freshHome);
+    await removeTempDir(userData);
   }
 });

@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { SqlJsGlobalCatalogStore } from '../../adapters/db/index.js';
 import { HuggingFaceWhisperModelDownloader } from '../../adapters/whisper/index.js';
 import { FILE_ARTIFACTS, type AppError, type Result } from '../../core/domain/index.js';
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -141,7 +141,7 @@ test.describe('People: enable faces, index, and rename a real grouping', () => {
       await expect(card.getByText('E2E person one')).toBeVisible({ timeout: 15_000 });
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(folder, { recursive: true, force: true });
+      await removeTempDir(folder);
     }
   });
 });
@@ -305,7 +305,7 @@ test.describe('People: merging several selected groupings into the named one', (
       await expect(merged.getByTestId('people-card-body')).toContainText(/3\s+(videos|filmy)/);
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 });

@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import initSqlJs from 'sql.js';
@@ -9,7 +9,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -414,7 +414,7 @@ test.describe('Library hide and trash', () => {
       await expect.poll(() => existsSync(fixture.photoThumb)).toBe(true);
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 });

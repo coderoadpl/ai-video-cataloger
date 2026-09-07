@@ -25,6 +25,7 @@ export class GuiDriver implements PipelineDriver {
   private app: ElectronApplication | undefined;
   private page: Page | undefined;
   private workdir = '';
+  private closed = false;
 
   async open(workdir: string): Promise<void> {
     this.workdir = workdir;
@@ -183,9 +184,15 @@ export class GuiDriver implements PipelineDriver {
   }
 
   async close(): Promise<void> {
-    if (this.app === undefined) return;
-    await this.app.close().catch(() => undefined);
-    this.app = undefined;
-    this.page = undefined;
+    if (this.app !== undefined) {
+      await this.app.close().catch(() => undefined);
+      this.app = undefined;
+      this.page = undefined;
+    }
+    this.closed = true;
+  }
+
+  isClosed(): boolean {
+    return this.closed;
   }
 }
