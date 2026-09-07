@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
 import { useSubtitlesTrackUrl } from '../../components/ui/use-subtitles-track-url.js';
+import { personLabel } from '../../i18n/person-label.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCapturedAt, formatCoordinates } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
@@ -138,7 +139,7 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
                   {people.map((person) => (
                     <Chip
                       key={person.personId}
-                      label={person.displayName ?? person.personId}
+                      label={personLabel(dictionary, person)}
                       size="small"
                       data-testid="preview-person-chip"
                     />

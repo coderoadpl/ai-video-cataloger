@@ -1167,14 +1167,21 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>> {
     return this.read((_db, client) => {
       const rows = client.exec(
-        `SELECT DISTINCT p.person_id, p.display_name
+        `WITH ordered_people AS (
+          SELECT person_id, display_name, ROW_NUMBER() OVER (ORDER BY rowid) - 1 AS fallback_index FROM people
+        )
+        SELECT DISTINCT p.person_id, p.display_name, p.fallback_index
           FROM face_observations o
-          JOIN people p ON p.person_id = o.person_id
+          JOIN ordered_people p ON p.person_id = o.person_id
           WHERE o.fingerprint = $fingerprint AND o.person_id IS NOT NULL
-          ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
+          ORDER BY p.display_name IS NULL, p.display_name, p.fallback_index`,
         { $fingerprint: fingerprint },
       )[0]?.values ?? [];
-      return rows.map((row) => ({ personId: stringValue(row[0]), displayName: nullableStringValue(row[1]) }));
+      return rows.map((row) => ({
+        personId: stringValue(row[0]),
+        displayName: nullableStringValue(row[1]),
+        fallbackIndex: numberValue(row[2]),
+      }));
     });
   }
 

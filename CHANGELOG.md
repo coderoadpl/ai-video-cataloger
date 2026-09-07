@@ -56,6 +56,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The Kolekcja, Osoby and Mapa page headers, empty states, confirm dialogs, tag rows and slider fields come from one shared component each.
 - The header Models and Prerequisites buttons carry stable test ids.
 - The Polish copy uses one ellipsis character and Polish quotation marks, the English collection header has a singular form, and the map empty state describes camera, timeline and manual locations.
+- Keeping the keyboard-active Kolekcja tile mounted no longer mounts every row between it and the viewport, so scrolling a large collection after selecting a tile stays responsive.
+- Space on a Kolekcja tile checkbox toggles that file instead of opening the previously active one.
+- Concurrent folder scans wait for a free catalog handle instead of failing once eight folders are open.
+- Status badges regain their original icon spacing instead of the oversized gap introduced with the shared badge tokens.
+- The file preview names an unnamed person "Osoba N" like Osoby does, instead of showing the raw person identifier.
+- Deleting one face grouping or all face data keeps its confirmation dialog open with the error when the deletion fails, and closes it only once the deletion succeeds.
 
 ## [0.6.30] - 2026-09-07
 

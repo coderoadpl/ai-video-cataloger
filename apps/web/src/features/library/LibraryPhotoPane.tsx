@@ -4,6 +4,7 @@ import { Box, Chip, CircularProgress, Typography } from '@mui/material';
 
 import { actions } from '../../api.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
+import { personLabel } from '../../i18n/person-label.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
@@ -89,7 +90,7 @@ export const LibraryPhotoDetails = ({ item }: { item: LibraryPhotoItem }) => {
       <Typography variant="caption" color="text.secondary">{dictionary.people.title}</Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
         {people.map((person) => (
-          <Chip key={person.personId} label={person.displayName ?? person.personId} size="small" />
+          <Chip key={person.personId} label={personLabel(dictionary, person)} size="small" />
         ))}
       </Box>
     </Box>

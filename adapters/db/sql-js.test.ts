@@ -18,7 +18,7 @@ describe('SqlJsCatalogRepositoryFactory', () => {
   });
 
   it('CP-09 bounds the cache, protects leases, and closes handles on disposal', async () => {
-    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 1 });
+    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 1, waitTimeoutMs: 20 });
     const first = await factory.open(await tempRoot());
     if (!first.ok) throw new Error(first.error.message);
     const nextFolder = await tempRoot();
@@ -29,6 +29,41 @@ describe('SqlJsCatalogRepositoryFactory', () => {
     expect(next.ok).toBe(true);
     expect((await factory.dispose()).ok).toBe(true);
     if (next.ok) expect((await next.value.listVideos()).ok).toBe(false);
+  });
+
+  it('NEW-03 waits for an idle lease instead of failing an open at capacity', async () => {
+    const factory = new SqlJsCatalogRepositoryFactory({ maxOpen: 2 });
+    const held = [];
+    for (const folder of [await tempRoot(), await tempRoot()]) {
+      const opened = await factory.open(folder);
+      if (!opened.ok) throw new Error(opened.error.message);
+      held.push(opened.value);
+    }
+    const pending = factory.open(await tempRoot());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const releasing = held[0];
+    if (releasing === undefined) throw new Error('no lease to release');
+    await releasing.close();
+    const third = await pending;
+    expect(third.ok).toBe(true);
+    if (third.ok) await third.value.close();
+    await held[1]?.close();
+    await factory.dispose();
+  });
+
+  it('NEW-03 serves nine concurrent folder opens through an eight-entry cache', async () => {
+    const factory = new SqlJsCatalogRepositoryFactory();
+    const folders = [];
+    for (let index = 0; index < 9; index += 1) folders.push(await tempRoot());
+    const completed: string[] = [];
+    await Promise.all(folders.map(async (folder) => {
+      const opened = await factory.open(folder);
+      if (!opened.ok) throw new Error(opened.error.message);
+      completed.push(folder);
+      await opened.value.close();
+    }));
+    expect(completed).toEqual(folders);
+    await factory.dispose();
   });
 
   it('CP-09 retries dirty persistence before evicting a released repository', async () => {

@@ -954,6 +954,81 @@ describe('PeopleView', () => {
     expect(alert.textContent).toContain('Faces write lock held by a drive run');
     expect(screen.getByTestId('people-grid')).toBeDefined();
   });
+
+  it('UI-20 keeps the purge dialog open with an inline error when the purge fails', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+    server.use(
+      http.post('/api/faces/purge', () => HttpResponse.json(
+        { ok: false, error: { code: 'conflict', message: 'Faces write lock held by a drive run' } },
+        { status: 409 },
+      )),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-purge'));
+    fireEvent.click(await screen.findByTestId('people-purge-confirm'));
+
+    const inline = await screen.findByTestId('people-purge-confirm-error');
+    expect(inline.textContent).toContain('Faces write lock held by a drive run');
+    expect(screen.getByTestId('people-purge-confirm-dialog')).toBeDefined();
+  });
+
+  it('UI-20 closes the purge dialog once the purge succeeds', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+    server.use(http.post('/api/faces/purge', () => HttpResponse.json({ ok: true, data: { peopleDeleted: 1, observationsDeleted: 1, cropPathsDeleted: 0 } })));
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-purge'));
+    fireEvent.click(await screen.findByTestId('people-purge-confirm'));
+
+    await waitFor(() => expect(screen.queryByTestId('people-purge-confirm-dialog')).toBeNull());
+  });
+
+  it('UI-20 keeps the forget dialog open with an inline error when the deletion fails', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+    server.use(
+      http.post('/api/faces/forget', () => HttpResponse.json(
+        { ok: false, error: { code: 'conflict', message: 'Faces write lock held by a drive run' } },
+        { status: 409 },
+      )),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    fireEvent.click(await screen.findByTestId('people-forget'));
+    fireEvent.click(await screen.findByTestId('people-forget-confirm'));
+
+    const inline = await screen.findByTestId('people-forget-confirm-error');
+    expect(inline.textContent).toContain('Faces write lock held by a drive run');
+    expect(screen.getByTestId('people-forget-confirm-dialog')).toBeDefined();
+  });
 });
 
 describe('PeopleView media chips', () => {

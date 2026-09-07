@@ -806,6 +806,12 @@ export const photosListOutputSchema = z.object({
   items: z.array(photoListItemSchema),
 });
 
+export const catalogFilePersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+  fallbackIndex: z.number().int().nonnegative().default(0),
+});
+
 export const photosDetailInputSchema = z.object({
   fingerprint: photoFingerprintSchema,
 });
@@ -848,10 +854,7 @@ export const photosDetailOutputSchema = z.object({
   proxyPath: z.string().nullable(),
   thumbPath: z.string().nullable(),
   gridThumbPath: z.string().nullable().default(null),
-  people: z.array(z.object({
-    personId: z.string().min(1),
-    displayName: z.string().nullable(),
-  })).default([]),
+  people: z.array(catalogFilePersonSchema).default([]),
   analysis: z.object({
     configId: configIdString(),
     label: z.string().min(1),
@@ -1925,11 +1928,6 @@ export const libraryPreviewInputSchema = z.object({
   fingerprint: z.string().min(1),
 });
 
-export const libraryPreviewPersonSchema = z.object({
-  personId: z.string().min(1),
-  displayName: z.string().nullable(),
-});
-
 export const libraryPreviewOutputSchema = z.object({
   fingerprint: z.string().min(1),
   path: z.string().min(1),
@@ -1943,7 +1941,7 @@ export const libraryPreviewOutputSchema = z.object({
   width: z.number().int().positive().nullable(),
   height: z.number().int().positive().nullable(),
   rotation: z.number().nullable(),
-  people: z.array(libraryPreviewPersonSchema),
+  people: z.array(catalogFilePersonSchema),
   analysis: z.object({
     label: z.string().min(1),
     createdAt: z.iso.datetime(),

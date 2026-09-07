@@ -1111,8 +1111,13 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     for (const observation of this.faceObservations.values()) {
       if (observation.fingerprint === fingerprint && observation.personId !== null) personIds.add(observation.personId);
     }
+    const indices = new Map([...this.people.keys()].map((personId, index) => [personId, index]));
     const result = [...personIds]
-      .map((personId) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null }))
+      .map((personId) => ({
+        personId,
+        displayName: this.people.get(personId)?.displayName ?? null,
+        fallbackIndex: indices.get(personId) ?? 0,
+      }))
       .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
     return Promise.resolve(ok(result));
   }

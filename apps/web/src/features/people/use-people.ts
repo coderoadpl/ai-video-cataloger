@@ -36,8 +36,8 @@ export interface PeopleState {
   indexFaces: () => void;
   rename: (personId: string, displayName: string) => void;
   merge: (input: { toPersonId: string; fromPersonIds: readonly string[] }) => Promise<boolean>;
-  forget: (personId: string) => void;
-  purge: () => void;
+  forget: (personId: string) => Promise<boolean>;
+  purge: () => Promise<boolean>;
   reclusterDryRunReport: FacesReclusterReport | null;
   startReclusterDryRun: () => void;
   confirmRecluster: () => void;
@@ -150,32 +150,32 @@ export const usePeople = ({
   }, [dictionary, installMutation, runJob]);
 
   const mutateAndRefresh = useCallback(
-    (operation: Promise<unknown>, success: string, failure: string) => {
-      void (async () => {
-        try {
-          await operation;
-          if (!guard.isMounted()) return;
-          log(success, 'success');
-          setSelectedPersonIds([]);
-          setMutationError(null);
-        } catch (error) {
-          if (!guard.isMounted()) return;
-          const applied = error instanceof ApiError && z.object({ applied: z.literal(true) }).safeParse(error.appError.details).success;
-          const message = applied ? `${success}. ${messageOf(error)}` : messageOf(error);
-          if (applied) setSelectedPersonIds([]);
-          log(`${failure}: ${message}`, 'error');
-          setMutationError(`${failure}: ${message}`);
-        } finally {
-          await invalidate();
-        }
-      })();
+    async (operation: Promise<unknown>, success: string, failure: string): Promise<boolean> => {
+      setMutationError(null);
+      try {
+        await operation;
+        if (!guard.isMounted()) return false;
+        log(success, 'success');
+        setSelectedPersonIds([]);
+        return true;
+      } catch (error) {
+        if (!guard.isMounted()) return false;
+        const applied = error instanceof ApiError && z.object({ applied: z.literal(true) }).safeParse(error.appError.details).success;
+        const message = applied ? `${success}. ${messageOf(error)}` : messageOf(error);
+        if (applied) setSelectedPersonIds([]);
+        log(`${failure}: ${message}`, 'error');
+        setMutationError(`${failure}: ${message}`);
+        return false;
+      } finally {
+        await invalidate();
+      }
     },
     [log, invalidate, guard],
   );
 
   const rename = useCallback(
     (personId: string, displayName: string) => {
-      mutateAndRefresh(
+      void mutateAndRefresh(
         renameMutation.mutateAsync({ personId, displayName }),
         dictionary.people.renamedGroupingLog(displayName),
         dictionary.people.renameGroupingFailedLog,
@@ -209,23 +209,19 @@ export const usePeople = ({
   );
 
   const forget = useCallback(
-    (personId: string) => {
-      mutateAndRefresh(
-        forgetMutation.mutateAsync({ personId, force: true }),
-        dictionary.people.deletedGroupingLog,
-        dictionary.people.deleteGroupingFailedLog,
-      );
-    },
+    (personId: string) => mutateAndRefresh(
+      forgetMutation.mutateAsync({ personId, force: true }),
+      dictionary.people.deletedGroupingLog,
+      dictionary.people.deleteGroupingFailedLog,
+    ),
     [dictionary, forgetMutation, mutateAndRefresh],
   );
 
-  const purge = useCallback(() => {
-    mutateAndRefresh(
-      purgeMutation.mutateAsync({ force: true }),
-      dictionary.people.deletedAllFaceDataLog,
-      dictionary.people.deleteAllFaceDataFailedLog,
-    );
-  }, [dictionary, mutateAndRefresh, purgeMutation]);
+  const purge = useCallback(() => mutateAndRefresh(
+    purgeMutation.mutateAsync({ force: true }),
+    dictionary.people.deletedAllFaceDataLog,
+    dictionary.people.deleteAllFaceDataFailedLog,
+  ), [dictionary, mutateAndRefresh, purgeMutation]);
 
   const startReclusterDryRun = useCallback(() => {
     if (activeJobLabel !== null) return;

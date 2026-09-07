@@ -1003,7 +1003,7 @@ describe('photosTree, photosList, photosDetail', () => {
 
     const detail = await photosDetail(deps, { fingerprint });
 
-    expect(detail.ok && detail.value?.people).toEqual([{ personId: 'person-1', displayName: 'Person One' }]);
+    expect(detail.ok && detail.value?.people).toEqual([{ personId: 'person-1', displayName: 'Person One', fallbackIndex: 0 }]);
   });
 
   it('detail reports no people for a photo nobody was detected in', async () => {

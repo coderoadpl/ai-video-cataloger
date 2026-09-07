@@ -45,6 +45,7 @@ import { SliderField } from '../../components/ui/SliderField.js';
 import { TrashConfirmationDialog, type TrashConfirmationCounts, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
+import { personLabel } from '../../i18n/person-label.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
@@ -102,9 +103,6 @@ const messageOf = (error: unknown): string => {
   if (error instanceof Error) return error.message;
   return String(error);
 };
-
-const displayName = (dictionary: Dictionary, person: FacePerson): string =>
-  person.displayName ?? dictionary.people.personName(person.fallbackIndex);
 
 const MERGE_HINT_ID = 'people-merge-hint';
 const PEOPLE_SORT_KEY = 'avc.people.sort';
@@ -505,7 +503,7 @@ export const PeopleView = ({
             data-testid="people-grid"
           >
             {gridPeople.map((person) => {
-              const name = displayName(dictionary, person);
+              const name = personLabel(dictionary, person);
               return (
                 <PersonCard
                   key={person.personId}
@@ -641,11 +639,11 @@ export const PeopleView = ({
           {mergePlan === null ? null : (
             <>
               <DialogContentText data-testid="people-merge-body">
-                {dictionary.people.mergeBody(selected.length, displayName(dictionary, mergePlan.target))}
+                {dictionary.people.mergeBody(selected.length, personLabel(dictionary, mergePlan.target))}
               </DialogContentText>
               <DialogContentText data-testid="people-merge-selected-names">
                 {dictionary.people.mergeSelectedNames(
-                  selected.map((person) => displayName(dictionary, person)).join(', '),
+                  selected.map((person) => personLabel(dictionary, person)).join(', '),
                 )}
               </DialogContentText>
             </>
@@ -662,7 +660,7 @@ export const PeopleView = ({
                   <FormControlLabel
                     key={person.personId}
                     value={person.personId}
-                    label={displayName(dictionary, person)}
+                    label={personLabel(dictionary, person)}
                     control={<Radio />}
                   />
                 ))}
@@ -703,11 +701,15 @@ export const PeopleView = ({
         body={dictionary.people.deleteFaceGroupingBody}
         confirmLabel={dictionary.people.delete}
         testId="people-forget-confirm"
-        disabled={people.isBusy || mutationsBlocked}
+        disabled={mutationsBlocked}
+        busy={people.isBusy}
+        error={people.mutationError}
         onClose={() => setForgetTarget(null)}
         onConfirm={() => {
-          if (forgetTarget !== null) people.forget(forgetTarget.personId);
-          setForgetTarget(null);
+          if (forgetTarget === null) return;
+          void (async () => {
+            if (await people.forget(forgetTarget.personId)) setForgetTarget(null);
+          })();
         }}
       />
 
@@ -768,11 +770,14 @@ export const PeopleView = ({
         body={dictionary.people.deleteAllFaceDataBody}
         confirmLabel={dictionary.people.deleteAll}
         testId="people-purge-confirm"
-        disabled={people.isBusy || mutationsBlocked}
+        disabled={mutationsBlocked}
+        busy={people.isBusy}
+        error={people.mutationError}
         onClose={() => setPurgeOpen(false)}
         onConfirm={() => {
-          people.purge();
-          setPurgeOpen(false);
+          void (async () => {
+            if (await people.purge()) setPurgeOpen(false);
+          })();
         }}
       />
 
