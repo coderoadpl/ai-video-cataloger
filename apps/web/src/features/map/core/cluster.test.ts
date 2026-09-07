@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { clusterItems, type LocatedItem } from './cluster.js';
+import { buildSpatialIndex, visibleClusters, type LocatedItem } from './cluster.js';
 import { fitViewport, project, unitBounds, zoomViewport } from './projection.js';
 
 const baseViewport = { width: 800, height: 600, scale: 512, centerX: 0.5, centerY: 0.5 };
 
-describe('clusterItems', () => {
+const clusterItems = (items: readonly LocatedItem[], viewport: typeof baseViewport) =>
+  visibleClusters(buildSpatialIndex(items), viewport);
+
+describe('visibleClusters', () => {
   it('merges two nearby points into one cluster at their centroid', () => {
     const items: LocatedItem[] = [
-      { id: 'a', lon: 10, lat: 50 },
-      { id: 'b', lon: 10.0001, lat: 50 },
+      { id: 'a', lon: 0, lat: 0 },
+      { id: 'b', lon: 0.0001, lat: 0 },
     ];
 
     const clusters = clusterItems(items, baseViewport);
@@ -21,8 +24,8 @@ describe('clusterItems', () => {
 
   it('separates the same two points once zoomed far enough apart', () => {
     const items: LocatedItem[] = [
-      { id: 'a', lon: 10, lat: 50 },
-      { id: 'b', lon: 10.01, lat: 50 },
+      { id: 'a', lon: 0, lat: 0 },
+      { id: 'b', lon: 0.01, lat: 0 },
     ];
 
     const zoomedViewport = zoomViewport(baseViewport, 64);
@@ -39,9 +42,11 @@ describe('clusterItems', () => {
       { id: 'c', lon: 100, lat: 60 },
     ];
 
-    const first = clusterItems(items, baseViewport);
-    const second = clusterItems(items, baseViewport);
+    const viewport = fitViewport(unitBounds(items.map((item) => project(item))), 800, 600, 40);
+    const first = clusterItems(items, viewport);
+    const second = clusterItems(items, viewport);
 
+    expect(first).not.toEqual([]);
     expect(first.map((cluster) => cluster.id)).toEqual(second.map((cluster) => cluster.id));
     expect(first.map((cluster) => cluster.id)).toEqual([...first.map((cluster) => cluster.id)].sort());
   });
@@ -61,5 +66,19 @@ describe('clusterItems', () => {
     expect(clusters.reduce((sum, cluster) => sum + cluster.count, 0)).toBe(110);
     const allIds = clusters.flatMap((cluster) => cluster.items.map((item) => item.id));
     expect(new Set(allIds).size).toBe(110);
+  });
+
+  it('excludes points well outside the viewport once panned far away', () => {
+    const items: LocatedItem[] = [
+      { id: 'near', lon: 0, lat: 0 },
+      { id: 'far', lon: 170, lat: 80 },
+    ];
+
+    const index = buildSpatialIndex(items);
+    const clusters = visibleClusters(index, zoomViewport(baseViewport, 4));
+
+    const allIds = clusters.flatMap((cluster) => cluster.items.map((item) => item.id));
+    expect(allIds).toContain('near');
+    expect(allIds).not.toContain('far');
   });
 });
