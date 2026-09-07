@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
@@ -51,6 +51,10 @@ interface UsePeopleOptions {
   intervalMs?: number;
 }
 
+const FACES_JOB_KINDS = ['faces_index', 'faces_recluster', 'faces_exemplars'] as const;
+
+const isFacesJobKind = (kind: string): boolean => FACES_JOB_KINDS.some((known) => known === kind);
+
 const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
   if (error instanceof Error) return error.message;
@@ -70,10 +74,23 @@ export const usePeople = ({
   const facesIndex = useFacesIndex({ active, folder, addLine, intervalMs });
   const facesEnabled = facesIndex.facesEnabled;
   const artifactsReady = facesIndex.artifactsReady;
-  const status = useQuery({ ...actions.facesStatus, enabled: active && facesEnabled === true });
+  const jobs = useQuery({
+    ...actions.jobs,
+    enabled: active && facesEnabled === true,
+    refetchInterval: intervalMs,
+  });
+  const facesJobRunning = (jobs.data?.jobs ?? []).some(
+    (job) => isFacesJobKind(job.kind) && !isTerminalJobStatus(job.status),
+  );
+  const status = useQuery({
+    ...actions.facesStatus,
+    enabled: active && facesEnabled === true,
+    refetchInterval: facesJobRunning ? intervalMs : false,
+  });
   const people = useQuery({
     ...actions.facesPeople,
     enabled: active && facesEnabled === true && artifactsReady === true,
+    refetchInterval: facesJobRunning ? intervalMs : false,
   });
 
   const installMutation = useMutation(actions.installFaceArtifacts);
@@ -99,6 +116,13 @@ export const usePeople = ({
   const invalidate = useCallback(async () => {
     await queryClient.invalidateQueries();
   }, [queryClient]);
+
+  const facesJobWasRunning = useRef(false);
+  useEffect(() => {
+    const finished = facesJobWasRunning.current && !facesJobRunning;
+    facesJobWasRunning.current = facesJobRunning;
+    if (finished) void invalidate();
+  }, [facesJobRunning, invalidate]);
 
   const runJob = useCallback(
     (accepted: Promise<{ jobId: string }>, label: string, success: string, failure: string) => {
@@ -311,7 +335,7 @@ export const usePeople = ({
     people: people.data?.people ?? [],
     observations: status.data?.observations ?? 0,
     selectedPersonIds,
-    activeJobLabel,
+    activeJobLabel: activeJobLabel ?? (facesJobRunning ? dictionary.people.indexingFacesLog : null),
     toggleSelected,
     clearSelected: () => setSelectedPersonIds([]),
     refresh: () => {

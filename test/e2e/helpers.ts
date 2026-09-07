@@ -422,6 +422,12 @@ export function makeEmptyWorkdir(tag: string): string {
   return dir;
 }
 
+export function copyPhotoFixtures(source: string, target: string): number {
+  const files = readdirSync(source).filter((name) => statSync(join(source, name)).isFile() && !name.startsWith('.'));
+  for (const name of files) copyFileSync(join(source, name), join(target, name));
+  return files.length;
+}
+
 export async function addSampleTo(dir: string, sample: VideoSample): Promise<string> {
   const fixture = await ensureFixture(sample);
   copyFileSync(fixture, join(dir, sample.file));
@@ -670,4 +676,14 @@ function legacyJpeg(): Buffer {
     '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYwLjMuMTAwAP/bAEMACAoKCwoLDQ0NDQ0NEA8QEBAQEBAQEBAQEBISEhUVFRISEhAQEhIUFBUVFxcXFRUVFRcXGRkZHh4cHCMjJCsrM//EAEoAAQAAAAAAAAAAAAAAAAAAAAABAQAAAAAAAAAAAAAAAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCABAAEADASIAAhEAAxEA/9oADAMBAAIRAxEAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/2Q==',
     'base64',
   );
+}
+
+export async function awaitPeopleGridUnfolded(page: Page, timeoutMs: number): Promise<void> {
+  const card = page.getByTestId('people-card');
+  const otherTile = page.getByTestId('people-other-tile');
+  await card.or(otherTile).first().waitFor({ state: 'visible', timeout: timeoutMs });
+  await page.getByTestId('people-threshold-slider').locator('input').focus();
+  await page.keyboard.press('Home');
+  await otherTile.first().waitFor({ state: 'detached', timeout: 15_000 });
+  await card.first().waitFor({ state: 'visible', timeout: 15_000 });
 }

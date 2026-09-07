@@ -529,6 +529,22 @@ export interface Dictionary {
     mergeBody: (count: number, target: string) => string;
     mergeNameChoice: string;
     mergeSelectHint: string;
+    pairReviewOpen: (pending: number) => string;
+    pairReviewQuestion: string;
+    pairReviewPosition: (index: number, total: number) => string;
+    pairReviewTruncated: (limit: number) => string;
+    pairReviewSame: string;
+    pairReviewDifferent: string;
+    pairReviewSkip: string;
+    pairReviewKeyHint: (key: string) => string;
+    pairReviewUndo: string;
+    pairReviewDifferentCaption: string;
+    pairReviewNotUndoable: string;
+    pairReviewConfirmTitle: string;
+    pairReviewConfirmBody: (first: string, second: string) => string;
+    pairReviewEmptyTitle: string;
+    pairReviewEmptyBody: string;
+    pairReviewCrop: (name: string) => string;
     selectionCount: (count: number) => string;
     hiddenSelectionCount: (count: number) => string;
     clearSelection: string;
@@ -652,6 +668,11 @@ export interface Dictionary {
     apiCostEstimate: (cost: string) => string;
     facesEnableLabel: string;
     facesHelper: string;
+    facesPairScopeLabel: string;
+    facesPairScopeHelper: string;
+    facesPairScopeCareful: string;
+    facesPairScopeStandard: string;
+    facesPairScopeWide: string;
     geminiBatchSectionTitle: string;
     geminiBatchEnableLabel: string;
     geminiBatchHelper: string;
@@ -1634,6 +1655,23 @@ export const en: Dictionary = {
     mergeBody: (count, target) => `Merge ${count} people into "${target}"? The other groupings disappear. This cannot be undone.`,
     mergeNameChoice: 'Which name should be kept?',
     mergeSelectHint: 'Select at least two people.',
+    pairReviewOpen: (pending) => `To review: ${String(pending)}`,
+    pairReviewQuestion: 'Is this the same person?',
+    pairReviewPosition: (index, total) => `${String(index)} of ${String(total)}`,
+    pairReviewTruncated: (limit) => `Showing the first ${String(limit)}`,
+    pairReviewSame: 'Yes',
+    pairReviewDifferent: 'No',
+    pairReviewSkip: 'Skip',
+    pairReviewKeyHint: (key) => `Key ${key}`,
+    pairReviewUndo: 'Undo (Backspace)',
+    pairReviewDifferentCaption: 'We will remember these are different people',
+    pairReviewNotUndoable: 'A merge cannot be undone',
+    pairReviewConfirmTitle: 'Merge these two people',
+    pairReviewConfirmBody: (first, second) =>
+      `“${first}” and “${second}” become one person, and only one of the names stays.`,
+    pairReviewEmptyTitle: 'Nothing to review right now',
+    pairReviewEmptyBody: 'Come back after the next analysis — new look-alikes land here on their own.',
+    pairReviewCrop: (name) => `Face of ${name}`,
     selectionCount: (count) => `${count} selected`,
     hiddenSelectionCount: (count) => `${count} outside the current view`,
     clearSelection: 'Clear selection',
@@ -1759,6 +1797,11 @@ export const en: Dictionary = {
     apiCostEstimate: (cost) => `About ${cost} per video (rough estimate).`,
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
+    facesPairScopeLabel: 'How eagerly to propose people to compare',
+    facesPairScopeHelper: 'A wider scope also asks about people that look less alike.',
+    facesPairScopeCareful: 'Careful',
+    facesPairScopeStandard: 'Standard',
+    facesPairScopeWide: 'Wide',
     geminiBatchSectionTitle: 'Gemini batch mode (whole-tree runs)',
     geminiBatchEnableLabel: 'Send whole-tree runs to the Gemini Batch API (half price)',
     geminiBatchHelper: 'Files are uploaded one by one, then the whole run waits for a single batch job. '
@@ -2807,6 +2850,23 @@ export const pl: Dictionary = {
     mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w „${target}”? Pozostałe grupy znikną. Tego nie można cofnąć.`,
     mergeNameChoice: 'Które imię zachować?',
     mergeSelectHint: 'Zaznacz co najmniej dwie osoby.',
+    pairReviewOpen: (pending) => `Do sprawdzenia: ${String(pending)}`,
+    pairReviewQuestion: 'Czy to ta sama osoba?',
+    pairReviewPosition: (index, total) => `${String(index)} z ${String(total)}`,
+    pairReviewTruncated: (limit) => `Pokazujemy pierwsze ${String(limit)}`,
+    pairReviewSame: 'Tak',
+    pairReviewDifferent: 'Nie',
+    pairReviewSkip: 'Pomiń',
+    pairReviewKeyHint: (key) => `Klawisz ${key}`,
+    pairReviewUndo: 'Cofnij (Backspace)',
+    pairReviewDifferentCaption: 'Zapamiętamy, że to różne osoby',
+    pairReviewNotUndoable: 'Scalenia nie da się cofnąć',
+    pairReviewConfirmTitle: 'Scal te dwie osoby',
+    pairReviewConfirmBody: (first, second) =>
+      `„${first}” i „${second}” staną się jedną osobą, a zostanie tylko jedno z imion.`,
+    pairReviewEmptyTitle: 'Na razie nie ma o co pytać',
+    pairReviewEmptyBody: 'Wróć tu po kolejnej analizie — nowe podobieństwa pojawią się same.',
+    pairReviewCrop: (name) => `Twarz osoby ${name}`,
     selectionCount: (count) => `Zaznaczono: ${count}`,
     hiddenSelectionCount: (count) => `${count} poza bieżącym widokiem`,
     clearSelection: 'Wyczyść zaznaczenie',
@@ -2932,6 +2992,11 @@ export const pl: Dictionary = {
     apiCostEstimate: (cost) => `Około ${cost} za film (szacunek orientacyjny).`,
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
+    facesPairScopeLabel: 'Jak chętnie proponować osoby do porównania',
+    facesPairScopeHelper: 'Szerszy zakres pyta też o osoby mniej do siebie podobne.',
+    facesPairScopeCareful: 'Ostrożnie',
+    facesPairScopeStandard: 'Standardowo',
+    facesPairScopeWide: 'Szeroko',
     geminiBatchSectionTitle: 'Tryb wsadowy Gemini (analiza drzewa folderów)',
     geminiBatchEnableLabel: 'Wysyłaj analizę drzewa przez Gemini Batch API (połowa ceny)',
     geminiBatchHelper: 'Pliki są wysyłane po kolei, a potem cały przebieg czeka na jedno zadanie wsadowe. '

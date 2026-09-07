@@ -117,6 +117,10 @@ export type FacesMergeInput = z.input<typeof API_ROUTES.facesMerge.input>;
 export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
 export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
 export type FacesReclusterInput = z.input<typeof API_ROUTES.facesRecluster.input>;
+export type FacesPairsInput = z.input<typeof API_ROUTES.facesPairs.input>;
+export type FacesPairsOutput = z.output<typeof API_ROUTES.facesPairs.output>;
+export type FacesPairsDecideInput = z.input<typeof API_ROUTES.facesPairsDecide.input>;
+export type FacesPairsUndoInput = z.input<typeof API_ROUTES.facesPairsUndo.input>;
 export type IndexForgetInput = z.input<typeof API_ROUTES.indexForget.input>;
 export type VariantsInput = z.input<typeof API_ROUTES.variantsList.input>;
 export type PhotosScanInput = z.input<typeof API_ROUTES.photosScan.input>;
@@ -308,6 +312,20 @@ export const invalidateLibraryVisibilityConsumers = async (
   ]);
 };
 
+export const invalidatePairReviewQueue = (
+  client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> },
+): Promise<void> => client.invalidateQueries({ queryKey: facesScopes.all() });
+
+export const invalidatePeopleMergeConsumers = async (
+  client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> },
+): Promise<void> => {
+  await Promise.all([
+    client.invalidateQueries({ queryKey: facesScopes.all() }),
+    client.invalidateQueries({ queryKey: libraryFacetsScopes.all() }),
+    client.invalidateQueries({ queryKey: collectionScopes.all() }),
+  ]);
+};
+
 export const tagsScopes = {
   all: () => ['tags'] as const,
 };
@@ -345,6 +363,7 @@ export const facesScopes = {
   all: () => ['faces'] as const,
   status: () => ['faces', 'status'] as const,
   people: () => ['faces', 'people'] as const,
+  pairs: (limit: number) => ['faces', 'pairs', limit] as const,
 };
 
 export const indexScopes = {
@@ -407,6 +426,8 @@ export const mutationScopes = {
   facesForget: () => ['facesForget'] as const,
   facesPurge: () => ['facesPurge'] as const,
   facesRecluster: () => ['facesRecluster'] as const,
+  facesPairsDecide: () => ['facesPairsDecide'] as const,
+  facesPairsUndo: () => ['facesPairsUndo'] as const,
   indexForget: () => ['indexForget'] as const,
   photosScan: () => ['photosScan'] as const,
   photosForget: () => ['photosForget'] as const,
@@ -838,6 +859,15 @@ export const facesPeopleQuery = (api: ApiClient) =>
     call: ({ signal }) => api.facesPeople(signal),
   });
 
+export const facesPairsQuery = (api: ApiClient, input: FacesPairsInput = {}) => {
+  const parsed = API_ROUTES.facesPairs.input.parse(input);
+  return defineQuery({
+    queryKey: facesScopes.pairs(parsed.limit),
+    staleTime: 0,
+    call: ({ signal }) => api.facesPairs(parsed, signal),
+  });
+};
+
 export const indexStatusQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: indexScopes.status(),
@@ -1140,6 +1170,18 @@ export const facesReclusterMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.facesRecluster(),
     call: (variables: FacesReclusterInput) => api.facesRecluster(variables),
+  });
+
+export const facesPairsDecideMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesPairsDecide(),
+    call: (variables: FacesPairsDecideInput) => api.facesPairsDecide(variables),
+  });
+
+export const facesPairsUndoMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesPairsUndo(),
+    call: (variables: FacesPairsUndoInput) => api.facesPairsUndo(variables),
   });
 
 export const indexForgetMutation = (api: ApiClient) =>

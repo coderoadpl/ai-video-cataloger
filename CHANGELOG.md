@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Osoby now follows a face indexing run started anywhere else in the app: the view watches the running job, refreshes while it works and once more when it ends, instead of staying on the state it read the moment it was opened.
+
 - Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process.
 
 ### Added
@@ -27,6 +29,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Osoby can be reviewed pair by pair: the app proposes two people it believes may be the same, and the answer is stored — `same` merges them, `different` is a permanent constraint honoured by later rebuilds, `skip` hides the pair for 30 days.
 
 - `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
+
+- Osoby has a "Ta sama osoba?" review view: two people side by side with contact sheets, answered with Tak / Nie / Pomiń or the keys 1 / 2 / 3, undone with Backspace, and a header badge showing how many questions are pending.
+
+- Ustawienia can set how eagerly Osoby proposes people to compare (Ostrożnie / Standardowo / Szeroko).
+
+- `pnpm run test:e2e:people-pairs` drives the review surface with real clicks and keystrokes over a real faces pass and asserts the decisions survive a relaunch.
 
 ### Changed
 

@@ -10,10 +10,12 @@ export {
   peopleMediaCounts,
   personCountForMedium,
   personFileCountLabel,
+  personTotalsLabel,
   sortPeople,
   type PeopleMedia,
   type PeopleMediaCounts,
   type PeopleSort,
+  type PersonFileTotals,
   type PersonMediaFiles,
   type PersonMediaObservations,
 } from './person-media.js';
