@@ -1820,7 +1820,10 @@ managed runtimes, and its working-directory fallback.
 - `FaceEnginePort` — face detect/align/embed/crop lifecycle behind the faces
   feature; ONNX Runtime adapter (darwin-only binding). The drive job composes it (and
   `ModelDownloadPort`) optionally, so a composition without a face engine degrades to a
-  reported skip instead of a failure.
+  reported skip instead of a failure. The adapter sets `ORT_DISABLE_TELEMETRY=1`
+  before it dynamically imports `onnxruntime-node`: the binding embeds a native
+  telemetry uploader whose thread aborted the whole process, and a local-first
+  app must not phone home.
 - `TrashPort` — `moveToTrash(path)`, the only way a user's media file leaves
   its folder. Two real implementations and a real platform difference between
   them: the Electron composition root supplies `shell.trashItem`, the CLI and

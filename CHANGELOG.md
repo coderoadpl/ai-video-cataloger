@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Face indexing no longer aborts the app: ONNX Runtime telemetry is disabled before the runtime is loaded, so its upload thread can no longer terminate the process.
+
 ### Added
 
 - `faces pairs list`, `faces pairs decide` and `faces pairs import` expose the pairwise people review from the CLI, including a one-off import of a labelled same/different pairs corpus.
