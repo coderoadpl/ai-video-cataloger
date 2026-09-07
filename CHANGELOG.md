@@ -116,6 +116,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   ([`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)).
 
 **Note:** versions `0.6.31` and `0.6.32` were never published; the version field moved past them while the audit fix waves landed, and this release supersedes both.
+The six `449a586` citations above are intentional: the re-audit regression fixes
+(#99) reached `main` through the visual-baselines PR (#100), whose branch was cut
+from the fix branch and merged first, so
+[`449a586`](https://github.com/coderoadpl/ai-video-cataloger/commit/449a5866d6d13f61730f14d99cd6c9a2c1344524)
+carries both the baselines and the fixes, while the #99 squash
+([`fe791b9`](https://github.com/coderoadpl/ai-video-cataloger/commit/fe791b97436d5e673323ef9efbea5af52532a9a1))
+changed no files.
 
 ## [0.6.30] - 2026-09-07
 
