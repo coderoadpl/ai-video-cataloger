@@ -20,6 +20,10 @@ every wave); no two differing builds may ever share a version string
 | Static + unit gate | `pnpm run check` | typecheck, eslint (incl. boundaries and the renderer Node-builtin ban), dependency-cruiser, the renderer bundle build, doc-lint and vitest all green |
 | Installed-tree gate | `pnpm run smoke` | installed-tree check, lockfile lint, and the real in-process app driven through the CLI (doctor/scan/config/status, photos scan/status/forget/proxies/search/variants) all green |
 
+On a loaded machine, export `AVC_GATE_TIMEOUT_FACTOR=3` before running the
+static + unit gate so Vitest test, hook, teardown, and CLI subprocess budgets
+scale together.
+
 ## 2. End-to-end suites
 
 | Step | Command | Pass condition |

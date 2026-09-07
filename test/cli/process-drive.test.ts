@@ -6,6 +6,7 @@ import { framesKey } from '@core/server/index.js';
 
 import { createFailingClaudeBinary, createFakeVideoFile } from '../helpers/fixtures.js';
 import { findEvent, getProjectRoot, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
+import { scaledTimeout } from '../helpers/gate-timeout.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
 
 const storedFramesDirectory = (catalogDirectory: string, count: number): string => {
@@ -144,5 +145,5 @@ describe('process-drive command', () => {
     expect(overridden.exitCode).toBe(0);
     expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 2))).toHaveLength(2);
     cleanupTestDir(home);
-  });
+  }, scaledTimeout(30_000));
 });

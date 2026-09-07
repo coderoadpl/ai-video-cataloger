@@ -16,6 +16,7 @@ export default defineConfig({
     maxWorkers: 4,
     testTimeout: scaledTimeout(5000),
     hookTimeout: scaledTimeout(10000),
+    teardownTimeout: scaledTimeout(10000),
     // Gates must never read or write the developer's real macOS Keychain.
     env: { AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' },
     setupFiles: ['test/vitest-home-guard.mjs'],
