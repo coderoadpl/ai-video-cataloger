@@ -258,6 +258,10 @@ covers the grid and intercepts the preview tile click.
    - `library-preview` — depends on the Library already holding a tile left
      over from a previous scan into that home; a home whose most recent scan
      was into a different folder can legitimately have nothing to preview.
+   - `people-pairs` — runs only when `AVC_WALKTHROUGH_FACES_SAMPLES` names a
+     folder of photos of a handful of people (see "The people-pairs step"
+     below); without one the run reports the skip reason "faces fixture not
+     provided".
 
    Every other `skipped` step (no analyzer configured, no photos catalogued,
    no subfolders in the fixture tree, …) still turns `--strict` non-zero: a
@@ -290,7 +294,7 @@ The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`
 `analyze`, `search`, `library-preview`, `library-hide-restore`, `photos-sidebar`,
 `analysis-photos`, `photos-tree`, `photos-tree-analyze`,
 `collection-photo-analyzed`, `collection-photo-viewer`, `people`,
-`settings`, `backup`, `backup-indicator`, `wizard`.
+`people-pairs`, `settings`, `backup`, `backup-indicator`, `wizard`.
 That list is also declared in the driver as `WALKTHROUGH_STEPS` and asserted on
 every recorded step, so a step added, dropped or reordered without updating this
 document's list and the reviewer checklist below stops the run.
@@ -362,6 +366,32 @@ select a photo.
 - `collection-photo-viewer` keeps the Zdjęcia chip selected, clicks the first
   analyzed photo tile in Kolekcja and asserts the shared media viewer opens.
   This replaces the retired Library → Zdjęcia tab/grid/detail steps.
+
+### The people-pairs step
+
+Face grouping is off in a QA home, so until W116 the pair-review surface that
+ships since 0.6.34 was reached by no step at all. `people-pairs` closes that
+gap, and it is optional because it needs a fixture the repository cannot carry:
+
+- Point `AVC_WALKTHROUGH_FACES_SAMPLES` at a folder of photos of a handful of
+  people (the same kind of fixture `E2E_FACES_PAIR_SAMPLES` takes in
+  `test/e2e/people-pairs.spec.ts`). The runner copies that folder into the
+  scratch fixtures as `walkthrough-faces/`, so the photo scan the earlier steps
+  drive catalogues it too. The name sorts after the planted `subfolder`, so the
+  tree steps keep expanding the row they always did.
+- The two face-model files are staged into the QA home from the scratch cache
+  `<AVC_SCRATCH_DIR>/face-models` that the on-demand faces e2e legs fill; a run
+  whose cache is empty fails the step with that path in the note instead of
+  driving a half-configured surface. That staging is environment setup: every
+  in-app control below is still clicked for real.
+- The step switches to Analysis → Zdjęcia, opens Settings, flips the real
+  `faces-enabled-switch`, picks the **wide** pair scope, saves, clicks the
+  sidebar's faces index action, then opens Biblioteka → Osoby, unfolds the grid
+  with the threshold slider (`Home`), opens the review badge and captures the
+  pair card. It **answers nothing**: a walkthrough must not write 30-day pair
+  decisions into the QA home.
+- With `AVC_WALKTHROUGH_FACES_SAMPLES` unset the step is skipped and `--strict`
+  tolerates it, exactly as it tolerates `first-run-wizard`.
 
 None of these four are in `TOLERATED_SKIPS`: like `analyze`, a release run
 must prove them, not skip them — the walkthrough always runs with
@@ -436,6 +466,11 @@ Read every screenshot against the sensitivities that have burned us before:
   selected files back in the default Kolekcja view after visiting `Ukryte`, with
   no stale bulk action bar left over and no English fallback in the hide/restore
   controls?
+- **Sub-folder thumbnails (`tree-expand`, W116)** — every video row inside the
+  expanded sub-folder shows a real decoded frame, never a shimmer skeleton: the
+  step waits up to 60 s for each of those rows' `<img>` to decode and reports
+  the wait in its manifest note, so a shot that still holds a skeleton means the
+  step reported `skipped` and `--strict` failed the run.
 - **Videos folder tree (`tree-expand`, W94)** — the frame is captured while
   "Całe drzewo" is still the selected scope and the first subfolder is expanded
   (the runner returns to "Ten folder" only after the screenshot), so this shot
@@ -462,6 +497,11 @@ Read every screenshot against the sensitivities that have burned us before:
   evenly gapped with unclipped names and counts, or an empty state that names
   the reason in Polish and offers the matching action? A bare panel, an English
   fallback sentence or a `key.path` leak fails the release.
+- **Pair review (`people-pairs`, W116)** — when the step ran, does the
+  screenshot show the "Ta sama osoba?" card with a face crop on both sides, the
+  position readout and the Polish answer buttons, with no error alert and no
+  English fallback? A step that reports the skip reason "faces fixture not
+  provided" means this release proved nothing about the pair-review surface.
 - **Kopia zapasowa enabled (F14)** — in the `backup` screenshot, does Settings >
   Kopia zapasowa show the connected destination, the last-backup readout and a
   non-empty archive list in Polish, with no error alert; and in

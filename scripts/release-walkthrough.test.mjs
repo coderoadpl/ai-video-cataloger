@@ -19,6 +19,8 @@ import {
   clearLibrarySearch,
   collectionPhotoChipOutcome,
   createRecorder,
+  FACES_SAMPLES_DIRNAME,
+  facesSamplesDirectory,
   fakeDriveArchives,
   localAnalyzerConfig,
   peopleOutcome,
@@ -30,6 +32,7 @@ import {
   searchTermFromAnalyzedFilename,
   TOLERATED_SKIPS,
   treeSelectAnalyzeOutcome,
+  treeThumbnailOutcome,
   TREE_PHOTO_PATH,
   WALKTHROUGH_STEPS,
 } from './release-walkthrough.mjs';
@@ -628,5 +631,110 @@ describe('createRecorder', () => {
       Promise.reject(new Error('scope toggle vanished')));
 
     expect(results[0]).toMatchObject({ status: 'failed', note: 'scope toggle vanished' });
+  });
+});
+
+describe('facesSamplesDirectory', () => {
+  it('reports no fixture when the environment variable is unset or blank', () => {
+    expect(facesSamplesDirectory({})).toBeNull();
+    expect(facesSamplesDirectory({ AVC_WALKTHROUGH_FACES_SAMPLES: '   ' })).toBeNull();
+  });
+
+  it('resolves the folder the environment variable names', () => {
+    const samples = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-faces-'));
+
+    expect(facesSamplesDirectory({ AVC_WALKTHROUGH_FACES_SAMPLES: samples })).toBe(samples);
+  });
+
+  it('rejects a path that is not a directory', () => {
+    const missing = path.join(tmpdir(), 'avc-walkthrough-faces-missing');
+
+    expect(() => facesSamplesDirectory({ AVC_WALKTHROUGH_FACES_SAMPLES: missing })).toThrow(/AVC_WALKTHROUGH_FACES_SAMPLES/);
+  });
+});
+
+describe('prepareScratchFixtures with a faces fixture', () => {
+  it('copies the fixture photos into their own scratch subfolder and marks them for this run', () => {
+    const samples = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-faces-src-'));
+    writeFileSync(path.join(samples, 'face-01.jpg'), JPEG_WITH_EOI);
+
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos(), samples);
+
+    const copied = readFileSync(path.join(scratchDir, FACES_SAMPLES_DIRNAME, 'face-01.jpg'));
+    expect(copied.length).toBeGreaterThan(JPEG_WITH_EOI.length);
+  });
+
+  it('sorts its folder after the planted tree subfolder, so the tree steps keep expanding the same row', () => {
+    expect(FACES_SAMPLES_DIRNAME.localeCompare(path.dirname(TREE_PHOTO_PATH))).toBeGreaterThan(0);
+  });
+
+  it('plants nothing when no faces fixture is provided', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    expect(existsSync(path.join(scratchDir, FACES_SAMPLES_DIRNAME))).toBe(false);
+  });
+});
+
+describe('treeThumbnailOutcome', () => {
+  it('reports ok once every sub-folder row decoded its frame, and records the wait', () => {
+    const outcome = treeThumbnailOutcome({ rowCount: 3, decodedCount: 3, waitMs: 1200 });
+
+    expect(outcome.status).toBe('ok');
+    expect(outcome.note).toContain('3');
+    expect(outcome.note).toContain('1200');
+  });
+
+  it('reports skipped, which --strict fails, when a thumbnail is still a skeleton at the deadline', () => {
+    const outcome = treeThumbnailOutcome({ rowCount: 3, decodedCount: 2, waitMs: 60_000 });
+
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.note).toContain('2/3');
+  });
+
+  it('reports skipped when the expanded sub-folder listed no row to prove a thumbnail with', () => {
+    expect(treeThumbnailOutcome({ rowCount: 0, decodedCount: 0, waitMs: 0 }).status).toBe('skipped');
+  });
+
+  it('is what the tree-expand step returns, so the capture never races a skeleton', () => {
+    expect(stepSource('tree-expand', 'select-video')).toContain('treeThumbnailOutcome');
+  });
+});
+
+describe('the people-pairs step', () => {
+  const source = () => stepSource('people-pairs', 'settings');
+
+  it('runs after Osoby and before Settings', () => {
+    expect(WALKTHROUGH_STEPS.indexOf('people-pairs')).toBe(WALKTHROUGH_STEPS.indexOf('people') + 1);
+    expect(WALKTHROUGH_STEPS.indexOf('people-pairs')).toBeLessThan(WALKTHROUGH_STEPS.indexOf('settings'));
+  });
+
+  it('is tolerated as a skip, the way the first-run wizard is', () => {
+    expect(TOLERATED_SKIPS.has('people-pairs')).toBe(true);
+    expect(blockingSkips([{ name: 'people-pairs', status: 'skipped', note: 'faces fixture not provided' }])).toEqual([]);
+  });
+
+  it('enables faces through the real settings switch and the wide pair scope, never a seeded config key', () => {
+    expect(source()).toContain("getByTestId('faces-enabled-switch')");
+    expect(source()).toContain("getByTestId('settings-faces-pair-scope-wide')");
+    expect(source()).toContain("getByTestId('settings-save')");
+    expect(source()).not.toContain('updateHomeConfig');
+  });
+
+  it('indexes faces through the sidebar action and opens Osoby through the subnav', () => {
+    expect(source()).toContain("getByTestId('people-index')");
+    expect(source()).toContain("getByTestId('subnav-people')");
+  });
+
+  it('unfolds the grid with the threshold slider before reading the review badge', () => {
+    const unfoldIndex = source().indexOf("getByTestId('people-threshold-slider')");
+    const badgeIndex = source().indexOf("getByTestId('people-pair-review-open')");
+    expect(unfoldIndex).toBeGreaterThan(-1);
+    expect(badgeIndex).toBeGreaterThan(unfoldIndex);
+  });
+
+  it('captures the pair card itself and answers nothing', () => {
+    expect(source()).toContain("getByTestId('people-pair-review-crop')");
+    expect(source()).not.toContain("keyboard.press('1')");
+    expect(source()).not.toContain("getByTestId('people-pair-review-same')");
   });
 });

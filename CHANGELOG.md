@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The release walkthrough now proves that a freshly expanded sub-folder shows real decoded thumbnails before it captures the frame, and adds an optional `people-pairs` step that enables face grouping through the real Settings controls and captures the pair-review card when `AVC_WALKTHROUGH_FACES_SAMPLES` names a photo fixture.
+
 ## [0.6.34] - 2026-09-07
 
 ### Fixed
