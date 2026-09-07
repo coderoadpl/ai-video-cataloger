@@ -1269,6 +1269,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     const file = this.files.get(fingerprint);
     if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.fingerprint === fingerprint).map((o) => o.obsId));
     const cropPaths: string[] = [];
     for (const observation of this.faceObservations.values()) {
       if (observation.fingerprint !== fingerprint) continue;
@@ -1346,6 +1347,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.fingerprint === fingerprint).map((o) => o.obsId));
     const cropPaths: string[] = [];
     for (const observation of [...this.faceObservations.values()]) {
       if (observation.fingerprint !== fingerprint) continue;
@@ -1425,9 +1427,13 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(rows[0] ?? null));
   }
 
-  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+  private deleteDecisionsAnchoredOnObservations(obsIds: readonly string[]): void {
     const ids = new Set(obsIds);
     this.peoplePairDecisions = this.peoplePairDecisions.filter((row) => !ids.has(row.obsAId) && !ids.has(row.obsBId));
+  }
+
+  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations(obsIds);
     return Promise.resolve(ok(undefined));
   }
 
@@ -1474,17 +1480,28 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     if (to.displayName === null && from.displayName !== null) {
       this.people.set(input.toPersonId, { ...to, displayName: from.displayName });
     }
+    let decisionsInvalidated = 0;
+    this.peoplePairDecisions = this.peoplePairDecisions.flatMap((row) => {
+      const personAId = row.personAId === input.fromPersonId ? input.toPersonId : row.personAId;
+      const personBId = row.personBId === input.fromPersonId ? input.toPersonId : row.personBId;
+      if (row.decision === 'different' && row.personAId !== row.personBId && personAId === personBId) {
+        decisionsInvalidated += 1;
+        return [];
+      }
+      return [{ ...row, personAId, personBId }];
+    });
     this.people.delete(input.fromPersonId);
     return Promise.resolve(ok({
       fromPersonId: input.fromPersonId,
       toPersonId: input.toPersonId,
       movedObservations,
-      decisionsInvalidated: 0,
+      decisionsInvalidated,
       affectedFingerprints: [...affected],
     }));
   }
 
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.personId === personId).map((o) => o.obsId));
     const deleted = this.people.delete(personId);
     const affected = new Set<string>();
     for (const observation of this.faceObservations.values()) {
@@ -1498,6 +1515,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
+    this.peoplePairDecisions = [];
     const peopleDeleted = this.people.size;
     const observationsDeleted = this.faceObservations.size;
     for (const observation of this.faceObservations.values()) {

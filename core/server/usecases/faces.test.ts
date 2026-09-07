@@ -1104,6 +1104,7 @@ describe('facesIndex stale-version re-indexing', () => {
       fingerprint: 'fp-clip',
       embedding: unit128(5),
     }));
+    await deps.globalCatalog.recordPeoplePairDecision({ obsAId: 'fp-clip:face:9:9', obsBId: 'other-anchor', personAId: null, personBId: null, decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
     await deps.globalCatalog.completeFaceIndex('fp-clip', 1);
 
     const beforeStatus = await facesStatus(deps);
@@ -1121,6 +1122,8 @@ describe('facesIndex stale-version re-indexing', () => {
     expect(observations.value.map((observation) => observation.obsId)).not.toContain('fp-clip:face:9:9');
     expect(observations.value.length).toBe(3);
 
+    expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
+    expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { constraintsStale: 0 } });
     const afterStatus = await facesStatus(deps);
     expect(afterStatus.ok).toBe(true);
     if (!afterStatus.ok) throw new Error(afterStatus.error.message);

@@ -1938,6 +1938,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     const file = this.files.get(fingerprint);
     if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.fingerprint === fingerprint).map((o) => o.obsId));
     const cropPaths: string[] = [];
     const affectedPersonIds = new Set<string>();
     for (const observation of [...this.faceObservations.values()]) {
@@ -2024,6 +2025,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.fingerprint === fingerprint).map((o) => o.obsId));
     this.deleteFaceObservationsForFileCalls += 1;
     const cropPaths: string[] = [];
     const affectedPersonIds = new Set<string>();
@@ -2120,9 +2122,13 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(rows[0] ?? null));
   }
 
-  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+  private deleteDecisionsAnchoredOnObservations(obsIds: readonly string[]): void {
     const ids = new Set(obsIds);
     this.peoplePairDecisions = this.peoplePairDecisions.filter((row) => !ids.has(row.obsAId) && !ids.has(row.obsBId));
+  }
+
+  deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations(obsIds);
     return Promise.resolve(ok(undefined));
   }
 
@@ -2170,11 +2176,22 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       exemplarCount: embeddings.length,
       displayName: to.displayName ?? from.displayName,
     });
+    let decisionsInvalidated = 0;
+    this.peoplePairDecisions = this.peoplePairDecisions.flatMap((row) => {
+      const personAId = row.personAId === input.fromPersonId ? input.toPersonId : row.personAId;
+      const personBId = row.personBId === input.fromPersonId ? input.toPersonId : row.personBId;
+      if (row.decision === 'different' && row.personAId !== row.personBId && personAId === personBId) {
+        decisionsInvalidated += 1;
+        return [];
+      }
+      return [{ ...row, personAId, personBId }];
+    });
     this.people.delete(input.fromPersonId);
-    return Promise.resolve(ok({ fromPersonId: input.fromPersonId, toPersonId: input.toPersonId, movedObservations: moved.length, decisionsInvalidated: 0, affectedFingerprints }));
+    return Promise.resolve(ok({ fromPersonId: input.fromPersonId, toPersonId: input.toPersonId, movedObservations: moved.length, decisionsInvalidated, affectedFingerprints }));
   }
 
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
+    this.deleteDecisionsAnchoredOnObservations([...this.faceObservations.values()].filter((o) => o.personId === personId).map((o) => o.obsId));
     const existing = this.people.get(personId);
     if (existing === undefined) return Promise.resolve(ok({ personId, deleted: false, cropPaths: [...this.pendingFaceCrops].filter(([, owner]) => owner === personId).map(([cropPath]) => cropPath), affectedFingerprints: [] }));
     const rows = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
@@ -2187,6 +2204,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
+    this.peoplePairDecisions = [];
     const observationRows = [...this.faceObservations.values()];
     const peopleRows = [...this.people.values()];
     const cropPaths = observationRows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);

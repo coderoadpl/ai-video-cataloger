@@ -1444,6 +1444,10 @@ dropping and reporting it in every other case. The recluster report grows
 `constraintsApplied`, `constraintConflicts`, `constraintsStale` and
 `nameConflicts`, and `namesCarried` stops being permanently zero.
 
+The exported `shouldMergePeople` helper has no production caller. Wiring it
+into automatic merging requires resolving and honoring cannot-link decisions
+first; the live constrained clusterer and candidate generator already do so.
+
 **No new taxonomy.** `not_found` covers an unknown person id, `validation` a
 malformed corpus or a person with no observations, and the existing
 `confirmation_required` is not needed — the only confirmation in the flow is a
