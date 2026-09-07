@@ -142,6 +142,18 @@ describe('SqlJsGlobalCatalogStore', () => {
     await store.dispose();
   });
 
+  it('W99 A5 refreshes decision person columns inside replacement and retains unassigned anchors', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    await store.upsertPerson({ personId: 'old', displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: embedding, exemplarCount: 2 });
+    for (const obsId of ['a', 'b']) await store.upsertFaceObservation({ obsId, fingerprint: obsId, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, personId: 'old', cropPath: null });
+    const decision = { obsAId: 'a', obsBId: 'b', personAId: 'old', personBId: 'old', decision: 'different' as const, source: 'user' as const, decidedAt: '2026-01-01T00:00:00.000Z' };
+    await store.recordPeoplePairDecision(decision);
+    await store.replaceFaceClustering({ people: [{ personId: 'new', displayName: null, kind: 'face', createdAt: decision.decidedAt, centroid: embedding, exemplarCount: 1 }], assignments: [{ obsId: 'a', personId: 'new' }, { obsId: 'b', personId: null }] });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([{ ...decision, personAId: 'new', personBId: null }]));
+    await store.dispose();
+  });
+
   it('PE03 defers competing flushes and serializes unrelated batches', async () => {
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
     await store.upsertFolder(folder);

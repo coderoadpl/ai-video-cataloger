@@ -2233,6 +2233,9 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       }
       this.faceObservations.set(assignment.obsId, { ...existing, personId: assignment.personId });
     }
+    this.peoplePairDecisions = this.peoplePairDecisions.map((row) => ({
+      ...row, personAId: this.faceObservations.get(row.obsAId)?.personId ?? null, personBId: this.faceObservations.get(row.obsBId)?.personId ?? null,
+    }));
     return Promise.resolve(ok({
       personsDeleted,
       personsCreated: input.people.length,

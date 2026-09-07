@@ -1057,6 +1057,10 @@ export const gpsBackfillSummarySchema = z.object({
 });
 
 export const facesReclusterOutputSchema = z.object({
+  constraintsApplied: z.object({ mustLink: z.number().int().nonnegative(), cannotLink: z.number().int().nonnegative() }),
+  constraintConflicts: z.number().int().nonnegative(),
+  constraintsStale: z.number().int().nonnegative(),
+  nameConflicts: z.number().int().nonnegative(),
   dryRun: z.boolean(),
   observations: z.number().int().nonnegative(),
   personsBefore: z.number().int().nonnegative(),

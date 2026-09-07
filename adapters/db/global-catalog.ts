@@ -1723,7 +1723,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     observationsReassigned: number;
     affectedFingerprints: string[];
   }, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const beforeObservations = new Map(
         db.select().from(faceObservations).all().map((row) => [row.obsId, row.personId]),
       );
@@ -1747,6 +1747,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         }
         db.update(faceObservations).set({ personId: assignment.personId }).where(eq(faceObservations.obsId, assignment.obsId)).run();
       }
+      client.run(`UPDATE people_pair_decisions SET
+        person_a_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_a_id),
+        person_b_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_b_id)`);
       for (const fingerprint of affected) syncSearchDocument(db, client, fingerprint);
       return {
         personsDeleted,
@@ -1754,7 +1757,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         observationsReassigned,
         affectedFingerprints: [...affected],
       };
-    });
+    }));
   }
 
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {

@@ -2205,7 +2205,9 @@ const facesReclusterHuman = (data: unknown): string => {
     : output.largestClusters.map((cluster) => `${cluster.personId}:${String(cluster.observations)}`).join(', ');
   return `Reclustered ${output.observations} observations: ${output.personsBefore} → ${output.personsAfter} people `
     + `(${output.observationsReassigned} reassigned, ${output.observationsUnassigned} unassigned), `
-    + `${output.namesDropped.length} names dropped, largest clusters: ${largest}`
+    + `${output.namesCarried} names carried, ${output.namesDropped.length} names dropped, ${output.nameConflicts} name conflicts, `
+    + `${output.constraintsApplied.mustLink} must-links, ${output.constraintsApplied.cannotLink} cannot-links, `
+    + `${output.constraintConflicts} constraint conflicts, ${output.constraintsStale} stale constraints, largest clusters: ${largest}`
     + (output.dryRun ? ' — dry run, nothing written' : '')
     + (output.personsWithoutExemplar > 0 ? ` — ${output.personsWithoutExemplar} people have no photo yet, run \`faces exemplars\`` : '');
 };

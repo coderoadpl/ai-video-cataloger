@@ -70,6 +70,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: null,
     analyzer_provider: null,
     faces_enabled: facesEnabled ? 'true' : 'false',
+    faces_pair_scope: 'standard',
     gemini_batch_mode: null,
     gemini_monthly_budget_usd: null,
     output_language: null,
@@ -101,6 +102,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: 'default',
     analyzer_provider: 'default',
     faces_enabled: 'home',
+    faces_pair_scope: 'default',
     gemini_batch_mode: 'default',
     gemini_monthly_budget_usd: 'default',
     output_language: 'default',
@@ -138,6 +140,7 @@ const defaults = (facesEnabled: boolean) => ({
     promptStyle: 'file-urls',
   }),
   faces_enabled: facesEnabled ? 'true' : 'false',
+  faces_pair_scope: 'standard',
   gemini_batch_mode: 'false',
   gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
@@ -843,6 +846,8 @@ describe('PeopleView', () => {
           observationsAssigned: 4,
           observationsUnassigned: 0,
           namesCarried: 0,
+          constraintsApplied: { mustLink: 0, cannotLink: 0 },
+          constraintConflicts: 0, constraintsStale: 0, nameConflicts: 0,
           namesDropped: ['Sample Name'],
           personsWithoutExemplar: 1,
           largestClusters: [{ personId: 'person-a', observations: 3 }],
@@ -864,6 +869,7 @@ describe('PeopleView', () => {
     fireEvent.click(screen.getByTestId('people-recluster-dry-run'));
 
     expect(await screen.findByTestId('people-recluster-report')).toBeDefined();
+    for (const label of ['Names carried', 'Must-link constraints', 'Cannot-link constraints', 'Constraint conflicts', 'Stale constraints', 'Name conflicts']) expect(screen.getByText(label)).toBeDefined();
     await waitFor(() => expect(screen.getByTestId('people-recluster-confirm').getAttribute('disabled')).toBeNull());
     expect(screen.getByTestId('people-recluster-confirm').textContent).toBe('Rebuild and drop 1 name');
     expect(screen.getByTestId('people-recluster-largest').textContent).toContain('person-a: 3');
@@ -893,6 +899,8 @@ describe('PeopleView', () => {
           observationsAssigned: 4,
           observationsUnassigned: 0,
           namesCarried: 0,
+          constraintsApplied: { mustLink: 0, cannotLink: 0 },
+          constraintConflicts: 0, constraintsStale: 0, nameConflicts: 0,
           namesDropped: [],
           personsWithoutExemplar: 0,
           largestClusters: [],
