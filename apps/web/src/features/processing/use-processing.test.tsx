@@ -354,3 +354,94 @@ describe('useProcessing batch', () => {
     await waitFor(() => expect(result.current.isBusy).toBe(false));
   });
 });
+
+describe('useProcessing teardown', () => {
+  const wrapperFor = (queryClient: ReturnType<typeof createTestQueryClient>) =>
+    ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+  it('writes nothing to the terminal log once the hook has unmounted', async () => {
+    const queryClient = createTestQueryClient();
+    let polls = 0;
+    let secondPollAnswered = false;
+    let openGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    server.use(
+      http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:teardown' } })),
+      http.get('/api/jobs/status', async () => {
+        polls += 1;
+        if (polls === 1) {
+          return HttpResponse.json({
+            ok: true,
+            data: { ...jobSnapshot('job:teardown'), status: 'running', error: null },
+          });
+        }
+        await gate;
+        secondPollAnswered = true;
+        return HttpResponse.json({
+          ok: true,
+          data: { ...jobSnapshot('job:teardown'), status: 'completed', error: null },
+        });
+      }),
+    );
+    const addLine = vi.fn();
+    const { result, unmount } = renderHook(
+      () => useProcessing({ videos, addLine, intervalMs: 1 }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+    const video = videos[1];
+    if (video === undefined) throw new Error('Expected video fixture');
+
+    act(() => {
+      result.current.analyze(video);
+    });
+    await waitFor(() => expect(polls).toBe(2));
+
+    unmount();
+    addLine.mockClear();
+    openGate();
+
+    await waitFor(() => expect(secondPollAnswered).toBe(true));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+
+    expect(addLine).not.toHaveBeenCalled();
+  });
+
+  it('cancels the pending poll timer on unmount instead of firing another request', async () => {
+    const queryClient = createTestQueryClient();
+    let polls = 0;
+    server.use(
+      http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:timer' } })),
+      http.get('/api/jobs/status', () => {
+        polls += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: { ...jobSnapshot('job:timer'), status: 'running', error: null },
+        });
+      }),
+    );
+    const { result, unmount } = renderHook(
+      () => useProcessing({ videos, addLine: vi.fn(), intervalMs: 200 }),
+      { wrapper: wrapperFor(queryClient) },
+    );
+    const video = videos[1];
+    if (video === undefined) throw new Error('Expected video fixture');
+
+    act(() => {
+      result.current.analyze(video);
+    });
+    await waitFor(() => expect(polls).toBe(1));
+
+    unmount();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 500);
+    });
+
+    expect(polls).toBe(1);
+  });
+});

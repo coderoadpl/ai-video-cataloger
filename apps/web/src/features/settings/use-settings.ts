@@ -8,6 +8,7 @@ import { actions } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
+import { useMountGuard } from '../../components/ui/use-mount-guard.js';
 import {
   analyzerCredentialRef,
   changedKeys,
@@ -69,6 +70,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const setCredential = useMutation(actions.setCredential);
   const deleteCredential = useMutation(actions.deleteCredential);
 
+  const guard = useMountGuard();
   const [draft, setDraftState] = useState<SettingsDraft | null>(null);
   const [original, setOriginal] = useState<SettingsDraft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -122,13 +124,15 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setForgetCredentialNotice(null);
       try {
         const deletion = await deleteCredential.mutateAsync({ providerId: credentialRef });
+        if (!guard.isMounted()) return;
         setForgetCredentialNotice(credentialDeletionNotice(dictionary, deletion));
         await queryClient.invalidateQueries();
       } catch (error) {
+        if (!guard.isMounted()) return;
         setForgetCredentialNotice({ message: apiErrorMessage(error, dictionary), severity: 'error' });
       }
     })();
-  }, [credentialRef, deleteCredential, dictionary, queryClient]);
+  }, [credentialRef, deleteCredential, dictionary, queryClient, guard]);
 
   const save = useCallback(() => {
     if (draft === null || original === null || folder === null) return;
@@ -152,7 +156,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           }
         } catch (error) {
           allOk = false;
-          setSaveError(apiErrorMessage(error, dictionary));
+          if (guard.isMounted()) setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       if (
@@ -165,23 +169,24 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
             credential: apiCredential,
           });
           savedCredentialBackend = stored.backend;
-          setApiCredential('');
+          if (guard.isMounted()) setApiCredential('');
         } catch (error) {
           allOk = false;
-          setSaveError(apiErrorMessage(error, dictionary));
+          if (guard.isMounted()) setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       if (whisperApiCredential.length > 0 && draft.whisper_mode === 'api') {
         try {
           const stored = await setCredential.mutateAsync({ providerId: 'openai', credential: whisperApiCredential });
           savedCredentialBackend = stored.backend;
-          setWhisperApiCredential('');
+          if (guard.isMounted()) setWhisperApiCredential('');
         } catch (error) {
           allOk = false;
-          setSaveError(apiErrorMessage(error, dictionary));
+          if (guard.isMounted()) setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       clearTimeout(slowHint);
+      if (!guard.isMounted()) return;
       setIsSaving(false);
       setIsSaveSlow(false);
       if (!allOk) return;
@@ -207,6 +212,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     setCredential,
     unsetConfig,
     whisperApiCredential,
+    guard,
   ]);
 
   const hasChanges =

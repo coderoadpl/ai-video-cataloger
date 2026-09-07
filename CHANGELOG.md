@@ -37,6 +37,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.
 - The release walkthrough captures its tree-expand screenshot while the whole-tree scope is still expanded, restoring the folder scope only after the frame is on disk.
 - Packaged-CLI verification no longer fails when a `doctor` analyzer probe times out; that stderr line is now recognized as benign.
+- Background job polling, log lines, and query invalidation for processing, wizard, people, photos-analysis, settings, and local-model views now stop as soon as the view unmounts instead of continuing against a torn-down surface.
 - Typing in the Kolekcja search field no longer stalls on a large library: the full-text collection query pages in SQL and keeps the full-text scan as the outer loop, the tag suggestion list is a single aggregate, the people facet counts from the face observation summary instead of every face embedding, and the grid and filter bar no longer re-render per keystroke.
 - Kolekcja tiles now keep one fixed square box: thumbnails always fill it, a skeleton holds the box until the image loads, a failed thumbnail shows a labelled "Miniatura niedostępna" placeholder instead of the browser's broken-image fallback, the first page paints skeleton tiles instead of an empty area, a refetch keeps the previous tiles under a busy bar, and videos are marked by a badge rather than by tile shape.
 

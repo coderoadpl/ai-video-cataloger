@@ -12,6 +12,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import {
   cancel as cancelJob,
   emptyDriveCounts,
@@ -149,6 +150,8 @@ export const useProcessing = ({
   checkReadiness,
   onVideoRenamed,
 }: UseProcessingOptions): ProcessingState => {
+  const guard = useMountGuard();
+  const log = useGuardedCallback(guard, addLine);
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const process = useMutation(processVideo);
@@ -191,10 +194,10 @@ export const useProcessing = ({
       if (!cancelRequestedRef.current) return;
       cancelRequestedRef.current = false;
       void cancelAsync({ jobId }).catch((error: unknown) => {
-        addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+        log(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
       });
     },
-    [addLine, cancelAsync, dictionary],
+    [log, cancelAsync, dictionary],
   );
 
   const runVideo = useCallback(
@@ -208,7 +211,7 @@ export const useProcessing = ({
         jobId = accepted.jobId;
       } catch (error) {
         const message = messageOf(error);
-        addLine(dictionary.processing.error(message), 'error');
+        log(dictionary.processing.error(message), 'error');
         return { success: false, error: message };
       }
 
@@ -220,15 +223,17 @@ export const useProcessing = ({
           delay: sleep,
           fetchJob: (id) => queryClient.fetchQuery(jobQuery({ jobId: id })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          shouldStop: () => !guard.isMounted(),
+          signal: guard.signal(),
           onSnapshot: (job) => {
-            if (job.progress === null) return;
+            if (!guard.isMounted() || job.progress === null) return;
             const model = toProgressModel(job.progress);
             const view: ProgressView = { ...model, stepLabel: stepLabel(dictionary, model.step) };
             setProgress(view);
             const key = `${view.step}:${String(view.percentage)}`;
             if (key !== lastProgressKeyRef.current) {
               lastProgressKeyRef.current = key;
-              addLine(dictionary.processing.progressLine(view.percentage, view.stepLabel), 'info', {
+              log(dictionary.processing.progressLine(view.percentage, view.stepLabel), 'info', {
                 raw: job.progress,
               });
             }
@@ -236,16 +241,16 @@ export const useProcessing = ({
         });
         switch (final.status) {
           case 'completed': {
-            addLine(dictionary.processing.analysisCompleted(video.filename), 'success');
+            log(dictionary.processing.analysisCompleted(video.filename), 'success');
             const completedPath = completedVideoPath(final.result);
             return { success: true, ...(completedPath === null ? {} : { completedPath }) };
           }
           case 'cancelled':
-            addLine(dictionary.processing.cancelledByUser, 'info');
+            log(dictionary.processing.cancelledByUser, 'info');
             return { success: false, error: dictionary.processing.cancelledByUser };
           case 'failed': {
             const message = final.error?.message ?? dictionary.processing.processingFailed;
-            addLine(dictionary.processing.error(message), 'error', { raw: final.error });
+            log(dictionary.processing.error(message), 'error', { raw: final.error });
             return { success: false, error: message };
           }
           case 'queued':
@@ -254,19 +259,19 @@ export const useProcessing = ({
         }
       } catch (error) {
         const message = messageOf(error);
-        addLine(dictionary.processing.error(message), 'error');
+        log(dictionary.processing.error(message), 'error');
         return { success: false, error: message };
       } finally {
         activeJobIdRef.current = null;
       }
     },
-    [processAsync, queryClient, addLine, intervalMs, dictionary, applyPendingCancel],
+    [processAsync, queryClient, log, intervalMs, dictionary, applyPendingCancel, guard],
   );
 
   const analyze = useCallback(
     (video: ProcessVideo, options?: { force?: boolean }) => {
       if (busyRef.current) {
-        addLine(dictionary.processing.analysisBusy, 'info');
+        log(dictionary.processing.analysisBusy, 'info');
         return;
       }
       busyRef.current = true;
@@ -274,14 +279,15 @@ export const useProcessing = ({
       cancelRequestedRef.current = false;
       void (async () => {
         if (checkReadiness !== undefined && !await checkReadiness()) {
-          addLine(dictionary.processing.setupIncomplete, 'error');
+          log(dictionary.processing.setupIncomplete, 'error');
           busyRef.current = false;
           return;
         }
         setAnalyzingPath(video.path);
-        addLine(dictionary.processing.startingAnalysis(video.filename), 'info');
+        log(dictionary.processing.startingAnalysis(video.filename), 'info');
         const outcome = await runVideo(video, options?.force ?? false);
         busyRef.current = false;
+        if (!guard.isMounted()) return;
         setAnalyzingPath(null);
         setProgress(null);
         if (outcome.completedPath !== undefined && outcome.completedPath !== video.path) {
@@ -290,14 +296,14 @@ export const useProcessing = ({
         await queryClient.invalidateQueries();
       })();
     },
-    [runVideo, addLine, queryClient, checkReadiness, dictionary, onVideoRenamed],
+    [runVideo, log, queryClient, checkReadiness, dictionary, onVideoRenamed, guard],
   );
 
   const batchAnalyze = useCallback(() => {
     if (busyRef.current) return;
     const pending = videosRef.current.filter((video) => isPending(video.status));
     if (pending.length === 0) {
-      addLine(dictionary.processing.noPendingVideos, 'info');
+      log(dictionary.processing.noPendingVideos, 'info');
       return;
     }
     busyRef.current = true;
@@ -305,15 +311,15 @@ export const useProcessing = ({
     cancelRequestedRef.current = false;
     void (async () => {
       if (checkReadiness !== undefined && !await checkReadiness()) {
-        addLine(dictionary.processing.setupIncomplete, 'error');
+        log(dictionary.processing.setupIncomplete, 'error');
         busyRef.current = false;
         return;
       }
-      addLine(dictionary.processing.batchStart(pending.length), 'info');
+      log(dictionary.processing.batchStart(pending.length), 'info');
       const results: BatchResultItem[] = [];
       for (const [index, video] of pending.entries()) {
         if (cancelBatchRef.current) {
-          addLine(
+          log(
             dictionary.processing.batchCancelled(index, pending.length),
             'info',
           );
@@ -325,12 +331,12 @@ export const useProcessing = ({
           currentFilename: video.filename,
         });
         if (video.duplicate != null) {
-          addLine(dictionary.processing.duplicateSkipped(video.filename), 'info');
+          log(dictionary.processing.duplicateSkipped(video.filename), 'info');
           results.push({ filename: video.filename, outcome: 'duplicate-skipped' });
           continue;
         }
         setAnalyzingPath(video.path);
-        addLine(dictionary.processing.batchProcessing(index + 1, pending.length, video.filename), 'info');
+        log(dictionary.processing.batchProcessing(index + 1, pending.length, video.filename), 'info');
         const outcome = await runVideo(video);
         results.push({
           filename: video.filename,
@@ -342,21 +348,22 @@ export const useProcessing = ({
       const successCount = results.filter((result) => result.outcome === 'analyzed').length;
       const failedCount = results.filter((result) => result.outcome === 'failed').length;
       const duplicateSkippedCount = results.filter((result) => result.outcome === 'duplicate-skipped').length;
-      addLine(dictionary.processing.batchComplete, 'info');
-      addLine(dictionary.processing.successCount(successCount), 'success');
+      log(dictionary.processing.batchComplete, 'info');
+      log(dictionary.processing.successCount(successCount), 'success');
       if (duplicateSkippedCount > 0) {
-        addLine(dictionary.processing.duplicateSkippedCount(duplicateSkippedCount), 'info');
+        log(dictionary.processing.duplicateSkippedCount(duplicateSkippedCount), 'info');
       }
-      if (failedCount > 0) addLine(dictionary.processing.failedCount(failedCount), 'error');
+      if (failedCount > 0) log(dictionary.processing.failedCount(failedCount), 'error');
 
       busyRef.current = false;
+      if (!guard.isMounted()) return;
       setAnalyzingPath(null);
       setProgress(null);
       setBatchProgress(null);
       await queryClient.invalidateQueries();
       setBatchSummary({ open: true, results });
     })();
-  }, [runVideo, addLine, queryClient, checkReadiness, dictionary]);
+  }, [runVideo, log, queryClient, checkReadiness, dictionary, guard]);
 
   const runDrive = useCallback(
     async (root: string): Promise<RunOutcome> => {
@@ -371,7 +378,7 @@ export const useProcessing = ({
         jobId = accepted.jobId;
       } catch (error) {
         const message = messageOf(error);
-        addLine(dictionary.processing.error(message), 'error');
+        log(dictionary.processing.error(message), 'error');
         return { success: false, error: message };
       }
 
@@ -385,14 +392,17 @@ export const useProcessing = ({
           delay: sleep,
           fetchJob: (id) => queryClient.fetchQuery(jobQuery({ jobId: id })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          shouldStop: () => !guard.isMounted(),
+          signal: guard.signal(),
           onSnapshot: (job) => {
+            if (!guard.isMounted()) return;
             for (const event of job.progressEvents) {
               if (rendered.has(event.sequence)) continue;
               rendered.add(event.sequence);
               const outcome = reduceDriveEvent(event.progress, counts);
               counts = outcome.counts;
               for (const message of outcome.messages) {
-                addLine(translateDriveMessage(dictionary, message), message.level, { raw: event.progress });
+                log(translateDriveMessage(dictionary, message), message.level, { raw: event.progress });
                 if (message.kind === 'runComplete') {
                   driveSummaryRef.current = {
                     foldersDone: message.foldersDone,
@@ -425,14 +435,14 @@ export const useProcessing = ({
         });
         switch (final.status) {
           case 'completed':
-            addLine(dictionary.processing.folderTreeCompleted, 'success');
+            log(dictionary.processing.folderTreeCompleted, 'success');
             return { success: true };
           case 'cancelled':
-            addLine(dictionary.processing.cancelledByUser, 'info');
+            log(dictionary.processing.cancelledByUser, 'info');
             return { success: false, error: dictionary.processing.cancelledByUser };
           case 'failed': {
             const message = final.error?.message ?? dictionary.processing.driveProcessingFailed;
-            addLine(dictionary.processing.error(message), 'error', { raw: final.error });
+            log(dictionary.processing.error(message), 'error', { raw: final.error });
             return { success: false, error: message };
           }
           case 'queued':
@@ -441,13 +451,13 @@ export const useProcessing = ({
         }
       } catch (error) {
         const message = messageOf(error);
-        addLine(dictionary.processing.error(message), 'error');
+        log(dictionary.processing.error(message), 'error');
         return { success: false, error: message };
       } finally {
         activeJobIdRef.current = null;
       }
     },
-    [processDriveAsync, queryClient, addLine, intervalMs, dictionary, applyPendingCancel],
+    [processDriveAsync, queryClient, log, intervalMs, dictionary, applyPendingCancel, guard],
   );
 
   const driveAnalyze = useCallback(
@@ -458,15 +468,16 @@ export const useProcessing = ({
       cancelRequestedRef.current = false;
       void (async () => {
         if (checkReadiness !== undefined && !await checkReadiness()) {
-          addLine(dictionary.processing.setupIncomplete, 'error');
+          log(dictionary.processing.setupIncomplete, 'error');
           busyRef.current = false;
           return;
         }
         setDriveActive(true);
         driveSummaryRef.current = null;
-        addLine(dictionary.processing.driveStart(root), 'info');
+        log(dictionary.processing.driveStart(root), 'info');
         const outcome = await runDrive(root);
         busyRef.current = false;
+        if (!guard.isMounted()) return;
         setDriveActive(false);
         setDriveProgress(null);
         setDriveFileProgress(null);
@@ -478,21 +489,21 @@ export const useProcessing = ({
         }
       })();
     },
-    [runDrive, addLine, queryClient, checkReadiness, dictionary],
+    [runDrive, log, queryClient, checkReadiness, dictionary, guard],
   );
 
   const driveCancel = useCallback(() => {
     const jobId = activeJobIdRef.current;
     if (jobId === null) {
       cancelRequestedRef.current = true;
-      addLine(dictionary.processing.cancelWillApplyOnStart, 'info');
+      log(dictionary.processing.cancelWillApplyOnStart, 'info');
       return;
     }
-    addLine(dictionary.processing.stoppingDrive, 'info');
+    log(dictionary.processing.stoppingDrive, 'info');
     void cancelAsync({ jobId }).catch((error: unknown) => {
-      addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+      log(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
     });
-  }, [addLine, cancelAsync, dictionary]);
+  }, [log, cancelAsync, dictionary]);
 
   const requestCancel = useCallback(() => {
     pendingCancelIsBatchRef.current = false;
@@ -509,19 +520,19 @@ export const useProcessing = ({
     if (isBatch) cancelBatchRef.current = true;
     const jobId = activeJobIdRef.current;
     if (jobId !== null) {
-      addLine(
+      log(
         isBatch ? dictionary.processing.cancellingCurrentAndBatch : dictionary.processing.cancellingAnalysis,
         'info',
       );
       void cancelAsync({ jobId }).catch((error: unknown) => {
-        addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+        log(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
       });
     } else {
       cancelRequestedRef.current = true;
-      addLine(dictionary.processing.cancelWillApplyOnStart, 'info');
+      log(dictionary.processing.cancelWillApplyOnStart, 'info');
     }
     setCancelConfirmation({ open: false, isBatch });
-  }, [addLine, cancelAsync, dictionary]);
+  }, [log, cancelAsync, dictionary]);
 
   const closeCancelDialog = useCallback(() => {
     setCancelConfirmation((current) => ({ ...current, open: false }));
