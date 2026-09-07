@@ -1,9 +1,9 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -59,7 +59,7 @@ test.describe('Open Folder keeps the analysis medium already in use', () => {
       await expect(session.page.getByTestId('analysis-media-videos')).toHaveAttribute('aria-pressed', 'true');
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(pickedFolder, { recursive: true, force: true });
+      await removeTempDir(pickedFolder);
     }
   });
 
@@ -92,7 +92,7 @@ test.describe('Open Folder keeps the analysis medium already in use', () => {
       await expect(session.page.getByTestId('analysis-media-videos')).toHaveAttribute('aria-pressed', 'false');
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(pickedFolder, { recursive: true, force: true });
+      await removeTempDir(pickedFolder);
     }
   });
 });

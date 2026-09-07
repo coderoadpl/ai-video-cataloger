@@ -21,4 +21,5 @@ export interface PipelineDriver {
   analyzeAndCancel(filename: string, afterMs: number, options: AnalyzeOptions): Promise<void>;
   analyzeAll(options: AnalyzeOptions): Promise<BatchOutcome>;
   close(): Promise<void>;
+  isClosed(): boolean;
 }

@@ -1,10 +1,10 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { cachedWhisperModelPath, isolatedHome } from './helpers.js';
+import { cachedWhisperModelPath, isolatedHome, removeTempDir } from './helpers.js';
 
 const roots: string[] = [];
 
@@ -56,5 +56,39 @@ describe('e2e home isolation helpers', () => {
     const home = isolatedHome(workdir);
 
     expect(existsSync(join(home, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'))).toBe(false);
+  });
+});
+
+describe('removeTempDir', () => {
+  afterEach(() => {
+    for (const root of roots) {
+      chmodSync(root, 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
+    roots.length = 0;
+  });
+
+  it('removes a directory that is still busy on the first attempt', async () => {
+    const parent = tempRoot('avc-remove-retry-');
+    const target = join(parent, 'workdir');
+    mkdirSync(target);
+    writeFileSync(join(target, 'catalog.db'), 'x');
+    chmodSync(parent, 0o500);
+    setTimeout(() => {
+      chmodSync(parent, 0o700);
+    }, 0);
+
+    await removeTempDir(target);
+
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it('fails loudly when the directory stays unremovable', async () => {
+    const parent = tempRoot('avc-remove-stuck-');
+    const target = join(parent, 'workdir');
+    mkdirSync(target);
+    chmodSync(parent, 0o500);
+
+    await expect(removeTempDir(target)).rejects.toThrow();
   });
 });

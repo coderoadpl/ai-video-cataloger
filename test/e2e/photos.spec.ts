@@ -1,11 +1,11 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { REAL_JPEG_BLUE_LARGE, REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { systemOllamaModelMissingReason } from './matrix-support.js';
 
 interface Session {
@@ -108,7 +108,7 @@ test.describe('Current-folder photos analysis', () => {
       }
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(folder, { recursive: true, force: true });
+      await removeTempDir(folder);
     }
   });
 });
