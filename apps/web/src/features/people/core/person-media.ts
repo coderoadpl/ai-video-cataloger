@@ -63,20 +63,31 @@ export const observationCountLabel = (
   }
 };
 
+export interface PersonFileTotals {
+  observationCount: number;
+  fileCounts: {
+    video: number;
+    photo: number;
+  };
+}
+
+export const personTotalsLabel = (labels: PeopleCountLabels, person: PersonFileTotals): string => {
+  const parts = [
+    ...(person.fileCounts.video > 0 ? [labels.videoFileCount(person.fileCounts.video)] : []),
+    ...(person.fileCounts.photo > 0 ? [labels.photoFileCount(person.fileCounts.photo)] : []),
+  ];
+  return parts.length === 0 ? labels.observationCount(person.observationCount) : parts.join(' · ');
+};
+
 export const personFileCountLabel = (
   labels: PeopleCountLabels,
   person: PersonMediaFiles,
   medium: PeopleMedia,
 ): string => {
-  const parts = [
-    ...(medium === 'all' || medium === 'video'
-      ? person.fileCounts.video > 0 ? [labels.videoFileCount(person.fileCounts.video)] : []
-      : []),
-    ...(medium === 'all' || medium === 'photo'
-      ? person.fileCounts.photo > 0 ? [labels.photoFileCount(person.fileCounts.photo)] : []
-      : []),
-  ];
-  return parts.length === 0 ? observationCountLabel(labels, person, medium) : parts.join(' · ');
+  if (medium === 'all') return personTotalsLabel(labels, person);
+  const count = medium === 'video' ? person.fileCounts.video : person.fileCounts.photo;
+  const label = medium === 'video' ? labels.videoFileCount : labels.photoFileCount;
+  return count > 0 ? label(count) : observationCountLabel(labels, person, medium);
 };
 
 export const totalFileCount = (person: PersonMediaFiles): number =>

@@ -64,7 +64,9 @@ import {
   type PeopleMedia,
   type PeopleSort,
 } from './core/index.js';
+import { PairReview } from './PairReview.js';
 import { type FacePerson, type FacesReclusterReport, usePeople } from './use-people.js';
+import { usePeoplePairs } from './use-people-pairs.js';
 
 export interface PersonMediaRequest {
   personId: string;
@@ -150,6 +152,7 @@ export const PeopleView = ({
   const guard = useMountGuard();
   const log = useGuardedCallback(guard, addLine);
   const people = usePeople({ active, folder, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
+  const pairs = usePeoplePairs({ enabled: active && people.facesEnabled === true });
   const mutationsBlocked = lockReason !== undefined;
   const [rename, setRename] = useState<RenameState | null>(null);
   const [forgetTarget, setForgetTarget] = useState<FacePerson | null>(null);
@@ -161,6 +164,7 @@ export const PeopleView = ({
   const [sort, setSortState] = useState<PeopleSort>(() => readPeopleSort());
   const [minObservations, setMinObservationsState] = useState<PeopleMinObservations>(() => readPeopleMinObservations());
   const [foldedOpen, setFoldedOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [openPerson, setOpenPerson] = useState<{ personId: string; label: string } | null>(null);
   const [libraryAction, setLibraryAction] = useState<PersonLibraryAction | null>(null);
   const [trashChecked, setTrashChecked] = useState(false);
@@ -395,6 +399,22 @@ export const PeopleView = ({
                 </Typography>
               ) : null}
             </Box>
+            {pairs.pending === 0 ? null : (
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={people.isBusy || mutationsBlocked}
+                title={lockReason}
+                onClick={() => {
+                  setFoldedOpen(false);
+                  setReviewOpen(true);
+                  pairs.openSession();
+                }}
+                data-testid="people-pair-review-open"
+              >
+                {dictionary.people.pairReviewOpen(pairs.pending)}
+              </Button>
+            )}
           </>
         )}
       >
@@ -477,6 +497,24 @@ export const PeopleView = ({
           action={null}
           testId="people-empty-state"
         />
+      ) : reviewOpen ? (
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setReviewOpen(false)}
+              data-testid="people-back-main"
+            >
+              {dictionary.people.backToMainPeople}
+            </Button>
+          </Box>
+          <PairReview
+            state={pairs}
+            disabled={people.isBusy || mutationsBlocked}
+            lockReason={lockReason}
+          />
+        </>
       ) : (
         <>
           {foldedOpen ? (

@@ -24,6 +24,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
 
+- Osoby has a "Ta sama osoba?" review view: two people side by side with contact sheets, answered with Tak / Nie / Pomiń or the keys 1 / 2 / 3, undone with Backspace, and a header badge showing how many questions are pending.
+
+- Ustawienia can set how eagerly Osoby proposes people to compare (Ostrożnie / Standardowo / Szeroko).
+
+- `pnpm run test:e2e:people-pairs` drives the review surface with real clicks and keystrokes over a real faces pass and asserts the decisions survive a relaunch.
+
 ### Fixed
 
 - The person hide and trash dialogs describe the person’s whole set of files and state separately how many files the action will touch, so skipping shared files no longer produces a self-contradicting count.

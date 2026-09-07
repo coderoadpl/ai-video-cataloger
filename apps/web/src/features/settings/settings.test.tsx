@@ -763,6 +763,59 @@ describe('settings modal', () => {
     expect(bodies).toEqual([{ key: 'faces_enabled', value: 'true' }]);
   });
 
+  it('keeps the pair review scope a draft until the modal is saved', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { folder?: string | undefined; key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    const onClose = vi.fn();
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
+
+    expect(await screen.findByText(en.settingsModal.facesPairScopeLabel)).toBeDefined();
+    fireEvent.click(screen.getByTestId('settings-faces-pair-scope-wide'));
+    expect(bodies).toEqual([]);
+
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(bodies).toEqual([{ key: 'faces_pair_scope', value: 'wide' }]);
+  });
+
+  it('writes nothing when a picked pair review scope is cancelled', async () => {
+    const bodies: unknown[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'unexpected write' } }, { status: 500 });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByTestId('settings-faces-pair-scope-wide'));
+    fireEvent.click(screen.getByTestId('settings-cancel'));
+
+    expect(bodies).toEqual([]);
+  });
+
+  it('reflects the persisted pair review scope on mount', async () => {
+    stubEndpoints({ ...emptyConfig, faces_pair_scope: 'careful' });
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const careful = await screen.findByTestId('settings-faces-pair-scope-careful');
+    expect(careful.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('settings-faces-pair-scope-standard').getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('saves the UI language globally so the switch applies and persists', async () => {
     const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
     const bodies: { folder?: string | undefined; key: string; value: string }[] = [];

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { selectExemplars, type ExemplarCandidate, type FaceObservationSummary } from './faces.js';
 
 export const peoplePairDecisionKindSchema = z.enum(['same', 'different', 'skip']);
+export type PeoplePairDecisionKind = z.output<typeof peoplePairDecisionKindSchema>;
 export const peoplePairDecisionSourceSchema = z.enum(['user', 'import']);
 export const peoplePairDecisionSchema = z.object({
   obsAId: z.string().min(1),

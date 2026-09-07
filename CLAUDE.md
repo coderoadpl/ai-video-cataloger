@@ -133,6 +133,13 @@ specs testing the CLI surface itself are exempt. Reference:
   GUI drivers use) to prove the picked folder lands in the analysis view on the
   medium already in use — videos from a fresh install, photos from a
   photos-analysis session; outside `check` and `smoke`.
+- `pnpm run test:e2e:people-pairs` = builds Electron and drives the real
+  "Ta sama osoba?" review surface over a real faces pass: it needs a folder of
+  photos in `E2E_FACES_PAIR_SAMPLES` that the conservative cut splits into at
+  least two reviewable pairs, enables faces and the wide review scope through
+  the real Ustawienia controls, answers with the `1`/`2`/`3` keys, undoes with
+  `Backspace`, and relaunches the app to prove the decisions outlived it;
+  outside `check` and `smoke`.
 - `pnpm run test:e2e:library-hide-trash` = builds Electron and drives the real
   Kolekcja hide, restore and move-to-Trash controls over seeded analysis
   fixtures in an isolated home, with the native Trash call stubbed only in the

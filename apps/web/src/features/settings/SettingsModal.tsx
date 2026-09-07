@@ -15,6 +15,8 @@ import {
   Select,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 
@@ -341,6 +343,29 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               />
               <Typography variant="caption">
                 {dictionary.settingsModal.facesHelper}
+              </Typography>
+              <Typography variant="caption">{dictionary.settingsModal.facesPairScopeLabel}</Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={draft.faces_pair_scope}
+                onChange={(_event, next: SettingsDraft['faces_pair_scope'] | null) => {
+                  if (next !== null) patch({ faces_pair_scope: next });
+                }}
+                data-testid="settings-faces-pair-scope"
+              >
+                <ToggleButton value="careful" data-testid="settings-faces-pair-scope-careful">
+                  {dictionary.settingsModal.facesPairScopeCareful}
+                </ToggleButton>
+                <ToggleButton value="standard" data-testid="settings-faces-pair-scope-standard">
+                  {dictionary.settingsModal.facesPairScopeStandard}
+                </ToggleButton>
+                <ToggleButton value="wide" data-testid="settings-faces-pair-scope-wide">
+                  {dictionary.settingsModal.facesPairScopeWide}
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <Typography variant="caption">
+                {dictionary.settingsModal.facesPairScopeHelper}
               </Typography>
             </Box>
 
