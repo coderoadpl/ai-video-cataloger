@@ -109,6 +109,7 @@ const defaultSources = (): Record<ConfigKey, ConfigValueSource> => ({
   local_model: 'default',
   analyzer_provider: 'default',
   faces_enabled: 'default',
+  faces_pair_scope: 'default',
   gemini_batch_mode: 'default',
   gemini_monthly_budget_usd: 'default',
   output_language: 'default',

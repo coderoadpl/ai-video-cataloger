@@ -14,6 +14,7 @@ import {
   planExemplarBackfill,
   faceCropFileName,
   selectDisplayedExemplars,
+  pairDecisionIsActive,
   totalsByPerson,
   appError,
   ok,
@@ -86,6 +87,10 @@ export interface FacesExemplarsOutput {
 }
 
 export interface FacesReclusterOutput {
+  constraintsApplied: { mustLink: number; cannotLink: number };
+  constraintConflicts: number;
+  constraintsStale: number;
+  nameConflicts: number;
   dryRun: boolean;
   observations: number;
   personsBefore: number;
@@ -249,7 +254,12 @@ export const runFacesReclusterPass = async (
     quality: observation.quality,
     boxPx: Math.min(observation.bbox.width, observation.bbox.height),
   }));
-  const steps = clusterFaceObservationSteps(clusterInputs);
+  const decisions = await deps.globalCatalog.listPeoplePairDecisions();
+  if (!decisions.ok) return decisions;
+  const active = decisions.value.filter((d) => pairDecisionIsActive(d, new Date().toISOString()));
+  const mustLink: [string, string][] = active.filter((d) => d.decision === 'same').map((d) => [d.obsAId, d.obsBId]);
+  const cannotLink: [string, string][] = active.filter((d) => d.decision === 'different').map((d) => [d.obsAId, d.obsBId]);
+  const steps = clusterFaceObservationSteps(clusterInputs, { constraints: { mustLink, cannotLink } });
   let step = steps.next();
   let lastYield = Date.now();
   while (!step.done) {
@@ -268,15 +278,40 @@ export const runFacesReclusterPass = async (
   const postCancellation = cancelled(progress);
   if (!postCancellation.ok) return postCancellation;
 
-  const namesDropped = peopleBefore.value
-    .map((person) => person.displayName)
-    .filter((displayName): displayName is string => displayName !== null)
-    .sort();
+  const namedPeople = new Map(peopleBefore.value.filter((p) => p.displayName !== null).map((p) => [p.personId, p]));
+  const oldMembers = new Map<string, string[]>();
+  const oldOwners = new Map(observations.value.map((o) => [o.obsId, o.personId]));
+  for (const observation of observations.value) {
+    if (observation.personId === null) continue;
+    const members = oldMembers.get(observation.personId) ?? [];
+    members.push(observation.obsId);
+    oldMembers.set(observation.personId, members);
+  }
+  const carried = new Set<string>();
+  const newNames = new Map<string, string>();
+  let nameConflicts = 0;
+  for (const cluster of outcome.clusters) {
+    const members = new Set(cluster.memberObsIds);
+    const owners = new Set(cluster.memberObsIds.flatMap((id) => {
+      const owner = oldOwners.get(id);
+      return owner == null ? [] : [owner];
+    }));
+    const namedOwners = [...owners].filter((id) => namedPeople.has(id));
+    if (namedOwners.length > 1) { nameConflicts += 1; continue; }
+    const owner = namedOwners[0];
+    if (owner === undefined || owners.size !== 1 || !(oldMembers.get(owner) ?? []).every((id) => members.has(id))) continue;
+    const name = namedPeople.get(owner)?.displayName;
+    if (name == null) continue;
+    carried.add(owner);
+    newNames.set(cluster.personId, name);
+  }
+  const namesDropped = [...namedPeople.values()].filter((p) => !carried.has(p.personId))
+    .flatMap((p) => p.displayName === null ? [] : [p.displayName]).sort();
 
   const nowIso = new Date().toISOString();
   const people: Person[] = outcome.clusters.map((cluster) => ({
     personId: cluster.personId,
-    displayName: null,
+    displayName: newNames.get(cluster.personId) ?? null,
     kind: 'face',
     createdAt: nowIso,
     centroid: cluster.centroid,
@@ -315,7 +350,11 @@ export const runFacesReclusterPass = async (
     observationsReassigned,
     observationsAssigned: outcome.clusters.reduce((sum, cluster) => sum + cluster.memberObsIds.length, 0),
     observationsUnassigned: outcome.unassignedObsIds.length,
-    namesCarried: 0,
+    constraintsApplied: outcome.constraintsApplied,
+    constraintConflicts: outcome.constraintConflicts,
+    constraintsStale: outcome.constraintsStale,
+    nameConflicts,
+    namesCarried: carried.size,
     namesDropped,
     personsWithoutExemplar,
     largestClusters: outcome.clusters
@@ -342,16 +381,17 @@ export const facesPeople = async (deps: FacesPeopleDeps): Promise<Result<{ peopl
   const hiddenPhotos = await deps.photos.listHiddenFingerprints();
   if (!hiddenPhotos.ok) return hiddenPhotos;
   const hidden = new Set([...hiddenVideos.value, ...hiddenPhotos.value]);
-  const totals = totalsByPerson(observations.value.filter((observation) => !hidden.has(observation.fingerprint)));
-  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
-  return ok({
-    people: people.value
-      .map((person, index) => personView(person, totals.get(person.personId), currentCatalogDir, index))
-      .filter((person) => person.observationCount > 0),
-  });
+  const visible = observations.value.filter((observation) => !hidden.has(observation.fingerprint));
+  return ok({ people: buildVisiblePeople(people.value, visible, deps.fs.dirname(deps.globalCatalog.databasePath())) });
 };
 
-const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
+export const buildVisiblePeople = (people: readonly Person[], observations: readonly FaceObservationSummary[], currentCatalogDir: string): FacePersonView[] => {
+  const totals = totalsByPerson(observations);
+  return people.map((person, index) => personView(person, totals.get(person.personId), currentCatalogDir, index))
+    .filter((person) => person.observationCount > 0);
+};
+
+export const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
   const acquired = await jobs.acquireResource('faces-write');
   if (!acquired.ok) return acquired;
   try {
@@ -379,7 +419,7 @@ export const facesName = async (
 export const facesMerge = async (
   deps: FacesDeps,
   input: { fromPersonId: string; toPersonId: string },
-): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
+): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> => withFaceMutation(deps.jobs, async () => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   if (input.fromPersonId === input.toPersonId) {
@@ -1346,7 +1386,7 @@ export const facesEnabled = async (
   return ok(enabled === 'true' || enabled === 'yes' || enabled === '1');
 };
 
-const ensureFacesEnabled = async (
+export const ensureFacesEnabled = async (
   deps: Pick<FacesDeps, 'config' | 'fs'>,
   folder?: string | undefined,
 ): Promise<Result<void, AppError>> => {

@@ -12,6 +12,7 @@ const CONFIG_KEYS = [
   'local_model',
   'analyzer_provider',
   'faces_enabled',
+  'faces_pair_scope',
   'gemini_batch_mode',
   'gemini_monthly_budget_usd',
   'output_language',

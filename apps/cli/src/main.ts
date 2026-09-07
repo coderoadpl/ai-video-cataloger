@@ -13,6 +13,8 @@ import {
   backupRestoreOutputSchema,
   facesIndexOutputSchema,
   facesReclusterOutputSchema,
+  facesPairsDecideInputSchema,
+  facesPairsInputSchema,
   gpsBackfillSummarySchema,
   libraryTrashSummaryOfDetails,
   libraryTrashSummarySchema,
@@ -60,7 +62,7 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
-import { runFromOptions } from './faces-benchmark.js';
+import { readLabelledPairs, runFromOptions } from './faces-benchmark.js';
 import {
   photosForgetHuman,
   photosGpsBackfillHuman,
@@ -1638,6 +1640,57 @@ tags
 
 const faces = program.command('faces').description('Index and manage people detected across the catalog');
 
+const facesPairs = faces.command('pairs').description('Review potentially duplicate people');
+
+facesPairs.command('list')
+  .option('--limit <n>', 'maximum number of pairs to return')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption & { limit?: string }) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'faces_pairs_list', async () => {
+      const input = facesPairsInputSchema.safeParse({ limit: options.limit });
+      return input.success ? api.facesPairs(input.data) : err(appError('validation', 'Invalid pair limit'));
+    }, (data) => {
+      const lines = data.candidates.map((pair, index) => {
+        const a = pair.a.displayName ?? `Person ${pair.a.fallbackIndex + 1}`;
+        const b = pair.b.displayName ?? `Person ${pair.b.fallbackIndex + 1}`;
+        return `${index + 1}. ${a} (${pair.a.observationCount}) / ${b} (${pair.b.observationCount}) — ${pair.similarity.toFixed(3)}${pair.aboveClusterCut ? ' [above cluster cut]' : ''}`;
+      });
+      return [...lines, `${data.pending} pending${data.truncated ? `; showing ${data.candidates.length}` : ''}`].join('\n');
+    });
+  });
+
+facesPairs.command('decide')
+  .argument('<personAId>')
+  .argument('<personBId>')
+  .argument('<decision>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (personAId: string, personBId: string, decision: string, options: JsonOption) => {
+    await runSimple(isJsonMode(options), 'faces_pairs_decide', async () => {
+      const input = facesPairsDecideInputSchema.safeParse({ personAId, personBId, decision });
+      return input.success ? api.facesPairsDecide(input.data) : err(appError('validation', 'Decision must be same, different or skip'));
+    }, (data) => `${data.decision}: ${data.personAId} / ${data.personBId}`
+      + (data.merge === null ? '' : `; survivor ${data.survivingPersonId ?? 'unassigned'}, ${data.merge.movedObservations} observations moved, ${data.merge.decisionsInvalidated} decisions invalidated`)
+      + `; ${data.pending} pending`);
+  });
+
+facesPairs.command('import')
+  .argument('<path>')
+  .option('--apply-merges', 'merge same pairs immediately', false)
+  .option('--dry-run', 'report without writing decisions or merging', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (filePath: string, options: JsonOption & { applyMerges?: boolean; dryRun?: boolean }) => {
+    await runSimple(isJsonMode(options), 'faces_pairs_import', async () => {
+      try {
+        const pairs = await readLabelledPairs(path.resolve(cliWorkingDirectory, filePath));
+        return await api.facesPairsImport({ pairs, applyMerges: options.applyMerges === true, dryRun: options.dryRun === true });
+      } catch {
+        return err(appError('validation', 'Invalid labelled-pairs corpus; expected native observation ids with same, different, unsure or not_face verdicts'));
+      }
+    }, (data) => `${data.imported} imported, ${data.skipped} skipped, ${data.unresolved} unresolved, ${data.alreadyTogether} already together, ${data.merges} merges, ${data.decisionsInvalidated} decisions invalidated`
+      + `\n${data.conflicting} conflicting pairs${data.dryRun ? '\nDry run; nothing written' : ''}`);
+  });
+
 faces
   .command('index')
   .argument('<root>')
@@ -1689,7 +1742,7 @@ faces
       json,
       'faces_merge',
       () => api.facesMerge({ fromPersonId, toPersonId }),
-      (data) => `Merged ${data.fromPersonId} into ${data.toPersonId} (${data.movedObservations} observations moved)`,
+      (data) => `Merged ${data.fromPersonId} into ${data.toPersonId} (${data.movedObservations} observations moved; ${data.decisionsInvalidated} decisions invalidated)`,
       { raw: true },
     );
   });
@@ -2205,7 +2258,9 @@ const facesReclusterHuman = (data: unknown): string => {
     : output.largestClusters.map((cluster) => `${cluster.personId}:${String(cluster.observations)}`).join(', ');
   return `Reclustered ${output.observations} observations: ${output.personsBefore} → ${output.personsAfter} people `
     + `(${output.observationsReassigned} reassigned, ${output.observationsUnassigned} unassigned), `
-    + `${output.namesDropped.length} names dropped, largest clusters: ${largest}`
+    + `${output.namesCarried} names carried, ${output.namesDropped.length} names dropped, ${output.nameConflicts} name conflicts, `
+    + `${output.constraintsApplied.mustLink} must-links, ${output.constraintsApplied.cannotLink} cannot-links, `
+    + `${output.constraintConflicts} constraint conflicts, ${output.constraintsStale} stale constraints, largest clusters: ${largest}`
     + (output.dryRun ? ' — dry run, nothing written' : '')
     + (output.personsWithoutExemplar > 0 ? ` — ${output.personsWithoutExemplar} people have no photo yet, run \`faces exemplars\`` : '');
 };
