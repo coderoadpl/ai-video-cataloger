@@ -886,7 +886,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>> {
-    return this.read((db, client) => {
+    return this.read((_db, client) => {
       const clauses = buildSearchFilterClauses(input.filters);
       const anchor = input.after ?? null;
 
@@ -921,15 +921,42 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         };
 
         if (input.sort === 'relevance') {
-          const ranked = client.exec(
-            `SELECT ${SEARCH_COLUMNS_UNMATCHED} ${matchFrom} WHERE ${where.sql}`,
-            matchParams,
-          );
-          const sorted = (ranked[0]?.values ?? [])
-            .map((row) => searchRowFromValues(row, input.rankingTerms))
-            .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName));
-          const page = sorted.slice(input.offset, input.offset + input.limit).map((row) => row.fingerprint);
-          return { total: sorted.length, rows: hydrate(page) };
+          if (input.limit === 0) {
+            const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${where.sql}`, matchParams);
+            return { total: numberValue(matchTotal[0]?.values[0]?.[0]), rows: [] };
+          }
+          const ranked = collectRankedFingerprints({
+            client,
+            sql: `SELECT
+                f.fingerprint,
+                f.file_name,
+                COALESCE(NULLIF(sd.final_name, ''), ''),
+                COALESCE(sd.description, ''),
+                COALESCE(sd.tags_text, ''),
+                COALESCE(sd.transcript, ''),
+                COALESCE(sd.place, '')
+              ${matchFrom}
+              WHERE ${where.sql}`,
+            params: matchParams,
+            maxRows: input.offset + input.limit,
+            rank: (row): RankedMatch => {
+              const fileName = stringValue(row[1]);
+              return {
+                fingerprint: stringValue(row[0]),
+                fileName,
+                score: weightedSearchScore({
+                  fileName,
+                  finalName: stringValue(row[2]),
+                  description: stringValue(row[3]),
+                  tagsText: stringValue(row[4]),
+                  transcript: stringValue(row[5]),
+                  place: stringValue(row[6]),
+                }, input.rankingTerms),
+              };
+            },
+            compare: compareCatalogRankedMatch,
+          });
+          return { total: ranked.total, rows: hydrate(ranked.fingerprints.slice(input.offset)) };
         }
 
         const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${where.sql}`, matchParams);
@@ -999,8 +1026,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
-    return this.read((db, client) => {
-      const totalFiles = db.select().from(files).where(isNull(files.hiddenAt)).all().length;
+    return this.read((_db, client) => {
+      const countResult = client.exec('SELECT COUNT(*) FROM files WHERE hidden_at IS NULL');
+      const totalFiles = numberValue(countResult[0]?.values[0]?.[0]);
       const result = client.exec(
         `SELECT
           f.fingerprint,
@@ -1895,7 +1923,27 @@ const migrate = (client: Database, backupDirectory: string): boolean => {
     db.insert(schemaMeta).values({ version: GLOBAL_CATALOG_SCHEMA_VERSION }).run();
     migrated = true;
   }
+  if (ensureCatalogCollectionIndexes(client)) migrated = true;
   return migrated;
+};
+
+const CATALOG_COLLECTION_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_files_collection_hidden_captured_desc ON files(hidden_at, (captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC)',
+  'CREATE INDEX IF NOT EXISTS idx_files_collection_visible_captured_desc ON files((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC) WHERE hidden_at IS NULL',
+  'CREATE INDEX IF NOT EXISTS idx_files_collection_only_hidden_captured_desc ON files((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC) WHERE hidden_at IS NOT NULL',
+  'CREATE INDEX IF NOT EXISTS idx_files_collection_all_captured_desc ON files((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC)',
+] as const;
+
+const ensureCatalogCollectionIndexes = (client: Database): boolean => {
+  const existing = new Set((client.exec("SELECT name FROM sqlite_master WHERE type = 'index'")[0]?.values ?? [])
+    .map((row) => stringValue(row[0])));
+  let changed = false;
+  for (const statement of CATALOG_COLLECTION_INDEXES) {
+    const name = statement.split(' ')[5] ?? '';
+    if (!existing.has(name)) changed = true;
+    client.run(statement);
+  }
+  return changed;
 };
 
 const backupAndDeleteImportedPhotoObservations = (client: Database, backupDirectory: string): void => {
@@ -2684,6 +2732,52 @@ const searchAfterClause = (
       + ` OR (f.captured_at = $afterCaptured AND ${nameTail}))))))`,
     params,
   };
+};
+
+interface RankedMatch {
+  fingerprint: string;
+  fileName: string;
+  score: number;
+}
+
+const compareCatalogRankedMatch = (left: RankedMatch, right: RankedMatch): number =>
+  right.score - left.score || left.fileName.localeCompare(right.fileName);
+
+const insertRankedMatch = (
+  matches: RankedMatch[],
+  match: RankedMatch,
+  maxRows: number,
+  compare: (left: RankedMatch, right: RankedMatch) => number,
+): void => {
+  const index = matches.findIndex((current) => compare(match, current) < 0);
+  if (index === -1) {
+    matches.push(match);
+  } else {
+    matches.splice(index, 0, match);
+  }
+  if (matches.length > maxRows) matches.pop();
+};
+
+const collectRankedFingerprints = (input: {
+  client: Database;
+  sql: string;
+  params: Record<string, SqlValue>;
+  maxRows: number;
+  rank: (row: SqlValue[]) => RankedMatch;
+  compare: (left: RankedMatch, right: RankedMatch) => number;
+}): { total: number; fingerprints: string[] } => {
+  const statement = input.client.prepare(input.sql, input.params);
+  const matches: RankedMatch[] = [];
+  let total = 0;
+  try {
+    while (statement.step()) {
+      total += 1;
+      if (input.maxRows > 0) insertRankedMatch(matches, input.rank(statement.get()), input.maxRows, input.compare);
+    }
+  } finally {
+    statement.free();
+  }
+  return { total, fingerprints: matches.map((match) => match.fingerprint) };
 };
 
 const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {

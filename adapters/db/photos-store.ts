@@ -591,8 +591,9 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   async listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>> {
-    return this.read((db, client) => {
-      const totalPhotos = db.select().from(photos).where(isNull(photos.hiddenAt)).all().length;
+    return this.read((_db, client) => {
+      const countResult = client.exec('SELECT COUNT(*) FROM photos WHERE hidden_at IS NULL');
+      const totalPhotos = numberValue(countResult[0]?.values[0]?.[0]);
       const result = client.exec(
         `SELECT
             p.fingerprint, p.file_name, p.gps_lat, p.gps_lon, p.missing_at, p.captured_at, p.thumb_state,
@@ -948,36 +949,54 @@ export class SqlJsPhotosStore implements PhotosStore {
     offset: number;
   }): Promise<Result<PhotoSearchRow[], AppError>> {
     return this.read((_db, client) => {
+      if (input.limit === 0) return [];
       const hiddenClause = photoHiddenWhereClause(input.hidden);
+      const matchFrom = `FROM photo_search_documents_fts
+          CROSS JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
+          CROSS JOIN photos p ON p.fingerprint = sd.fingerprint`;
+      const ranked = collectRankedFingerprints({
+        client,
+        sql: `SELECT
+            p.fingerprint, p.file_name, COALESCE(sd.tags_text, ''), COALESCE(sd.place, ''), COALESCE(NULLIF(sd.description, ''), '')
+          ${matchFrom}
+          WHERE photo_search_documents_fts MATCH $match${hiddenClause}`,
+        params: { $match: input.match },
+        maxRows: input.offset + input.limit,
+        rank: (row): RankedMatch => {
+          const fileName = stringValue(row[1]);
+          return {
+            fingerprint: stringValue(row[0]),
+            fileName,
+            score: photoSearchScore({
+              fileName,
+              tagsText: stringValue(row[2]),
+              place: stringValue(row[3]),
+              description: stringValue(row[4]),
+            }, input.rankingTerms),
+          };
+        },
+        compare: comparePhotoRankedMatch,
+      });
+      const page = ranked.fingerprints.slice(input.offset);
+      if (page.length === 0) return [];
+      const placeholders = page.map((_, index) => `$page${String(index)}`);
+      const pageParams = Object.fromEntries(page.map((fingerprint, index) => [`$page${String(index)}`, fingerprint]));
       const result = client.exec(
         `SELECT
-            p.fingerprint,
-            p.file_name,
-            p.current_path,
-            p.ext,
-            p.captured_at,
-            NULLIF(sd.description, ''),
-            snippet(photo_search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
-            sd.tags_text,
-            sd.place,
-            (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
-            p.thumb_state,
-            p.proxy_state,
-            p.missing_at
+            ${PHOTO_COLLECTION_COLUMNS_MATCHED}
           FROM photo_search_documents_fts
           CROSS JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
           CROSS JOIN photos p ON p.fingerprint = sd.fingerprint
-          WHERE photo_search_documents_fts MATCH $match${hiddenClause}`,
-        { $match: input.match },
+          WHERE photo_search_documents_fts MATCH $match AND p.fingerprint IN (${placeholders.join(', ')})`,
+        { $match: input.match, ...pageParams },
       );
-      return (result[0]?.values ?? [])
-        .map((row) => photoSearchRowFromValues(row, input.rankingTerms))
-        .sort((left, right) =>
-          right.score - left.score
-          || compareUtf8Bytes(left.row.fileName, right.row.fileName)
-          || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint))
-        .slice(input.offset, input.offset + input.limit)
-        .map((scored) => scored.row);
+      const byFingerprint = new Map((result[0]?.values ?? []).map((row) => {
+        const mapped = photoSearchRowFromValues(row, input.rankingTerms).row;
+        return [mapped.fingerprint, mapped];
+      }));
+      return page
+        .map((fingerprint) => byFingerprint.get(fingerprint))
+        .filter((row): row is PhotoSearchRow => row !== undefined);
     });
   }
 
@@ -1044,18 +1063,34 @@ export class SqlJsPhotosStore implements PhotosStore {
         };
 
         if (input.sort === 'relevance') {
-          const ranked = client.exec(
-            `SELECT ${PHOTO_COLLECTION_COLUMNS_UNMATCHED} ${matchFrom} WHERE ${matchWhere}`,
-            matchParams,
-          );
-          const sorted = (ranked[0]?.values ?? [])
-            .map((row) => photoSearchRowFromValues(row, input.rankingTerms))
-            .sort((left, right) =>
-              right.score - left.score
-              || compareUtf8Bytes(left.row.fileName, right.row.fileName)
-              || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint));
-          const page = sorted.slice(input.offset, input.offset + input.limit).map((entry) => entry.row.fingerprint);
-          return { total: sorted.length, rows: hydrate(page) };
+          if (input.limit === 0) {
+            const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${matchWhere}`, matchParams);
+            return { total: numberValue(matchTotal[0]?.values[0]?.[0]), rows: [] };
+          }
+          const ranked = collectRankedFingerprints({
+            client,
+            sql: `SELECT
+                p.fingerprint, p.file_name, COALESCE(sd.tags_text, ''), COALESCE(sd.place, ''), COALESCE(NULLIF(sd.description, ''), '')
+              ${matchFrom}
+              WHERE ${matchWhere}`,
+            params: matchParams,
+            maxRows: input.offset + input.limit,
+            rank: (row): RankedMatch => {
+              const fileName = stringValue(row[1]);
+              return {
+                fingerprint: stringValue(row[0]),
+                fileName,
+                score: photoSearchScore({
+                  fileName,
+                  tagsText: stringValue(row[2]),
+                  place: stringValue(row[3]),
+                  description: stringValue(row[4]),
+                }, input.rankingTerms),
+              };
+            },
+            compare: comparePhotoRankedMatch,
+          });
+          return { total: ranked.total, rows: hydrate(ranked.fingerprints.slice(input.offset)) };
         }
 
         const matchTotal = client.exec(`SELECT COUNT(*) ${matchFrom} WHERE ${matchWhere}`, matchParams);
@@ -1412,7 +1447,27 @@ const migrate = (client: Database): boolean => {
     db.insert(photosSchemaMeta).values({ version: PHOTOS_SCHEMA_VERSION }).run();
     migrated = true;
   }
+  if (ensurePhotoCollectionIndexes(client)) migrated = true;
   return migrated;
+};
+
+const PHOTO_COLLECTION_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_photos_collection_hidden_captured_desc ON photos(hidden_at, (captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC)',
+  'CREATE INDEX IF NOT EXISTS idx_photos_collection_visible_captured_desc ON photos((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC) WHERE hidden_at IS NULL',
+  'CREATE INDEX IF NOT EXISTS idx_photos_collection_only_hidden_captured_desc ON photos((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC) WHERE hidden_at IS NOT NULL',
+  'CREATE INDEX IF NOT EXISTS idx_photos_collection_all_captured_desc ON photos((captured_at IS NULL), captured_at DESC, file_name ASC, fingerprint ASC)',
+] as const;
+
+const ensurePhotoCollectionIndexes = (client: Database): boolean => {
+  const existing = new Set((client.exec("SELECT name FROM sqlite_master WHERE type = 'index'")[0]?.values ?? [])
+    .map((row) => stringValue(row[0])));
+  let changed = false;
+  for (const statement of PHOTO_COLLECTION_INDEXES) {
+    const name = statement.split(' ')[5] ?? '';
+    if (!existing.has(name)) changed = true;
+    client.run(statement);
+  }
+  return changed;
 };
 
 const runPhotosMigrationStatement = (client: Database, statement: string): void => {
@@ -2123,6 +2178,54 @@ const photoCollectionAfterClause = (
       + ` OR (p.captured_at = $afterCaptured AND ${nameTail}))))))`,
     params,
   };
+};
+
+interface RankedMatch {
+  fingerprint: string;
+  fileName: string;
+  score: number;
+}
+
+const comparePhotoRankedMatch = (left: RankedMatch, right: RankedMatch): number =>
+  right.score - left.score
+  || compareUtf8Bytes(left.fileName, right.fileName)
+  || compareUtf8Bytes(left.fingerprint, right.fingerprint);
+
+const insertRankedMatch = (
+  matches: RankedMatch[],
+  match: RankedMatch,
+  maxRows: number,
+  compare: (left: RankedMatch, right: RankedMatch) => number,
+): void => {
+  const index = matches.findIndex((current) => compare(match, current) < 0);
+  if (index === -1) {
+    matches.push(match);
+  } else {
+    matches.splice(index, 0, match);
+  }
+  if (matches.length > maxRows) matches.pop();
+};
+
+const collectRankedFingerprints = (input: {
+  client: Database;
+  sql: string;
+  params: Record<string, SqlValue>;
+  maxRows: number;
+  rank: (row: SqlValue[]) => RankedMatch;
+  compare: (left: RankedMatch, right: RankedMatch) => number;
+}): { total: number; fingerprints: string[] } => {
+  const statement = input.client.prepare(input.sql, input.params);
+  const matches: RankedMatch[] = [];
+  let total = 0;
+  try {
+    while (statement.step()) {
+      total += 1;
+      if (input.maxRows > 0) insertRankedMatch(matches, input.rank(statement.get()), input.maxRows, input.compare);
+    }
+  } finally {
+    statement.free();
+  }
+  return { total, fingerprints: matches.map((match) => match.fingerprint) };
 };
 
 const photoSearchScore = (
