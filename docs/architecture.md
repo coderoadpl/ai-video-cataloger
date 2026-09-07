@@ -1422,6 +1422,12 @@ decisions in one pass — the CLI parses the file and posts the parsed pairs, so
 the server never opens a caller-supplied path and the contract stays the only
 bridge.
 
+The composition owns a single cached queue keyed by a people-revision token
+covering the loaded people, observation projections, exemplar vectors, active
+decisions, scope and limit. Reads still load current evidence before comparing
+the token, so visibility changes and the exact skip-expiry boundary invalidate
+the cache without introducing a timer or a background job.
+
 **The rebuild reads the rows.** `faces recluster` is now a constrained
 clustering: `same` rows are must-link pairs pre-unioned before the
 agglomerative loop, `different` rows are cannot-link pairs that reject any

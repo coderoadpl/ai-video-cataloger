@@ -29,6 +29,8 @@ import {
   facesMerge,
   facesName,
   facesPeople,
+  facesPairs,
+  type FacesPairsCache,
   facesPurge,
   facesExemplars,
   facesRecluster,
@@ -170,6 +172,7 @@ export const handleUnhandledError: ErrorHandler = (error) =>
   );
 
 export const buildApp = (deps: AppDeps): Hono => {
+  const facesPairsCache: FacesPairsCache = { revision: null, output: null };
   const app = new Hono();
   const tracer = trace.getTracer('ai-video-cataloger');
   let pendingBackupConnect: AbortController | null = null;
@@ -787,6 +790,12 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.facesIndex.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesIndex.output);
     return respond(await withCatalogWriteLockForJob(deps, () => facesIndex(deps, input.value)), API_ROUTES.facesIndex.output);
+  });
+
+  app.get(API_ROUTES.facesPairs.path, async (context) => {
+    const input = parseInput(API_ROUTES.facesPairs.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.facesPairs.output);
+    return respond(await facesPairs(deps, input.value, facesPairsCache), API_ROUTES.facesPairs.output);
   });
 
   app.get(API_ROUTES.facesPeople.path, async () =>

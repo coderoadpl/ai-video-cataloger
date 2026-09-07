@@ -342,13 +342,14 @@ export const facesPeople = async (deps: FacesPeopleDeps): Promise<Result<{ peopl
   const hiddenPhotos = await deps.photos.listHiddenFingerprints();
   if (!hiddenPhotos.ok) return hiddenPhotos;
   const hidden = new Set([...hiddenVideos.value, ...hiddenPhotos.value]);
-  const totals = totalsByPerson(observations.value.filter((observation) => !hidden.has(observation.fingerprint)));
-  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
-  return ok({
-    people: people.value
-      .map((person, index) => personView(person, totals.get(person.personId), currentCatalogDir, index))
-      .filter((person) => person.observationCount > 0),
-  });
+  const visible = observations.value.filter((observation) => !hidden.has(observation.fingerprint));
+  return ok({ people: buildVisiblePeople(people.value, visible, deps.fs.dirname(deps.globalCatalog.databasePath())) });
+};
+
+export const buildVisiblePeople = (people: readonly Person[], observations: readonly FaceObservationSummary[], currentCatalogDir: string): FacePersonView[] => {
+  const totals = totalsByPerson(observations);
+  return people.map((person, index) => personView(person, totals.get(person.personId), currentCatalogDir, index))
+    .filter((person) => person.observationCount > 0);
 };
 
 const withFaceMutation = async <T>(jobs: JobsPort, operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
@@ -1346,7 +1347,7 @@ export const facesEnabled = async (
   return ok(enabled === 'true' || enabled === 'yes' || enabled === '1');
 };
 
-const ensureFacesEnabled = async (
+export const ensureFacesEnabled = async (
   deps: Pick<FacesDeps, 'config' | 'fs'>,
   folder?: string | undefined,
 ): Promise<Result<void, AppError>> => {

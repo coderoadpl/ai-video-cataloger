@@ -1035,6 +1035,11 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  facesPairs: (input: z.input<typeof API_ROUTES.facesPairs.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPairs.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(options, API_ROUTES.facesPairs.method, queryPath(API_ROUTES.facesPairs.path, [['limit', String(parsed.value.limit)]]), API_ROUTES.facesPairs.output, undefined, signal);
+  },
   facesPeople: (signal?: AbortSignal) =>
     request(
       options,

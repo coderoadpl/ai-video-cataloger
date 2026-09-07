@@ -225,6 +225,9 @@ usually arrive in minutes but the API allows up to 24 hours, and a run killed
 mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
+`config set faces_pair_scope careful|standard|wide` controls how eagerly Osoby
+proposes people to compare. This app-global setting defaults to `standard`.
+
 With `faces_enabled=true`, a completed `process-drive` run builds the people index
 itself: after the last folder is analysed it runs one face-indexing pass over the same
 root, emitting `faces_scanning` and `faces_done` NDJSON events and a `faces` block in

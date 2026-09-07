@@ -1571,6 +1571,19 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.write((db) => deleteDecisionsAnchoredOnObservations(db, obsIds));
   }
 
+  async listFaceObservationEmbeddings(obsIds: readonly string[]): Promise<Result<Map<string, Float32Array>, AppError>> {
+    return this.read((db) => {
+      const ids = z.array(z.string().min(1)).parse(obsIds);
+      const result = new Map<string, Float32Array>();
+      for (let offset = 0; offset < ids.length; offset += 500) {
+        const rows = db.select({ obsId: faceObservations.obsId, embedding: faceObservations.embedding }).from(faceObservations)
+          .where(inArray(faceObservations.obsId, ids.slice(offset, offset + 500))).all();
+        for (const row of rows) result.set(row.obsId, new Float32Array(z.array(z.number().finite()).length(128).parse(blobToEmbedding(row.embedding))));
+      }
+      return result;
+    });
+  }
+
   async listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
     return this.read((_db, client) => {
       const rows = client.exec(

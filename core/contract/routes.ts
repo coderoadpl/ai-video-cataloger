@@ -1,3 +1,4 @@
+import { PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, PAIR_REVIEW_CROPS_PER_PERSON } from '@core/domain/index.js';
 import { z } from 'zod';
 
 import {
@@ -1166,6 +1167,7 @@ export const storedConfigSchema = z.object({
   local_model: z.string().nullable(),
   analyzer_provider: z.string().nullable(),
   faces_enabled: z.string().nullable(),
+  faces_pair_scope: z.string().nullable(),
   gemini_batch_mode: z.string().nullable(),
   gemini_monthly_budget_usd: z.string().nullable(),
   output_language: z.string().nullable(),
@@ -1196,6 +1198,7 @@ export const storedConfigDefaultsSchema = z.object({
   local_model: z.string(),
   analyzer_provider: z.string(),
   faces_enabled: z.string(),
+  faces_pair_scope: z.string(),
   gemini_batch_mode: z.string(),
   gemini_monthly_budget_usd: z.string(),
   output_language: z.string(),
@@ -1226,6 +1229,7 @@ export const configValueSourcesSchema = z.object({
   local_model: z.enum(['folder', 'home', 'default']),
   analyzer_provider: z.enum(['folder', 'home', 'default']),
   faces_enabled: z.enum(['folder', 'home', 'default']),
+  faces_pair_scope: z.enum(['folder', 'home', 'default']),
   gemini_batch_mode: z.enum(['folder', 'home', 'default']),
   gemini_monthly_budget_usd: z.enum(['folder', 'home', 'default']),
   output_language: z.enum(['folder', 'home', 'default']),
@@ -2350,6 +2354,36 @@ export const facesPeopleOutputSchema = z.object({
   people: z.array(facePersonSchema),
 });
 
+export const facesPairsInputSchema = z.object({
+  limit: z.coerce.number().int().positive().max(PAIR_REVIEW_MAX_LIMIT).default(PAIR_REVIEW_DEFAULT_LIMIT),
+});
+export const facesPairPersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+  fallbackIndex: z.number().int().nonnegative(),
+  observationCount: z.number().int().nonnegative(),
+  fileCounts: z.object({ video: z.number().int().nonnegative(), photo: z.number().int().nonnegative() }).strict(),
+  cropPaths: z.array(z.string().min(1)).max(PAIR_REVIEW_CROPS_PER_PERSON),
+});
+export const facesPairCandidateSchema = z.object({
+  a: facesPairPersonSchema,
+  b: facesPairPersonSchema,
+  similarity: z.number(),
+  centroidSimilarity: z.number(),
+  bestObservationSimilarity: z.number(),
+  expectedValue: z.number(),
+  aboveClusterCut: z.boolean(),
+  survivorIfSame: z.string().min(1),
+});
+export const facesPairsOutputSchema = z.object({
+  scope: z.enum(['careful', 'standard', 'wide']),
+  askLow: z.number(),
+  clusterCut: z.number(),
+  pending: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  candidates: z.array(facesPairCandidateSchema),
+});
+
 export const facesNameInputSchema = z.object({
   personId: z.string().min(1),
   displayName: z.string().trim().min(1),
@@ -2672,6 +2706,7 @@ export const API_ROUTES = {
     output: translationImportOutputSchema,
   },
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
+  facesPairs: { method: 'GET', path: '/api/faces/pairs', input: facesPairsInputSchema, output: facesPairsOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
   facesMerge: { method: 'POST', path: '/api/faces/merge', input: facesMergeInputSchema, output: facesMergeOutputSchema },
@@ -2879,6 +2914,7 @@ export const API_PATHS = {
   variantsImportTranslation: API_ROUTES.variantsImportTranslation.path,
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
+  facesPairs: API_ROUTES.facesPairs.path,
   facesName: API_ROUTES.facesName.path,
   facesMerge: API_ROUTES.facesMerge.path,
   facesForget: API_ROUTES.facesForget.path,

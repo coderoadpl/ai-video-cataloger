@@ -2109,6 +2109,11 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
+  listFaceObservationEmbeddings(obsIds: readonly string[]): Promise<Result<Map<string, Float32Array>, AppError>> {
+    const ids = new Set(obsIds);
+    return Promise.resolve(ok(new Map([...this.faceObservations.values()].filter((o) => ids.has(o.obsId)).map((o) => [o.obsId, new Float32Array(o.embedding)]))));
+  }
+
   listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>> {
     return Promise.resolve(ok([...this.faceObservations.values()].map((observation) => ({
       obsId: observation.obsId,

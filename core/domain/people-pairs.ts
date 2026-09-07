@@ -100,6 +100,7 @@ const unitVector = (values: ArrayLike<number>): number[] => {
   return norm === 0 ? vector : vector.map((v) => v / norm);
 };
 const dot = (a: readonly number[], b: readonly number[]): number => {
+  if (a === b) return a.some((value) => value !== 0) ? 1 : 0;
   let sum = 0;
   for (let i = 0; i < a.length; i += 1) sum += (a[i] ?? 0) * (b[i] ?? 0);
   return Math.max(-1, Math.min(1, sum));
@@ -129,14 +130,23 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
     partners.add(right);
     excluded.set(left, partners);
   }
+  const vectors = new Map<string, number[]>();
+  const internVector = (values: ArrayLike<number>): number[] => {
+    const vector = unitVector(values);
+    const key = JSON.stringify(vector);
+    const existing = vectors.get(key);
+    if (existing !== undefined) return existing;
+    vectors.set(key, vector);
+    return vector;
+  };
   const people = input.people.filter((p) => p.observationCount > 0).sort((a, b) => compareId(a.personId, b.personId)).map((p) => {
     const obs = observations.get(p.personId) ?? [];
     return {
-      person: p, centroid: unitVector(p.centroid), weight: Math.log2(1 + p.observationCount),
-      exemplars: selectExemplars(obs).flatMap((o) => {
+      person: p, centroid: internVector(p.centroid), weight: Math.log2(1 + p.observationCount),
+      exemplars: [...new Set(selectExemplars(obs).flatMap((o) => {
         const vector = input.exemplarEmbeddings.get(o.obsId);
-        return vector === undefined ? [] : [unitVector(vector)];
-      }),
+        return vector === undefined ? [] : [internVector(vector)];
+      }))],
       side: {
         personId: p.personId, displayName: p.displayName, fallbackIndex: p.fallbackIndex,
         observationCount: p.observationCount, fileCounts: p.fileCounts,

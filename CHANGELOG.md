@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `config set faces_pair_scope careful|standard|wide` tunes how eagerly Osoby proposes people to compare.
+
 ### Fixed
 
 - The person hide and trash dialogs describe the person’s whole set of files and state separately how many files the action will touch, so skipping shared files no longer produces a self-contradicting count.

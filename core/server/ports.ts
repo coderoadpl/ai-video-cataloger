@@ -797,6 +797,7 @@ export interface GlobalCatalogStore {
   deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>>;
   latestUserPeoplePairDecision(): Promise<Result<PeoplePairDecision | null, AppError>>;
   deletePeoplePairDecisionsForObservations(obsIds: readonly string[]): Promise<Result<void, AppError>>;
+  listFaceObservationEmbeddings(obsIds: readonly string[]): Promise<Result<Map<string, Float32Array>, AppError>>;
   listFaceObservationSummaries(): Promise<Result<FaceObservationSummary[], AppError>>;
   upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
   assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
