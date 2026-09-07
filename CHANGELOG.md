@@ -14,32 +14,49 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.30] - 2026-09-07
+
 ### Added
 
-- Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold.
-- "Scal wybrane" merges any number of selected people in one action, into the named person (or the largest one), naming the target in the confirmation and asking which name wins when several are named.
+- Osoby can fold rare unnamed people into one Inne tile with a persisted minimum-observation threshold
+  ([`cfe4236`](https://github.com/coderoadpl/ai-video-cataloger/commit/cfe42361592a43120cecdf95bc13ec53c13c8274)).
+- "Scal wybrane" merges any number of selected people in one action, into the named person (or the largest one), naming the target in the confirmation and asking which name wins when several are named
+  ([`40dab08`](https://github.com/coderoadpl/ai-video-cataloger/commit/40dab08dc7b83a7739bc29baa15e73f3e2fe3ba5)).
 
 ### Security
 
-- The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency.
+- The landing site builds on Next 16 with the fumadocs release that drops the vulnerable `image-size` transitive dependency
+  ([`814c557`](https://github.com/coderoadpl/ai-video-cataloger/commit/814c5572cab3e8bf9f3ef7c9e6f97de5f855d5e9)).
 
 ### Changed
 
-- Clicking a person card in Osoby now opens Kolekcja filtered by that person, with a removable "Osoba: <name>" chip; the file preview dialog moved to the card's overflow menu.
+- Clicking a person card in Osoby now opens Kolekcja filtered by that person, with a removable "Osoba: <name>" chip; the file preview dialog moved to the card's overflow menu
+  ([`285a94f`](https://github.com/coderoadpl/ai-video-cataloger/commit/285a94f6a6bb267d600be18560e699818dc6fb55)).
 
 ### Fixed
 
-- Osoby and the person-filtered Kolekcja page no longer scan every face observation per person, so a large library opens them without a long spinner.
-- Selecting a third person in Osoby no longer silently drops the first selection, so "Scal wybrane" can no longer merge two people the user did not intend.
-- Merging people keeps the display name when only the source side was named, persists the merge to disk immediately instead of waiting for the auto-flush timer, and reports a failed merge inline in the confirmation dialog while keeping the selection.
-- Doctor/setup analyzer probes no longer fail on a slow machine.
-- The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location.
-- Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename.
-- The release walkthrough captures its tree-expand screenshot while the whole-tree scope is still expanded, restoring the folder scope only after the frame is on disk.
-- Packaged-CLI verification no longer fails when a `doctor` analyzer probe times out; that stderr line is now recognized as benign.
-- Background job polling, log lines, and query invalidation for processing, wizard, people, photos-analysis, settings, and local-model views now stop as soon as the view unmounts instead of continuing against a torn-down surface.
-- Typing in the Kolekcja search field no longer stalls on a large library: the full-text collection query pages in SQL and keeps the full-text scan as the outer loop, the tag suggestion list is a single aggregate, the people facet counts from the face observation summary instead of every face embedding, and the grid and filter bar no longer re-render per keystroke.
-- Kolekcja tiles now keep one fixed square box: thumbnails always fill it, a skeleton holds the box until the image loads, a failed thumbnail shows a labelled "Miniatura niedostępna" placeholder instead of the browser's broken-image fallback, the first page paints skeleton tiles instead of an empty area, a refetch keeps the previous tiles under a busy bar, and videos are marked by a badge rather than by tile shape.
+- Osoby and the person-filtered Kolekcja page no longer scan every face observation per person, so a large library opens them without a long spinner
+  ([`285a94f`](https://github.com/coderoadpl/ai-video-cataloger/commit/285a94f6a6bb267d600be18560e699818dc6fb55)).
+- Selecting a third person in Osoby no longer silently drops the first selection, so "Scal wybrane" can no longer merge two people the user did not intend
+  ([`40dab08`](https://github.com/coderoadpl/ai-video-cataloger/commit/40dab08dc7b83a7739bc29baa15e73f3e2fe3ba5)).
+- Merging people keeps the display name when only the source side was named, persists the merge to disk immediately instead of waiting for the auto-flush timer, and reports a failed merge inline in the confirmation dialog while keeping the selection
+  ([`40dab08`](https://github.com/coderoadpl/ai-video-cataloger/commit/40dab08dc7b83a7739bc29baa15e73f3e2fe3ba5)).
+- Doctor/setup analyzer probes no longer fail on a slow machine
+  ([`8d47d65`](https://github.com/coderoadpl/ai-video-cataloger/commit/8d47d65db478fb7db198242c3b25ce9c0d7106b2)).
+- The photo metadata card no longer repeats the owner path in its "Także w" list, and hides that row for a photo stored in a single location
+  ([`7b9f04d`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b9f04da4b9c4c7e01501c9bd0a300b8d3e28b4e)).
+- Kolekcja labels the group of files without capture metadata "Bez daty nagrania" / "No recording date", so it no longer contradicts the mtime-derived date prefix in an analyzed video's filename
+  ([`7b9f04d`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b9f04da4b9c4c7e01501c9bd0a300b8d3e28b4e)).
+- The release walkthrough captures its tree-expand screenshot while the whole-tree scope is still expanded, restoring the folder scope only after the frame is on disk
+  ([`7b9f04d`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b9f04da4b9c4c7e01501c9bd0a300b8d3e28b4e)).
+- Packaged-CLI verification no longer fails when a `doctor` analyzer probe times out; that stderr line is now recognized as benign
+  ([`a6c518d`](https://github.com/coderoadpl/ai-video-cataloger/commit/a6c518dd71b306087cc78281e921f8f0da7fbbc3)).
+- Background job polling, log lines, and query invalidation for processing, wizard, people, photos-analysis, settings, and local-model views now stop as soon as the view unmounts instead of continuing against a torn-down surface
+  ([`6f3e8b9`](https://github.com/coderoadpl/ai-video-cataloger/commit/6f3e8b90570dbe80100f48c1e14815802b39ef47)).
+- Typing in the Kolekcja search field no longer stalls on a large library: the full-text collection query pages in SQL and keeps the full-text scan as the outer loop, the tag suggestion list is a single aggregate, the people facet counts from the face observation summary instead of every face embedding, and the grid and filter bar no longer re-render per keystroke
+  ([`6e9dcb4`](https://github.com/coderoadpl/ai-video-cataloger/commit/6e9dcb44e54a11da889f3e23451cd2fc97c072b7)).
+- Kolekcja tiles now keep one fixed square box: thumbnails always fill it, a skeleton holds the box until the image loads, a failed thumbnail shows a labelled "Miniatura niedostępna" placeholder instead of the browser's broken-image fallback, the first page paints skeleton tiles instead of an empty area, a refetch keeps the previous tiles under a busy bar, and videos are marked by a badge rather than by tile shape
+  ([`f98153d`](https://github.com/coderoadpl/ai-video-cataloger/commit/f98153dc6571a8d9022af445be38ce1b1a5dee42)).
 
 ## [0.6.29] - 2026-09-04
 
