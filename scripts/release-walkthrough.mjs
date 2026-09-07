@@ -285,6 +285,7 @@ const isolatedEnvironment = (plan, fakeDrive) => ({
   AVC_HOME_DIRECTORY: plan.homeDir,
   USERPROFILE: plan.homeDir,
   AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
+  AVC_WINDOW_INACTIVE: '1',
   AI_VIDEO_CATALOGER_USER_DATA_DIR: plan.userDataDir,
   AVC_GOOGLE_DRIVE_BASE_URL: fakeDrive.driveBaseUrl,
   AVC_GOOGLE_UPLOAD_BASE_URL: fakeDrive.uploadBaseUrl,

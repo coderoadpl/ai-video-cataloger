@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Automated launches driven by the e2e suites and the release walkthrough set `AVC_WINDOW_INACTIVE=1`, which opens the app window inactive and off the macOS Dock so a long gate run never takes keyboard focus; a normal launch is unaffected.
+
 ### Fixed
 
 - The person hide and trash dialogs describe the person’s whole set of files and state separately how many files the action will touch, so skipping shared files no longer produces a self-contradicting count.
