@@ -1,5 +1,5 @@
 import { test as base, expect } from '@playwright/test';
-import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -18,6 +18,7 @@ import {
   parseScanOutput,
   parseStatusOutput,
   readCatalog,
+  removeTempDir,
   revertRenames,
   runCli,
   type CliResult,
@@ -75,10 +76,12 @@ const test = base.extend<Fixtures>({
     await use(driver);
     await driver.close();
   },
-  workdir: async ({}, use, testInfo) => {
+  workdir: async ({ driver }, use, testInfo) => {
     const dir = makeEmptyWorkdir(testInfo.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 40));
     await use(dir);
-    rmSync(dir, { recursive: true, force: true });
+    await driver.close();
+    expect(driver.isClosed(), 'the driver must be closed before its workdir is removed').toBe(true);
+    await removeTempDir(dir);
   },
 });
 

@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +7,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/ind
 import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
 import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, makeWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, makeWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { SAMPLES } from './samples.js';
 
 interface Session {
@@ -331,7 +331,7 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       await expect(session.page.getByTestId('browse-preview')).toHaveCount(0);
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 
@@ -360,7 +360,7 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       await expect(photo).toBeVisible({ timeout: 20_000 });
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 
@@ -388,7 +388,7 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       await expect(unavailable).toBeVisible({ timeout: 20_000 });
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 
@@ -432,7 +432,7 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       await expect(viewer).toHaveCount(0, { timeout: 15_000 });
     } finally {
       await session.app.close().catch(() => undefined);
-      rmSync(workdir, { recursive: true, force: true });
+      await removeTempDir(workdir);
     }
   });
 });

@@ -1,5 +1,5 @@
 import { _electron as electron, expect, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,6 +9,7 @@ import {
   REPO_ROOT,
   addSampleTo,
   readCatalog,
+  removeTempDir,
   runCli,
   stubOpenDialog,
 } from './helpers.js';
@@ -138,8 +139,8 @@ test(CELL, { tag: '@gui' }, async () => {
     }
   } finally {
     await app.close().catch(() => undefined);
-    rmSync(root, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-    rmSync(userData, { recursive: true, force: true });
+    await removeTempDir(root);
+    await removeTempDir(home);
+    await removeTempDir(userData);
   }
 });
