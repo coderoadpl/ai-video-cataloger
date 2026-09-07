@@ -6,7 +6,7 @@ import initSqlJs from 'sql.js';
 import { z } from 'zod';
 
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { awaitPeopleGridUnfolded, dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -110,12 +110,6 @@ const enableFacesAtWideScope = async (page: Page): Promise<void> => {
   await expect(modal).toBeHidden({ timeout: 15_000 });
 };
 
-const unfoldPeopleGrid = async (page: Page): Promise<void> => {
-  await page.getByTestId('people-threshold-slider').locator('input').focus();
-  await page.keyboard.press('Home');
-  await expect(page.getByTestId('people-other-tile')).toHaveCount(0, { timeout: 15_000 });
-};
-
 test.describe('People: answering "Ta sama osoba?" over a real faces pass', () => {
   test('the queue is answered with the keyboard, undone, and the decisions outlive a relaunch', async () => {
     const samples = process.env.E2E_FACES_PAIR_SAMPLES;
@@ -150,8 +144,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
       await indexButton.click();
 
       await openPeople(session.page);
-      await expect(session.page.getByTestId('people-card').first()).toBeVisible({ timeout: 600_000 });
-      await unfoldPeopleGrid(session.page);
+      await awaitPeopleGridUnfolded(session.page, 600_000);
 
       const badge = session.page.getByTestId('people-pair-review-open');
       await expect(badge).toBeVisible({ timeout: 60_000 });
@@ -209,7 +202,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
 
       await session.page.getByTestId('people-back-main').click();
       await expect(session.page.getByTestId('people-grid')).toBeVisible({ timeout: 15_000 });
-      await unfoldPeopleGrid(session.page);
+      await awaitPeopleGridUnfolded(session.page, 30_000);
       await expect(session.page.getByTestId('people-card')).toHaveCount(cardsBefore - 1, { timeout: 30_000 });
 
       const badgeBeforeRelaunch = await badgeCount(session.page);

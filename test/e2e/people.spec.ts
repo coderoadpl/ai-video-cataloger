@@ -8,7 +8,7 @@ import { SqlJsGlobalCatalogStore } from '../../adapters/db/index.js';
 import { HuggingFaceWhisperModelDownloader } from '../../adapters/whisper/index.js';
 import { FILE_ARTIFACTS, type AppError, type Result } from '../../core/domain/index.js';
 import { ensureE2eFaceModels } from './face-models.js';
-import { dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { awaitPeopleGridUnfolded, dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -127,8 +127,8 @@ test.describe('People: enable faces, index, and rename a real grouping', () => {
       await session.page.getByTestId('mode-library').click();
       await session.page.getByTestId('subnav-people').click();
 
+      await awaitPeopleGridUnfolded(session.page, 300_000);
       const card = session.page.getByTestId('people-card').first();
-      await expect(card).toBeVisible({ timeout: 300_000 });
 
       await card.getByRole('button', { name: /more actions|więcej działań/i }).click();
       await session.page.getByTestId('people-rename').click();
