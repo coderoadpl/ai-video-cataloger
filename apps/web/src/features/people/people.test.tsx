@@ -281,6 +281,51 @@ describe('PeopleView', () => {
     expect(onOpenSettings).toHaveBeenCalled();
   });
 
+  it('hides the header controls while face grouping is off', async () => {
+    stubPeople({ facesEnabled: false });
+
+    renderThemed(
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenInCollection={vi.fn()}
+        intervalMs={0}
+      />,
+    );
+
+    await screen.findByTestId('people-disabled-state');
+    expect(screen.queryByTestId('people-threshold-slider-field')).toBeNull();
+    expect(screen.queryByTestId('people-sort')).toBeNull();
+    expect(screen.queryByTestId('people-merge-selected')).toBeNull();
+  });
+
+  it('shows the header controls once face grouping is on', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 12,
+      people: [person({ personId: 'p-main', observationCount: 12, videoCount: 12, photoCount: 0, fileCounts: { video: 2, photo: 0 } })],
+    });
+
+    renderThemed(
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenInCollection={vi.fn()}
+        intervalMs={0}
+      />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getByTestId('people-threshold-slider-field')).toBeDefined();
+    expect(screen.getByTestId('people-sort')).toBeDefined();
+    expect(screen.getByTestId('people-merge-selected')).toBeDefined();
+  });
+
   it('installs face grouping models when enabled but missing', async () => {
     let installBody: unknown = null;
     const addLine = vi.fn();

@@ -328,6 +328,84 @@ export const PeopleView = ({
     : null;
   const mediumEmpty = hasCachedPeople && gridPeople.length === 0 && !foldedOpen && media !== 'all';
 
+  const headerActions = (
+    <>
+      <Box sx={{ width: { xs: '100%', sm: 220 } }}>
+        <SliderField
+          label={dictionary.people.minObservationThresholdAria}
+          valueLabel={String(minObservations)}
+          testId="people-threshold-slider"
+          min={0}
+          max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
+          step={1}
+          marks={peopleMinObservationSliderMarks}
+          value={peopleMinObservationIndex(minObservations)}
+          valueLabelFormat={(current) => String(peopleMinObservationAtIndex(current) ?? '')}
+          getAriaValueText={(current) => {
+            const threshold = peopleMinObservationAtIndex(current);
+            return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
+          }}
+          onChange={(next) => {
+            const threshold = peopleMinObservationAtIndex(next);
+            if (threshold !== null) setMinObservations(threshold);
+          }}
+        />
+      </Box>
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={sort}
+        onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
+        data-testid="people-sort"
+      >
+        <ToggleButton value="frequent" data-testid="people-sort-frequency">
+          {dictionary.people.sortFrequent}
+        </ToggleButton>
+        <ToggleButton value="order" data-testid="people-sort-order">
+          {dictionary.people.sortOrder}
+        </ToggleButton>
+      </ToggleButtonGroup>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          disabled={!canMerge || people.isBusy || mutationsBlocked}
+          title={lockReason}
+          {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
+          onClick={() => {
+            people.clearMergeError();
+            setChosenNamePersonId(null);
+            setMergeOpen(true);
+          }}
+          data-testid="people-merge-selected"
+        >
+          {dictionary.people.mergeSelected}
+        </Button>
+        {selected.length === 1 ? (
+          <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
+            {dictionary.people.mergeSelectHint}
+          </Typography>
+        ) : null}
+      </Box>
+      {pairs.pending === 0 ? null : (
+        <Button
+          variant="outlined"
+          size="small"
+          disabled={people.isBusy || mutationsBlocked}
+          title={lockReason}
+          onClick={() => {
+            setFoldedOpen(false);
+            setReviewOpen(true);
+            pairs.openSession();
+          }}
+          data-testid="people-pair-review-open"
+        >
+          {dictionary.people.pairReviewOpen(pairs.pending)}
+        </Button>
+      )}
+    </>
+  );
+
   if (!active) return null;
 
   return (
@@ -340,83 +418,7 @@ export const PeopleView = ({
             {foldedOpen ? dictionary.people.otherPeopleScope : dictionary.people.subtitle}
           </Box>
         )}
-        actions={(
-          <>
-            <Box sx={{ width: { xs: '100%', sm: 220 } }}>
-              <SliderField
-                label={dictionary.people.minObservationThresholdAria}
-                valueLabel={String(minObservations)}
-                testId="people-threshold-slider"
-                min={0}
-                max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
-                step={1}
-                marks={peopleMinObservationSliderMarks}
-                value={peopleMinObservationIndex(minObservations)}
-                valueLabelFormat={(current) => String(peopleMinObservationAtIndex(current) ?? '')}
-                getAriaValueText={(current) => {
-                  const threshold = peopleMinObservationAtIndex(current);
-                  return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
-                }}
-                onChange={(next) => {
-                  const threshold = peopleMinObservationAtIndex(next);
-                  if (threshold !== null) setMinObservations(threshold);
-                }}
-              />
-            </Box>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={sort}
-              onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
-              data-testid="people-sort"
-            >
-              <ToggleButton value="frequent" data-testid="people-sort-frequency">
-                {dictionary.people.sortFrequent}
-              </ToggleButton>
-              <ToggleButton value="order" data-testid="people-sort-order">
-                {dictionary.people.sortOrder}
-              </ToggleButton>
-            </ToggleButtonGroup>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                disabled={!canMerge || people.isBusy || mutationsBlocked}
-                title={lockReason}
-                {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
-                onClick={() => {
-                  people.clearMergeError();
-                  setChosenNamePersonId(null);
-                  setMergeOpen(true);
-                }}
-                data-testid="people-merge-selected"
-              >
-                {dictionary.people.mergeSelected}
-              </Button>
-              {selected.length === 1 ? (
-                <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
-                  {dictionary.people.mergeSelectHint}
-                </Typography>
-              ) : null}
-            </Box>
-            {pairs.pending === 0 ? null : (
-              <Button
-                variant="outlined"
-                size="small"
-                disabled={people.isBusy || mutationsBlocked}
-                title={lockReason}
-                onClick={() => {
-                  setFoldedOpen(false);
-                  setReviewOpen(true);
-                  pairs.openSession();
-                }}
-                data-testid="people-pair-review-open"
-              >
-                {dictionary.people.pairReviewOpen(pairs.pending)}
-              </Button>
-            )}
-          </>
-        )}
+        {...(people.facesEnabled !== true ? {} : { actions: headerActions })}
       >
         {selected.length === 0 ? null : (
           <Box

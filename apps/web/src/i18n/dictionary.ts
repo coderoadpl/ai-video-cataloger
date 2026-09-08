@@ -2347,9 +2347,10 @@ export const pl: Dictionary = {
     generatingThumbnails: 'Generowanie miniatur…',
     lockedBy: (processName, pid) => `Katalog zablokowany przez ${processName} PID ${pid}`,
     retryLock: 'Ponów',
-    folderCounts: (pending, processed) => `${pending} oczekuje · ${processed} gotowe`,
+    folderCounts: (pending, processed) =>
+      `${pending} ${plPlural(pending, 'oczekuje', 'oczekują', 'oczekuje')} · ${processed} ${plPlural(processed, 'gotowy', 'gotowe', 'gotowych')}`,
     folderCountsWithDuplicates: (pending, processed, duplicates) =>
-      `${pending} oczekuje · ${processed} gotowe · ${duplicates} ${plPlural(duplicates, 'duplikat', 'duplikaty', 'duplikatów')}`,
+      `${pending} ${plPlural(pending, 'oczekuje', 'oczekują', 'oczekuje')} · ${processed} ${plPlural(processed, 'gotowy', 'gotowe', 'gotowych')} · ${duplicates} ${plPlural(duplicates, 'duplikat', 'duplikaty', 'duplikatów')}`,
     unknownFolderCounts: (videoCount) => `${videoCount} ${plPlural(videoCount, 'film', 'filmy', 'filmów')}`,
     duplicateBadge: 'Duplikat',
     duplicateTooltip: (canonicalPath) => `Duplikat pliku ${canonicalPath}`,
