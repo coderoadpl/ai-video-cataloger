@@ -277,12 +277,14 @@ describe('scanFolder', () => {
     expect(marker).toEqual({ ok: true, value: null });
   });
 
-  it('marks same-folder and cross-folder copies through one batched global-index lookup', async () => {
+  it.each(['renamed', 'skipped', 'collision'] as const)('CAT-07 links duplicate copies to the resolved physical canonical: %s', async (scenario) => {
+    const renamed = scenario === 'renamed';
     const fs = new InMemoryFileSystem('/videos');
     fs.addFile('/videos/original.mp4', { size: 1024, hash: 'same-folder-hash' });
     fs.addFile('/videos/local-copy.mp4', { size: 1024, hash: 'same-folder-hash' });
     fs.addFile('/videos/remote-copy.mp4', { size: 1024, hash: 'cross-folder-hash' });
-    fs.addFile('/archive/named-source.mp4', { size: 1024, hash: 'cross-folder-hash' });
+    fs.addFile(renamed ? '/archive/named-source.mp4' : '/archive/source.mp4', { size: 1024, hash: 'cross-folder-hash' });
+    if (scenario === 'collision') fs.addFile('/archive/named-source.mp4', { hash: 'unrelated' });
     const catalogs = new InMemoryCatalogs([{
       folder: '/videos',
       videos: [videoFixture({
@@ -386,7 +388,7 @@ describe('scanFolder', () => {
     });
     expect(byName.get('remote-copy.mp4')).toMatchObject({
       status: 'not_tracked',
-      duplicate: { canonicalPath: '/archive/named-source.mp4' },
+      duplicate: { canonicalPath: renamed ? '/archive/named-source.mp4' : '/archive/source.mp4' },
     });
   });
 

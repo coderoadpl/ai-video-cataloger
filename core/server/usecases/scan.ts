@@ -208,14 +208,8 @@ const enrichWithDuplicates = async (
     if (video.contentHash === null) return video;
     const location = byFingerprint.get(video.contentHash);
     if (location === undefined) return video;
-    const recordedPath = location.folderPath === null
-      ? null
-      : deps.fs.join(location.folderPath, location.fileName);
-    if (recordedPath === video.path) return video;
-    const canonicalName = location.finalName ?? location.fileName;
-    const canonicalPath = location.folderPath === null
-      ? canonicalName
-      : deps.fs.join(location.folderPath, canonicalName);
+    const canonicalPath = location.canonicalPath;
+    if (canonicalPath === null || canonicalPath === video.path) return video;
     return { ...video, duplicate: { canonicalPath } };
   }));
 };

@@ -177,6 +177,16 @@ const runLibraryTrashEntries = async (
           stoppedError = moved.error;
           break;
         }
+        if (entry.media === 'photo') {
+          const saved = await recordTrashedPhotoSighting(deps, entry.fingerprint, sighting.path);
+          if (!saved.ok) {
+            filesFailed = 1;
+            filesNotAttempted = entries.length - index - 1;
+            failedFingerprint = entry.fingerprint;
+            stoppedError = saved.error;
+            break;
+          }
+        }
       }
       if (stoppedError !== null) break;
       if (entry.media === 'video') {
@@ -481,4 +491,30 @@ const acquireLibraryTrashResources = async (
     releases.push(acquired.value);
   }
   return ok(releases);
+};
+
+const recordTrashedPhotoSighting = async (
+  deps: LibraryTrashDeps,
+  fingerprint: string,
+  path: string,
+): Promise<Result<void, AppError>> => {
+  const removed = await deps.photos.deleteSighting(fingerprint, path);
+  if (!removed.ok) return removed;
+  const remaining = await deps.photos.listSightings(fingerprint);
+  if (!remaining.ok) return remaining;
+  const next = remaining.value[0];
+  if (next !== undefined) {
+    const photo = await deps.photos.getPhoto(fingerprint);
+    if (!photo.ok) return photo;
+    if (photo.value !== null && photo.value.currentPath === path) {
+      const updated = await deps.photos.upsertPhoto({
+        ...photo.value,
+        currentPath: next.currentPath,
+        fileName: deps.fs.basename(next.currentPath),
+        folderId: next.folderId,
+      });
+      if (!updated.ok) return updated;
+    }
+  }
+  return deps.photos.flush();
 };

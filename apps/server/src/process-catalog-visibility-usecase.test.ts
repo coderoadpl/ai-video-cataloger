@@ -122,14 +122,15 @@ describe('a single-file analysis lands in the same-process global catalog', () =
     expect(found.value.items.map((item) => item.fingerprint)).toContain('hash-clip');
   });
 
-  it('is findable by a text-query search right after processVideoPipeline resolves, with no restart', async () => {
+  it.each([true, false])('6hGRXF2j5FwXRHcm single-file analyze is immediately text-searchable without a production change, skipRename: %s', async (skipRename) => {
     const deps = await makeDeps();
 
-    const result = await processVideoPipeline(deps, baseInput);
+    const result = await processVideoPipeline(deps, { ...baseInput, skipRename });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
+    expect(await deps.globalCatalog.getFile('hash-clip')).toMatchObject({ ok: true, value: { fingerprint: 'hash-clip' } });
     const found = await search(
       { globalCatalog: deps.globalCatalog, fs: deps.fs, media: deps.media },
       { query: 'useful', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'existing', limit: 10, offset: 0 },

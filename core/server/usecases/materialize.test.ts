@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   appError,
@@ -180,6 +180,40 @@ const events = (progress: JobProgress[]): JobExecutionContext => ({
 });
 
 describe('materializeCatalog', () => {
+  it.each([
+    { shared: false, frame: false },
+    { shared: false, frame: true },
+    { shared: true, frame: false },
+  ])('CAT-06 moves both thumbnails and cleans only unshared physical projections: $shared, frame: $frame', async ({ shared, frame }) => {
+    const { fs, globalCatalog, originalFolderId } = await seedFixture({ finalName: 'suggested.mp4' });
+    for (const relative of ['summaries/clip.json', 'summaries/clip.txt', 'transcripts/clip.txt', 'transcripts/clip.json', 'frames/clip/frame-001.jpg', '.ai-video-cataloger/thumbnails/clip.jpg', '.ai-video-cataloger/thumbnails/clip.grid.jpg']) {
+      fs.addFile(`${folder}/${relative}`, { content: 'owned-artifact' });
+    }
+    await globalCatalog.recordGridThumbnail({ outputPath: `${folder}/.ai-video-cataloger/thumbnails/clip.grid.jpg`, generationVersion: 1, sourcePath: frame ? `${folder}/frames/clip/frame-001.jpg` : videoPath, sourceKind: frame ? 'frame' : 'video', primary: true });
+    if (shared) {
+      fs.addFile(`${folder}/clip.mov`, { hash: 'sibling' });
+      const original = await globalCatalog.getFile(fingerprint);
+      if (!original.ok || original.value === null) throw new Error('Missing fixture');
+      await globalCatalog.upsertFile({ ...original.value, fingerprint: 'sibling', folderId: originalFolderId, fileName: 'clip.mov' });
+    }
+    const flush = vi.spyOn(globalCatalog, 'flush');
+    const remove = vi.spyOn(fs, 'deletePath');
+    expect(await materializeCatalog({ fs, globalCatalog }, { root: folder, dryRun: false })).toMatchObject({ ok: true, value: { filesFailed: 0 } });
+    for (const suffix of ['.jpg', '.grid.jpg']) {
+      expect(await fs.readTextFile(`${folder}/.ai-video-cataloger/thumbnails/suggested${suffix}`)).toMatchObject({ ok: true, value: 'owned-artifact' });
+      expect(await fs.exists(`${folder}/.ai-video-cataloger/thumbnails/clip${suffix}`)).toEqual({ ok: true, value: shared });
+    }
+    expect(await fs.exists(`${folder}/summaries/clip.json`)).toEqual({ ok: true, value: shared });
+    expect(await globalCatalog.listGridThumbnailCandidates([`${folder}/.ai-video-cataloger/thumbnails/suggested.grid.jpg`], 1)).toEqual({ ok: true, value: [] });
+    expect(await globalCatalog.getGridThumbnail(`${folder}/.ai-video-cataloger/thumbnails/suggested.grid.jpg`)).toMatchObject({ ok: true, value: { sourcePath: frame ? `${folder}/frames/suggested/frame-001.jpg` : `${folder}/suggested.mp4` } });
+    expect(await globalCatalog.getGridThumbnail(`${folder}/.ai-video-cataloger/thumbnails/clip.grid.jpg`)).toMatchObject(shared ? { ok: true, value: { primary: true } } : { ok: true, value: null });
+    if (!shared) {
+      const cleanupIndex = remove.mock.calls.findIndex(([target]) => target === `${folder}/summaries/clip.json`);
+      expect(cleanupIndex).toBeGreaterThanOrEqual(0);
+      expect(flush.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[cleanupIndex] ?? 0);
+    }
+  });
+
   it('applies the full write set once and never creates a per-folder catalog.db', async () => {
     const { fs, globalCatalog } = await seedFixture();
     const progress: JobProgress[] = [];

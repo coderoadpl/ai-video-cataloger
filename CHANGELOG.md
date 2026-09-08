@@ -14,6 +14,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Backups stage database snapshots and artifact copies under the same exclusion resource used by synchronous catalog mutations, so a concurrent forget cannot remove a crop from the captured backup.
+- Search and Library previews prefer the recorded filename and verify fingerprints before recovering a renamed path, preventing a colliding suggestion from showing another video's media.
+- Selecting analysis variants keeps the selected projection under the video's physical filename, including when variants suggest different names.
+- Thumbnail backfill maps staged frames by recorded filenames and hashes unmatched files, preventing colliding suggestions from supplying another video's frames.
+- Retrying partially completed photo trash resumes from the remaining sightings while retaining analyses until all copies are moved.
+- Materializing a rename carries cover and grid thumbnails with grid provenance and removes owned obsolete name-based artifacts after durable catalog relocation.
+- Duplicate scan links use the verified reachable canonical video path when a suggested rename was skipped.
+- The first write to a legacy read-only artifact mirror merges it into the canonical mirror, preserving canonical files on collisions and retaining legacy-only artifacts.
+
 ### Changed
 
 - The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.

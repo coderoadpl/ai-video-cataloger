@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { type AppError, type Result, ok } from '@core/domain/index.js';
+import { catalogFileSchema, type AppError, type Result, ok } from '@core/domain/index.js';
 
 import type { JobProgress } from '../ports.js';
 import { runThumbnailsPass } from './thumbnails.js';
@@ -29,6 +29,27 @@ const seedCompletedFile = (fs: InMemoryFileSystem, videoPath: string, base: stri
 };
 
 describe('runThumbnailsPass', () => {
+  it.each([true, false])('CAT-03 ignores colliding suggestions for staged frames with recorded mapping: %s', async (recorded) => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await globalCatalog.upsertFolder({ folderId: 'path-aaaaaaaa', currentPath: '/root', displayName: 'root', firstSeenAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z' });
+    for (const name of recorded ? ['a', 'b'] : ['b']) {
+      await globalCatalog.upsertFile(catalogFileSchema.parse({ fingerprint: `fp-${name}`, folderId: 'path-aaaaaaaa', fileName: `${name}.mp4`, size: 100, durationS: null, processedAt: '2026-01-01T00:00:00.000Z', analyzer: null, model: null }));
+      await globalCatalog.upsertAnalysis({ fingerprint: `fp-${name}`, finalName: 'a.mp4', description: 'd', transcript: null, language: null, tags: [] });
+    }
+    seedCompletedFile(fs, '/root/a.mp4', 'a');
+    await fs.deletePath('/root/frames/a');
+    fs.addFile('/root/a.mp4', { hash: 'fp-a' });
+    fs.addFile('/root/.ai-video-cataloger/artifacts/frames/fp-a/frm_a/frame-001.jpg');
+    fs.addFile('/root/.ai-video-cataloger/artifacts/frames/fp-b/frm_b/frame-001.jpg');
+    expect(await runThumbnailsPass({ fs, media, globalCatalog }, { root: '/root', force: false })).toMatchObject({ ok: true });
+    expect(media.thumbnailFromFrameInputs).toContainEqual(expect.objectContaining({
+      framePath: '/root/.ai-video-cataloger/artifacts/frames/fp-a/frm_a/frame-001.jpg',
+      thumbnailPath: '/root/.ai-video-cataloger/thumbnails/a.grid.jpg',
+    }));
+  });
+
   it('generates thumbnails for completed files and reports fromFrame', async () => {
     const fs = new InMemoryFileSystem('/root');
     const media = new InMemoryMedia(fs);

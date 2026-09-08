@@ -9,18 +9,23 @@ export interface CanonicalReachabilityDeps {
   globalCatalog: GlobalCatalogStore;
 }
 
-const sourceIsReachable = async (
+const reachableSourcePath = async (
   fs: FileSystemPort,
   location: AnalyzedFileLocation,
-): Promise<Result<boolean, AppError>> => {
-  if (location.folderPath === null) return ok(false);
+): Promise<Result<string | null, AppError>> => {
+  if (location.folderPath === null) return ok(null);
   const names = [...new Set([location.fileName, location.finalName].filter((name): name is string => name !== null))];
   for (const name of names) {
-    const exists = await fs.isFile(fs.join(location.folderPath, name));
+    const path = fs.join(location.folderPath, name);
+    const exists = await fs.isFile(path);
     if (!exists.ok) return exists;
-    if (exists.value) return ok(true);
+    if (!exists.value) continue;
+    if (name === location.fileName) return ok(path);
+    const hash = await fs.partialContentHash(path);
+    if (!hash.ok) return hash;
+    if (hash.value === location.fingerprint) return ok(path);
   }
-  return ok(false);
+  return ok(null);
 };
 
 const artifactsAreReachable = async (
@@ -46,20 +51,20 @@ const artifactsAreReachable = async (
 export const reachableAnalyzedFileLocations = async (
   deps: CanonicalReachabilityDeps,
   locations: readonly AnalyzedFileLocation[],
-): Promise<Result<AnalyzedFileLocation[], AppError>> => {
-  const reachable: AnalyzedFileLocation[] = [];
+): Promise<Result<Array<AnalyzedFileLocation & { canonicalPath: string | null }>, AppError>> => {
+  const reachable: Array<AnalyzedFileLocation & { canonicalPath: string | null }> = [];
   let healed = false;
   for (const location of locations) {
-    const source = await sourceIsReachable(deps.fs, location);
+    const source = await reachableSourcePath(deps.fs, location);
     if (!source.ok) return source;
-    if (source.value) {
-      reachable.push(location);
+    if (source.value !== null) {
+      reachable.push({ ...location, canonicalPath: source.value });
       continue;
     }
     const artifacts = await artifactsAreReachable(deps, location);
     if (!artifacts.ok) return artifacts;
     if (artifacts.value) {
-      reachable.push(location);
+      reachable.push({ ...location, canonicalPath: location.folderPath === null ? null : deps.fs.join(location.folderPath, location.fileName) });
       continue;
     }
     const cleared = await deps.globalCatalog.clearAnalysisVariants(location.fingerprint);

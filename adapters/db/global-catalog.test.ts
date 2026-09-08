@@ -305,6 +305,19 @@ describe('SqlJsGlobalCatalogStore', () => {
     await store.dispose();
   });
 
+  it('CAT-06 reads and durably removes thumbnail provenance for rename cleanup', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const state = { outputPath: 'old.grid.jpg', generationVersion: 1, sourcePath: 'old.mp4', sourceKind: 'video', primary: true } as const;
+    await store.recordGridThumbnail(state);
+    expect(await store.getGridThumbnail(state.outputPath)).toEqual(ok(state));
+    expect(await store.deleteGridThumbnail(state.outputPath)).toEqual(ok(undefined));
+    await store.dispose();
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect(await reopened.getGridThumbnail(state.outputPath)).toEqual(ok(null));
+    await reopened.dispose();
+  });
+
   it('CP-07 persists generation provenance and returns only missing, stale or fallback thumbnails', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

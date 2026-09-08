@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ok, snapshotLineSchema, type AppError, type CatalogFile, type CatalogFolder, type Person, type Result } from '@core/domain/index.js';
 
@@ -343,6 +343,33 @@ describe('library trash', () => {
       '/library/root-b/b-2.mp4',
       '/library/root-b/b-3.mp4',
     ]);
+  });
+
+  it('CAT-04 retries only remaining photo sightings after a partial trash failure', async () => {
+    const setup = deps();
+    const fingerprint = 'ph_0000000000000001';
+    await setup.photos.upsertFolder(photoFolder('path-aaaaaaaa', '/library/photos'));
+    await setup.photos.upsertPhoto(photoRecord(fingerprint, 'path-aaaaaaaa', '/library/photos/a.jpg'));
+    for (const name of ['a', 'b']) {
+      setup.fs.addFile(`/library/photos/${name}.jpg`);
+      await setup.photos.upsertSighting({ fingerprint, currentPath: `/library/photos/${name}.jpg`, folderId: 'path-aaaaaaaa', size: 10, mtimeMs: 1, lastSeenAt: now });
+    }
+    await setup.photos.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'test', now });
+    await setup.photos.recordPhotoAnalysis({ fingerprint, configId: 'cfg_aaaaaaaaaaaa', description: 'retained analysis', scene: '', quality: '', language: 'en', analyzer: 'harness', model: null, batchSize: 1, usageJson: null, tags: [], createdAt: now });
+    const deletePhoto = vi.spyOn(setup.photos, 'deletePhoto');
+    const flush = vi.spyOn(setup.photos, 'flush');
+    setup.trash.failOnCall = 2;
+    const scope = { kind: 'fingerprints' as const, fingerprints: [fingerprint] };
+    expect(await runLibraryTrash(setup, { scope })).toMatchObject({ ok: false, error: { code: 'library_trash_incomplete' } });
+    expect(await setup.photos.listSightings(fingerprint)).toMatchObject({ ok: true, value: [{ currentPath: '/library/photos/b.jpg' }] });
+    expect(await setup.photos.getPhoto(fingerprint)).toMatchObject({ ok: true, value: { currentPath: '/library/photos/b.jpg', fileName: 'b.jpg' } });
+    expect(flush).toHaveBeenCalled();
+    expect(deletePhoto).not.toHaveBeenCalled();
+    expect(await setup.photos.listPhotoVariants(fingerprint)).toMatchObject({ ok: true, value: [{ description: 'retained analysis' }] });
+    setup.trash.failOnCall = null;
+    expect(await runLibraryTrash(setup, { scope })).toMatchObject({ ok: true, value: { photosTrashed: 1 } });
+    expect(setup.trash.moved).toEqual(['/library/photos/a.jpg', '/library/photos/b.jpg', '/library/photos/b.jpg']);
+    expect(await setup.photos.getPhoto(fingerprint)).toEqual(ok(null));
   });
 
   it('stops on a trash failure and reports the processed, failed, and not-attempted counts', async () => {
