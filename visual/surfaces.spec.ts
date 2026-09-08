@@ -14,6 +14,7 @@ const SURFACES = [
   'photos-sidebar-narrow',
   'photos-sidebar-wide',
   'people-pair-review',
+  'people-pair-review-alerts',
 ] as const;
 
 for (const surface of SURFACES) {
@@ -27,6 +28,11 @@ for (const surface of SURFACES) {
     } else if (surface === 'people-pair-review') {
       await expect(page.getByTestId('people-pair-review-question')).toBeVisible();
       await expect(page.getByTestId('people-pair-review-position')).toHaveText('1 of 6');
+    } else if (surface === 'people-pair-review-alerts') {
+      await expect(page.getByTestId('people-pair-review-error')).toBeVisible();
+      await expect(page.getByTestId('people-pair-review-not-undoable')).toBeVisible();
+      await expect(page.getByTestId('people-pair-review-truncated')).toBeVisible();
+      await expect(page.getByTestId('people-pair-review-undo')).toBeEnabled();
     } else {
       await expect(page.getByTestId('sidebar-folder-panel')).toBeVisible();
     }

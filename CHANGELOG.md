@@ -16,6 +16,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The "Ta sama osoba?" review is now one task on screen: while it is open the People header drops the minimum-occurrences slider, the sort toggle, "Scal wybrane" and the selection bar and names the scope instead, the three answers carry distinct weights (Tak contained, Nie outlined, Pomiń text) in one equal-width row with their key hints and captions on a single line below, "Pomiń" says the pair comes back in 30 days, each answer is announced with its shortcut and consequence, the position counter is a live region, a person without example crops gets a square tile in the same grid as the crops, and an emptied queue acknowledges how many questions were answered and offers the way back.
+- The entry point to the pair review reads "Sprawdź podobne osoby (N)" / "Review look-alikes (N)" and is the single call to action in the People header row; the Ustawienia scope control says the questions appear on the People tab, carries a real label for assistive technology and is inactive while local face grouping is off.
+- Polish copy no longer stutters on an auto-generated person: "Twarz: Osoba 3", "Pliki: Osoba 3", "Wybierz: Osoba 3"; a merge asks "Którą nazwę zachować?", matching the "Nazwa wyświetlana" field it refers to.
+- The Collection grid no longer jumps sideways when loading finishes, a tile shows its file name on hover, and a catalog tree row no longer repeats that name through its thumbnail for a screen reader.
+- "Analizuj wszystko (N)" now says in words that files which ended in an error are not re-attempted by the batch and points at the per-file "Analizuj ponownie", so the count over a longer list of rows no longer reads as arithmetic gone wrong.
 - The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.
 
 ## [0.6.38] - 2026-09-08

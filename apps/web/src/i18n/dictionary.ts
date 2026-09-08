@@ -85,6 +85,7 @@ export interface Dictionary {
     stop: string;
     analyzeAll: (count: number) => string;
     analyzeUpTo: (count: number) => string;
+    analyzeSkipsErrored: (count: number) => string;
   };
   catalog: {
     noFolderSelected: string;
@@ -545,6 +546,10 @@ export interface Dictionary {
     pairReviewEmptyTitle: string;
     pairReviewEmptyBody: string;
     pairReviewCrop: (name: string) => string;
+    pairReviewSkipCaption: string;
+    pairReviewScope: string;
+    pairReviewDoneTitle: string;
+    pairReviewDoneBody: (count: number) => string;
     selectionCount: (count: number) => string;
     hiddenSelectionCount: (count: number) => string;
     clearSelection: string;
@@ -1150,6 +1155,8 @@ export const en: Dictionary = {
     stop: 'Stop',
     analyzeAll: (count) => `Analyze All (${count})`,
     analyzeUpTo: (count) => `Analyze All (up to ${count})`,
+    analyzeSkipsErrored: (count) =>
+      `${count} failed ${count === 1 ? 'file is' : 'files are'} not retried here — open one and use “Analyze again”.`,
   },
   catalog: {
     noFolderSelected: 'No folder selected',
@@ -1656,7 +1663,7 @@ export const en: Dictionary = {
     mergeBody: (count, target) => `Merge ${count} people into "${target}"? The other groupings disappear. This cannot be undone.`,
     mergeNameChoice: 'Which name should be kept?',
     mergeSelectHint: 'Select at least two people.',
-    pairReviewOpen: (pending) => `To review: ${String(pending)}`,
+    pairReviewOpen: (pending) => `Review look-alikes (${String(pending)})`,
     pairReviewQuestion: 'Is this the same person?',
     pairReviewPosition: (index, total) => `${String(index)} of ${String(total)}`,
     pairReviewTruncated: (limit) => `Showing the first ${String(limit)}`,
@@ -1673,6 +1680,10 @@ export const en: Dictionary = {
     pairReviewEmptyTitle: 'Nothing to review right now',
     pairReviewEmptyBody: 'Come back after the next analysis — new look-alikes land here on their own.',
     pairReviewCrop: (name) => `Face of ${name}`,
+    pairReviewSkipCaption: 'We will ask again in 30 days',
+    pairReviewScope: 'Reviewing look-alikes',
+    pairReviewDoneTitle: 'All done for now',
+    pairReviewDoneBody: (count) => `You answered ${String(count)} ${count === 1 ? 'question' : 'questions'}.`,
     selectionCount: (count) => `${count} selected`,
     hiddenSelectionCount: (count) => `${count} outside the current view`,
     clearSelection: 'Clear selection',
@@ -1799,7 +1810,7 @@ export const en: Dictionary = {
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
     facesPairScopeLabel: 'How eagerly to propose people to compare',
-    facesPairScopeHelper: 'A wider scope also asks about people that look less alike.',
+    facesPairScopeHelper: 'A wider scope also asks about people that look less alike. The questions appear on the People tab.',
     facesPairScopeCareful: 'Careful',
     facesPairScopeStandard: 'Standard',
     facesPairScopeWide: 'Wide',
@@ -2340,6 +2351,8 @@ export const pl: Dictionary = {
     stop: 'Stop',
     analyzeAll: (count) => `Analizuj wszystko (${count})`,
     analyzeUpTo: (count) => `Analizuj wszystko (do ${count})`,
+    analyzeSkipsErrored: (count) =>
+      `${count} ${plPlural(count, 'nieudany plik nie zostanie ponowiony', 'nieudane pliki nie zostaną ponowione', 'nieudanych plików nie zostanie ponowionych')} — otwórz plik i użyj „Analizuj ponownie”.`,
   },
   catalog: {
     noFolderSelected: 'Nie wybrano folderu',
@@ -2851,9 +2864,9 @@ export const pl: Dictionary = {
     personName: (index) => `Osoba ${String(index + 1)}`,
     mergeGroupings: 'Scal grupy',
     mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w „${target}”? Pozostałe grupy znikną. Tego nie można cofnąć.`,
-    mergeNameChoice: 'Które imię zachować?',
+    mergeNameChoice: 'Którą nazwę zachować?',
     mergeSelectHint: 'Zaznacz co najmniej dwie osoby.',
-    pairReviewOpen: (pending) => `Do sprawdzenia: ${String(pending)}`,
+    pairReviewOpen: (pending) => `Sprawdź podobne osoby (${String(pending)})`,
     pairReviewQuestion: 'Czy to ta sama osoba?',
     pairReviewPosition: (index, total) => `${String(index)} z ${String(total)}`,
     pairReviewTruncated: (limit) => `Pokazujemy pierwsze ${String(limit)}`,
@@ -2869,7 +2882,11 @@ export const pl: Dictionary = {
       `„${first}” i „${second}” staną się jedną osobą, a zostanie tylko jedno z imion.`,
     pairReviewEmptyTitle: 'Na razie nie ma o co pytać',
     pairReviewEmptyBody: 'Wróć tu po kolejnej analizie — nowe podobieństwa pojawią się same.',
-    pairReviewCrop: (name) => `Twarz osoby ${name}`,
+    pairReviewCrop: (name) => `Twarz: ${name}`,
+    pairReviewSkipCaption: 'Zapytamy ponownie za 30 dni',
+    pairReviewScope: 'Sprawdzanie podobnych osób',
+    pairReviewDoneTitle: 'Gotowe na teraz',
+    pairReviewDoneBody: (count) => `Odpowiedziano na ${String(count)} ${plPlural(count, 'pytanie', 'pytania', 'pytań')}.`,
     selectionCount: (count) => `Zaznaczono: ${count}`,
     hiddenSelectionCount: (count) => `${count} poza bieżącym widokiem`,
     clearSelection: 'Wyczyść zaznaczenie',
@@ -2884,7 +2901,7 @@ export const pl: Dictionary = {
     deleteAllFaceDataBody: 'To trwale usuwa wszystkie lokalne dane grupowania twarzy i przykładowe wycinki. Tego nie można cofnąć.',
     deleteAll: 'Usuń wszystko',
     loadingPeople: 'Ładowanie osób…',
-    selectPerson: (name) => `Wybierz ${name}`,
+    selectPerson: (name) => `Wybierz: ${name}`,
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
     videoObservationCount: (count) => `${count} w filmach`,
     photoObservationCount: (count) => `${count} w zdjęciach`,
@@ -2897,7 +2914,7 @@ export const pl: Dictionary = {
     searchInLibrary: 'Szukaj w Bibliotece',
     hidePersonFiles: 'Ukryj pliki tej osoby',
     trashPersonFiles: 'Przenieś do Kosza pliki tej osoby',
-    personSelectionTitle: (name) => `Pliki osoby ${name}`,
+    personSelectionTitle: (name) => `Pliki: ${name}`,
     personSelectionSummary: (total, shared) => shared === 0
       ? `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}`
       : `${String(total)} ${plPlural(total, 'plik', 'pliki', 'plików')}, w tym ${String(shared)} z innymi osobami`,
@@ -2996,7 +3013,7 @@ export const pl: Dictionary = {
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
     facesPairScopeLabel: 'Jak chętnie proponować osoby do porównania',
-    facesPairScopeHelper: 'Szerszy zakres pyta też o osoby mniej do siebie podobne.',
+    facesPairScopeHelper: 'Szerszy zakres pyta też o osoby mniej do siebie podobne. Pytania pojawiają się na karcie Osoby.',
     facesPairScopeCareful: 'Ostrożnie',
     facesPairScopeStandard: 'Standardowo',
     facesPairScopeWide: 'Szeroko',

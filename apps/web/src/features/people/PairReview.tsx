@@ -30,7 +30,20 @@ interface PairReviewProps {
   state: PeoplePairsState;
   disabled: boolean;
   lockReason: string | undefined;
+  onBack: () => void;
 }
+
+interface PairAnswer {
+  testId: string;
+  variant: 'contained' | 'outlined' | 'text';
+  label: string;
+  hint: string;
+  caption?: string;
+  onClick: () => void;
+}
+
+const describedBy = (answer: PairAnswer): string =>
+  answer.caption === undefined ? `${answer.testId}-hint` : `${answer.testId}-hint ${answer.testId}-caption`;
 
 const reviewKey = (event: KeyboardEvent): '1' | '2' | '3' | 'Backspace' | null => {
   if (event.altKey || event.ctrlKey || event.metaKey) return null;
@@ -46,7 +59,7 @@ const keyboardIsClaimedElsewhere = (target: EventTarget | null): boolean => {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 };
 
-export const PairReview = ({ state, disabled, lockReason }: PairReviewProps) => {
+export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewProps) => {
   const dictionary = useDictionary();
   const [confirming, setConfirming] = useState<FacesPairCandidate | null>(null);
   const [chosenNamePersonId, setChosenNamePersonId] = useState<string | null>(null);
@@ -78,16 +91,52 @@ export const PairReview = ({ state, disabled, lockReason }: PairReviewProps) => 
   });
 
   if (current === null) {
+    const done = state.answeredThisSession > 0;
     return (
       <Box data-testid="people-pair-review" sx={{ display: 'flex', flexDirection: 'column' }}>
         <EmptyState
-          testId="people-pair-review-empty"
-          title={dictionary.people.pairReviewEmptyTitle}
-          body={dictionary.people.pairReviewEmptyBody}
+          testId={done ? 'people-pair-review-done' : 'people-pair-review-empty'}
+          title={done ? dictionary.people.pairReviewDoneTitle : dictionary.people.pairReviewEmptyTitle}
+          body={done ? dictionary.people.pairReviewDoneBody(state.answeredThisSession) : dictionary.people.pairReviewEmptyBody}
+          {...(done
+            ? {
+                action: (
+                  <Button variant="contained" onClick={onBack} data-testid="people-pair-review-done-back">
+                    {dictionary.people.backToMainPeople}
+                  </Button>
+                ),
+              }
+            : {})}
         />
       </Box>
     );
   }
+
+  const answers: PairAnswer[] = [
+    {
+      testId: 'people-pair-review-same',
+      variant: 'contained',
+      label: dictionary.people.pairReviewSame,
+      hint: dictionary.people.pairReviewKeyHint('1'),
+      onClick: askSame,
+    },
+    {
+      testId: 'people-pair-review-different',
+      variant: 'outlined',
+      label: dictionary.people.pairReviewDifferent,
+      hint: dictionary.people.pairReviewKeyHint('2'),
+      caption: dictionary.people.pairReviewDifferentCaption,
+      onClick: () => state.decide('different'),
+    },
+    {
+      testId: 'people-pair-review-skip',
+      variant: 'text',
+      label: dictionary.people.pairReviewSkip,
+      hint: dictionary.people.pairReviewKeyHint('3'),
+      caption: dictionary.people.pairReviewSkipCaption,
+      onClick: () => state.decide('skip'),
+    },
+  ];
 
   const nameChoices = confirming === null ? [] : mergeNameChoices([confirming.a, confirming.b]);
 
@@ -97,7 +146,7 @@ export const PairReview = ({ state, disabled, lockReason }: PairReviewProps) => 
         <Typography variant="h2" data-testid="people-pair-review-question">
           {dictionary.people.pairReviewQuestion}
         </Typography>
-        <Typography variant="body2" data-testid="people-pair-review-position">
+        <Typography variant="body2" role="status" aria-live="polite" data-testid="people-pair-review-position">
           {dictionary.people.pairReviewPosition(
             state.answeredThisSession + 1,
             state.answeredThisSession + state.queueLength,
@@ -124,42 +173,46 @@ export const PairReview = ({ state, disabled, lockReason }: PairReviewProps) => 
         </Alert>
       ) : null}
 
-      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <AnswerButton
-          testId="people-pair-review-same"
-          label={dictionary.people.pairReviewSame}
-          hint={dictionary.people.pairReviewKeyHint('1')}
-          disabled={blocked}
-          lockReason={lockReason}
-          onClick={askSame}
-        />
-        <AnswerButton
-          testId="people-pair-review-different"
-          label={dictionary.people.pairReviewDifferent}
-          hint={dictionary.people.pairReviewKeyHint('2')}
-          caption={dictionary.people.pairReviewDifferentCaption}
-          disabled={blocked}
-          lockReason={lockReason}
-          onClick={() => state.decide('different')}
-        />
-        <AnswerButton
-          testId="people-pair-review-skip"
-          label={dictionary.people.pairReviewSkip}
-          hint={dictionary.people.pairReviewKeyHint('3')}
-          disabled={blocked}
-          lockReason={lockReason}
-          onClick={() => state.decide('skip')}
-        />
-        <Button
-          variant="text"
-          size="small"
-          disabled={blocked || !state.canUndo}
-          title={lockReason}
-          onClick={state.undo}
-          data-testid="people-pair-review-undo"
-        >
-          {dictionary.people.pairReviewUndo}
-        </Button>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          {answers.map((answer) => (
+            <Box key={answer.testId} sx={{ flex: 1 }}>
+              <Button
+                fullWidth
+                variant={answer.variant}
+                disabled={blocked}
+                title={lockReason}
+                aria-describedby={describedBy(answer)}
+                onClick={answer.onClick}
+                data-testid={answer.testId}
+              >
+                {answer.label}
+              </Button>
+            </Box>
+          ))}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+          {answers.map((answer) => (
+            <Box key={answer.testId} sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <Typography id={`${answer.testId}-hint`} variant="caption">{answer.hint}</Typography>
+              {answer.caption === undefined ? null : (
+                <Typography id={`${answer.testId}-caption`} variant="caption">{answer.caption}</Typography>
+              )}
+            </Box>
+          ))}
+        </Box>
+        <Box>
+          <Button
+            variant="text"
+            size="small"
+            disabled={blocked || !state.canUndo}
+            title={lockReason}
+            onClick={state.undo}
+            data-testid="people-pair-review-undo"
+          >
+            {dictionary.people.pairReviewUndo}
+          </Button>
+        </Box>
       </Box>
 
       <Dialog open={confirming !== null} onClose={() => setConfirming(null)} fullWidth maxWidth="xs">
@@ -220,17 +273,17 @@ const PairPersonPanel = ({ testId, person }: { testId: string; person: FacesPair
       <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography variant="subtitle2" noWrap title={name}>{name}</Typography>
         <Typography variant="caption">{personTotalsLabel(dictionary.people, person)}</Typography>
-        {person.cropPaths.length === 0 ? (
-          <Box sx={{ height: 120 }}>
-            <PlaceholderTile
-              testId={`${testId}-fallback`}
-              name={person.personId}
-              glyph={person.displayName === null ? String(person.fallbackIndex + 1) : name.charAt(0)}
-            />
-          </Box>
-        ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.75 }}>
-            {person.cropPaths.map((cropPath) => (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.75 }}>
+          {person.cropPaths.length === 0 ? (
+            <Box sx={{ aspectRatio: '1 / 1' }}>
+              <PlaceholderTile
+                testId={`${testId}-fallback`}
+                name={person.personId}
+                glyph={person.displayName === null ? String(person.fallbackIndex + 1) : name.charAt(0)}
+              />
+            </Box>
+          ) : (
+            person.cropPaths.map((cropPath) => (
               <Box
                 key={cropPath}
                 component="img"
@@ -240,36 +293,11 @@ const PairPersonPanel = ({ testId, person }: { testId: string; person: FacesPair
                 src={mediaUrl(cropPath)}
                 sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 1 }}
               />
-            ))}
-          </Box>
-        )}
+            ))
+          )}
+        </Box>
       </CardContent>
     </Card>
   );
 };
 
-interface AnswerButtonProps {
-  testId: string;
-  label: string;
-  hint: string;
-  caption?: string;
-  disabled: boolean;
-  lockReason: string | undefined;
-  onClick: () => void;
-}
-
-const AnswerButton = ({ testId, label, hint, caption, disabled, lockReason, onClick }: AnswerButtonProps) => (
-  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-    <Button
-      variant="contained"
-      disabled={disabled}
-      title={lockReason}
-      onClick={onClick}
-      data-testid={testId}
-    >
-      {label}
-    </Button>
-    <Typography variant="caption">{hint}</Typography>
-    {caption === undefined ? null : <Typography variant="caption">{caption}</Typography>}
-  </Box>
-);

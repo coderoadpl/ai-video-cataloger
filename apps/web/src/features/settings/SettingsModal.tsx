@@ -10,6 +10,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  FormLabel,
   InputLabel,
   MenuItem,
   Select,
@@ -344,10 +345,14 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               <Typography variant="caption">
                 {dictionary.settingsModal.facesHelper}
               </Typography>
-              <Typography variant="caption">{dictionary.settingsModal.facesPairScopeLabel}</Typography>
+              <FormLabel id="settings-faces-pair-scope-label" sx={{ typography: 'subtitle2', mt: 0.5 }}>
+                {dictionary.settingsModal.facesPairScopeLabel}
+              </FormLabel>
               <ToggleButtonGroup
                 size="small"
                 exclusive
+                disabled={!draft.faces_enabled}
+                aria-labelledby="settings-faces-pair-scope-label"
                 value={draft.faces_pair_scope}
                 onChange={(_event, next: SettingsDraft['faces_pair_scope'] | null) => {
                   if (next !== null) patch({ faces_pair_scope: next });

@@ -76,6 +76,16 @@ describe('LibraryGrid', () => {
     expect(document.querySelector('[data-fingerprint="fp-1999"]')).not.toBeNull();
   });
 
+  it('names a tile on hover the way the catalog row names its file', () => {
+    renderThemed(
+      <LibraryGrid sections={sectionOf([gridItem('fp-1')])} onOpen={vi.fn()} onOpenInAnalysis={vi.fn()} selectable={false} />,
+    );
+
+    const tile = screen.getAllByTestId('library-tile')[0];
+    expect(tile?.getAttribute('title')).toBe('fp-1.mp4');
+    expect(tile?.getAttribute('aria-label')).toBe('fp-1.mp4');
+  });
+
   it('NEW-02 toggles the focused checkbox on Space without opening the active tile', async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();
