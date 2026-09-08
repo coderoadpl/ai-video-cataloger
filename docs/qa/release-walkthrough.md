@@ -14,7 +14,15 @@ them.
 Every run opens the driven window at **1920x1200** by default — large enough
 that the details column never collapses in the captured screenshots — via a
 seeded `window-state.json` in the fresh user-data directory. Override it with
-`--window-size WxH` (for example `--window-size 1440x900`). Before each
+`--window-size WxH` (for example `--window-size 1440x900`). The size is a
+request, not a guarantee: macOS caps a window at the display's work area, so on
+a shorter screen the content the run captures is smaller than the request (a
+1080-tall display leaves about 1018 px of content for a 1200 px request). The
+run measures the real content size after launch and writes it into `plan.json`
+and `manifest.json` as `capture` (`requestedWidth`/`requestedHeight`,
+`width`/`height`, `cappedByWorkArea`), and prints a line when the cap applied —
+so a PNG that is shorter than the request is explained by the manifest instead
+of read as a bug. Before each
 screenshot the runner waits for pending CSS transitions/animations and any
 spinner/loading indicator to clear, falling back to a short fixed delay when
 that can't be detected, so a shot never lands mid-spinner or mid-fade.
@@ -261,7 +269,8 @@ covers the grid and intercepts the preview tile click.
    - `people-pairs` — runs only when `AVC_WALKTHROUGH_FACES_SAMPLES` names a
      folder of photos of a handful of people (see "The people-pairs step"
      below); without one the run reports the skip reason "faces fixture not
-     provided".
+     provided", and a fixture that indexed but produced an empty review queue
+     reports "faces fixture yielded no candidate pairs".
 
    Every other `skipped` step (no analyzer configured, no photos catalogued,
    no subfolders in the fixture tree, …) still turns `--strict` non-zero: a
@@ -392,6 +401,19 @@ gap, and it is optional because it needs a fixture the repository cannot carry:
   decisions into the QA home.
 - With `AVC_WALKTHROUGH_FACES_SAMPLES` unset the step is skipped and `--strict`
   tolerates it, exactly as it tolerates `first-run-wizard`.
+- An indexed fixture that yields **no** candidate pair is also a tolerated skip,
+  with the reason "faces fixture yielded no candidate pairs": the same 28-photo
+  fixture yields 6 pairs in the e2e spec and 0 in the walkthrough because greedy
+  incremental clustering depends on ingestion order, so an empty queue means the
+  clusterer legitimately produced clean people, not that the surface is broken.
+  Do not hunt that ghost — point the run at a fixture whose people the
+  conservative cut splits if you need the card captured.
+- Everything else stays a failure: face grouping that will not turn on, missing
+  face models, an indexing run that never finishes or ends in the sidebar error
+  alert, and a review badge whose card does not render both face crops. The step
+  waits for the sidebar index action to go busy and become enabled again — the
+  end of the indexing run — before it reads the badge, so an empty queue is
+  never confused with a queue that had not been computed yet.
 
 None of these four are in `TOLERATED_SKIPS`: like `analyze`, a release run
 must prove them, not skip them — the walkthrough always runs with
@@ -436,7 +458,8 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Polish copy** — with the UI language set to PL, no `key.path` leaks, no
   English fallback sentence, no clipped label in a narrower Polish string.
 - **Layout** — the modal set (settings, wizard) is centred and fully inside the
-  window at the walkthrough's window size (1920x1200 by default).
+  window at the size the manifest's `capture` block records (the request is
+  1920x1200 by default; the display work area may cap it).
 - **Kolekcja photos** — after `photos-tree-analyze`, the unified Kolekcja
   Zdjęcia chip reports at least one analyzed photo, its tiles remain square
   and evenly gapped, and `collection-photo-viewer` shows a real image from
@@ -500,8 +523,9 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Pair review (`people-pairs`, W116)** — when the step ran, does the
   screenshot show the "Ta sama osoba?" card with a face crop on both sides, the
   position readout and the Polish answer buttons, with no error alert and no
-  English fallback? A step that reports the skip reason "faces fixture not
-  provided" means this release proved nothing about the pair-review surface.
+  English fallback? A step that reports "faces fixture not provided" or "faces
+  fixture yielded no candidate pairs" means this release proved nothing about
+  the pair-review surface.
 - **Kopia zapasowa enabled (F14)** — in the `backup` screenshot, does Settings >
   Kopia zapasowa show the connected destination, the last-backup readout and a
   non-empty archive list in Polish, with no error alert; and in

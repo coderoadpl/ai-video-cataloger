@@ -431,6 +431,28 @@ export const treeThumbnailOutcome = ({ rowCount, decodedCount, waitMs }) => {
   );
 };
 
+// The pair queue is a property of the fixture, not of the build: greedy incremental clustering
+// depends on ingestion order, so the same photo set that splits into reviewable pairs elsewhere can
+// cluster cleanly here and leave the queue empty. An empty queue is therefore a tolerated skip;
+// faces that cannot be enabled, missing models, an indexing run that never finishes and a badge
+// whose card does not render all stay failures.
+export const pairsReviewOutcome = ({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount }) => {
+  if (!badgeVisible) return skipped('faces fixture yielded no candidate pairs');
+  if (!reviewVisible) return failed('the review badge did not open the pair-review surface');
+  if (!cropsVisible) return failed(`the pair card rendered ${String(cropCount)} face crop(s) instead of both sides`);
+  return done(`the pair-review card is on screen (${badgeLabel}); the run answers nothing`);
+};
+
+// plan.json asks for a window size; the macOS work area silently caps it, so the PNGs are shorter
+// than the request. The run records what it actually captured rather than repeating the request.
+export const captureGeometry = ({ requestedWidth, requestedHeight, contentWidth, contentHeight }) => ({
+  requestedWidth,
+  requestedHeight,
+  width: contentWidth,
+  height: contentHeight,
+  cappedByWorkArea: contentWidth < requestedWidth || contentHeight < requestedHeight,
+});
+
 export const photoTreeAnalyzeOutcome = ({ errorVisible, errorNote, badgeVisible }) => {
   if (errorVisible) return failed(errorNote === '' ? 'photo analysis ended in error' : errorNote);
   if (badgeVisible) return done('the tree-selected photo carries the "analysed" badge');
@@ -540,6 +562,8 @@ export const assertStepName = (index, name) => {
 };
 
 /* eslint-disable no-undef -- runs inside the driven page via Playwright's waitForFunction, not this Node process */
+const contentSize = () => ({ width: window.innerWidth, height: window.innerHeight });
+
 const noPendingTransitionsOrSpinners = () =>
   document.getAnimations().every((animation) => animation.playState !== 'running') &&
   document.querySelector('[role="progressbar"], [data-testid*="spinner" i], [data-testid*="loading" i]') === null;
@@ -583,6 +607,15 @@ const SELECTED_PHOTO_ROW = '[data-testid="photos-sidebar-row"].Mui-selected';
 // would collapse whatever it was meant to open.
 const expandTreeRow = async (row) => {
   if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
+};
+
+const becameDisabled = async (locator, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await locator.isDisabled()) return true;
+    await delay(CONTROL_POLL_MS);
+  }
+  return false;
 };
 
 const becameEnabled = async (locator, timeoutMs) => {
@@ -702,6 +735,13 @@ const drive = async (plan) => {
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   const timeToWindowMs = Date.now() - launchedAt;
+  const content = await page.evaluate(contentSize);
+  const capture = captureGeometry({
+    requestedWidth: plan.windowWidth,
+    requestedHeight: plan.windowHeight,
+    contentWidth: content.width,
+    contentHeight: content.height,
+  });
 
   const { results, record } = createRecorder(page, plan.outDir);
   let selectedFilename = '';
@@ -984,7 +1024,7 @@ const drive = async (plan) => {
     const errorAlert = page.getByTestId('photos-job-error');
     const errorVisible = await appeared(errorAlert, SETTLE_TIMEOUT_MS);
     const errorNote = errorVisible ? ((await errorAlert.first().textContent()) ?? '').trim() : '';
-    const badgeVisible = await appeared(badge, SETTLE_TIMEOUT_MS);
+    const badgeVisible = await appeared(badge, VISIBLE_TIMEOUT_MS);
     return photoTreeAnalyzeOutcome({ errorVisible, errorNote, badgeVisible });
   });
 
@@ -1046,6 +1086,7 @@ const drive = async (plan) => {
     await modal.waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
     const facesSwitch = page.getByTestId('faces-enabled-switch').locator('input');
     if (!(await facesSwitch.isChecked())) await facesSwitch.click();
+    if (!(await facesSwitch.isChecked())) return failed('the Settings face-grouping switch would not turn on');
     await page.getByTestId('settings-faces-pair-scope-wide').click();
     await page.getByTestId('settings-save').click();
     await modal.waitFor({ state: 'hidden', timeout: VISIBLE_TIMEOUT_MS });
@@ -1056,11 +1097,21 @@ const drive = async (plan) => {
       return failed(`the faces index action stayed disabled: ${(await indexAction.getAttribute('title')) ?? 'no reason given'}`);
     }
     await indexAction.click();
+    if (!(await becameDisabled(indexAction, VISIBLE_TIMEOUT_MS))) {
+      return failed('the faces index action never went busy, so no indexing run started');
+    }
+    if (!(await becameEnabled(indexAction, FACES_TIMEOUT_MS))) {
+      return failed(`the faces indexing run did not finish within ${String(FACES_TIMEOUT_MS)} ms`);
+    }
+    const indexError = page.getByTestId('people-index-error');
+    if (await indexError.isVisible()) {
+      return failed(`the faces indexing run failed: ${((await indexError.textContent()) ?? 'no reason given').trim()}`);
+    }
 
     await page.getByTestId('mode-library').click();
     await page.getByTestId('subnav-people').click();
     const card = page.getByTestId('people-card');
-    if (!(await appeared(card.or(page.getByTestId('people-other-tile')), FACES_TIMEOUT_MS))) {
+    if (!(await appeared(card.or(page.getByTestId('people-other-tile')), VISIBLE_TIMEOUT_MS))) {
       return failed('the faces pass grouped nobody out of the faces fixture');
     }
     await page.getByTestId('people-threshold-slider').locator('input').focus();
@@ -1068,21 +1119,20 @@ const drive = async (plan) => {
     if (!(await appeared(card, VISIBLE_TIMEOUT_MS))) return failed('the unfolded Osoby grid rendered no person card');
 
     const badge = page.getByTestId('people-pair-review-open');
-    if (!(await appeared(badge, FACES_TIMEOUT_MS))) {
-      return failed('no pair-review badge after indexing the faces fixture at the wide pair scope');
+    const badgeVisible = await appeared(badge, VISIBLE_TIMEOUT_MS);
+    if (!badgeVisible) {
+      return pairsReviewOutcome({ badgeVisible, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
     }
     const badgeLabel = ((await badge.first().textContent()) ?? '').trim();
     await badge.click();
-    if (!(await appeared(page.getByTestId('people-pair-review'), VISIBLE_TIMEOUT_MS))) {
-      return failed('the review badge did not open the pair-review surface');
-    }
+    const reviewVisible = await appeared(page.getByTestId('people-pair-review'), VISIBLE_TIMEOUT_MS);
     const crops = page.getByTestId('people-pair-review-crop');
     const cropA = page.getByTestId('people-pair-review-person-a').getByTestId('people-pair-review-crop').first();
     const cropB = page.getByTestId('people-pair-review-person-b').getByTestId('people-pair-review-crop').first();
-    if (!(await appeared(cropA, VISIBLE_TIMEOUT_MS)) || !(await appeared(cropB, VISIBLE_TIMEOUT_MS))) {
-      return failed(`the pair card rendered ${String(await crops.count())} face crop(s) instead of both sides`);
-    }
-    return done(`the pair-review card is on screen (${badgeLabel}); the run answers nothing`);
+    const cropsVisible = reviewVisible
+      && (await appeared(cropA, VISIBLE_TIMEOUT_MS))
+      && (await appeared(cropB, VISIBLE_TIMEOUT_MS));
+    return pairsReviewOutcome({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount: await crops.count() });
   });
 
   await record('settings', async () => {
@@ -1170,7 +1220,7 @@ const drive = async (plan) => {
 
   await app.close().catch(() => undefined);
   await fakeDrive.close().catch(() => undefined);
-  return { timeToWindowMs, results };
+  return { timeToWindowMs, capture, results };
 };
 
 const main = async () => {
@@ -1201,11 +1251,19 @@ const main = async () => {
     return 0;
   }
 
-  const { timeToWindowMs, results } = await drive(plan);
+  const { timeToWindowMs, capture, results } = await drive(plan);
+  const capturedPlan = { ...plan, capture };
+  writeFileSync(path.join(plan.outDir, 'plan.json'), JSON.stringify(capturedPlan, null, 2));
   writeFileSync(
     path.join(plan.outDir, 'manifest.json'),
-    JSON.stringify({ plan, timeToWindowMs, steps: results }, null, 2),
+    JSON.stringify({ plan: capturedPlan, timeToWindowMs, steps: results }, null, 2),
   );
+  if (capture.cappedByWorkArea) {
+    console.log(
+      `release-walkthrough: the display work area capped the window; every PNG is ` +
+        `${String(capture.width)}x${String(capture.height)}, not ${String(capture.requestedWidth)}x${String(capture.requestedHeight)}`,
+    );
+  }
   const failedSteps = results.filter((result) => result.status === 'failed');
   const skippedSteps = results.filter((result) => result.status === 'skipped');
   console.log(

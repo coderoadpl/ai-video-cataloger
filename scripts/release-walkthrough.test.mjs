@@ -14,6 +14,7 @@ import {
   backupIndicatorOutcome,
   blockingSkips,
   BROKEN_PHOTO_MTIME,
+  captureGeometry,
   BROKEN_PHOTO_NAME,
   checkOllamaAnalyzer,
   clearLibrarySearch,
@@ -23,6 +24,7 @@ import {
   facesSamplesDirectory,
   fakeDriveArchives,
   localAnalyzerConfig,
+  pairsReviewOutcome,
   peopleOutcome,
   withoutBackupConfig,
   parseAnalyzerFlag,
@@ -736,5 +738,63 @@ describe('the people-pairs step', () => {
     expect(source()).toContain("getByTestId('people-pair-review-crop')");
     expect(source()).not.toContain("keyboard.press('1')");
     expect(source()).not.toContain("getByTestId('people-pair-review-same')");
+  });
+});
+
+describe('pairsReviewOutcome', () => {
+  it('reports a tolerated skip when the indexed fixture yielded no candidate pair', () => {
+    const outcome = pairsReviewOutcome({ badgeVisible: false, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.note).toBe('faces fixture yielded no candidate pairs');
+    expect(blockingSkips([{ name: 'people-pairs', ...outcome }])).toEqual([]);
+  });
+
+  it('reports failed when the badge is there but the pair surface never opened', () => {
+    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+
+    expect(outcome.status).toBe('failed');
+  });
+
+  it('reports failed, naming the crop count, when the opened card renders only one side', () => {
+    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: false, cropCount: 1 });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('1');
+  });
+
+  it('reports ok and names the badge once both sides of the card are on screen', () => {
+    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: true, cropCount: 2 });
+
+    expect(outcome.status).toBe('ok');
+    expect(outcome.note).toContain('Do sprawdzenia: 6');
+  });
+
+  it('is what the people-pairs step returns, so an empty queue is never a failure', () => {
+    expect(stepSource('people-pairs', 'settings')).toContain('pairsReviewOutcome');
+  });
+
+  it('waits for the indexing run to finish before it reads the badge', () => {
+    const source = stepSource('people-pairs', 'settings');
+    const finishedIndex = source.indexOf('becameEnabled');
+    const badgeIndex = source.indexOf("getByTestId('people-pair-review-open')");
+    expect(finishedIndex).toBeGreaterThan(-1);
+    expect(badgeIndex).toBeGreaterThan(finishedIndex);
+  });
+});
+
+describe('captureGeometry', () => {
+  it('records the requested size when the window got exactly what the plan asked for', () => {
+    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1200 });
+
+    expect(capture).toEqual({ requestedWidth: 1920, requestedHeight: 1200, width: 1920, height: 1200, cappedByWorkArea: false });
+  });
+
+  it('records the effective size, not the requested one, when the display work area caps the window', () => {
+    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1018 });
+
+    expect(capture.height).toBe(1018);
+    expect(capture.requestedHeight).toBe(1200);
+    expect(capture.cappedByWorkArea).toBe(true);
   });
 });

@@ -20,7 +20,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
-- The release walkthrough now proves that a freshly expanded sub-folder shows real decoded thumbnails before it captures the frame, and adds an optional `people-pairs` step that enables face grouping through the real Settings controls and captures the pair-review card when `AVC_WALKTHROUGH_FACES_SAMPLES` names a photo fixture.
+- The release walkthrough now proves that a freshly expanded sub-folder shows real decoded thumbnails before it captures the frame, adds an optional `people-pairs` step that enables face grouping through the real Settings controls and captures the pair-review card when `AVC_WALKTHROUGH_FACES_SAMPLES` names a photo fixture (an indexed fixture that yields no candidate pair is a tolerated skip), and records the window size it actually captured — which macOS may cap below the requested one — in `plan.json` and `manifest.json`.
 
 ## [0.6.35] - 2026-09-08
 
