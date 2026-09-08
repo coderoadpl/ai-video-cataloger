@@ -254,6 +254,11 @@ const openReview = async (user: ReturnType<typeof userEvent.setup>) => {
   await screen.findByTestId('people-pair-review');
 };
 
+const waitForIdle = async () => {
+  await waitFor(() => expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull());
+  await waitFor(() => expect(screen.getByTestId('people-pair-review-skip').getAttribute('disabled')).toBeNull());
+};
+
 describe('Osoby pair review entry point', () => {
   beforeEach(() => window.localStorage.clear());
 
@@ -490,8 +495,10 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await user.keyboard('1');
     await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(queue.decisions).toHaveLength(1));
+    await waitForIdle();
     await user.keyboard('2');
     await waitFor(() => expect(queue.decisions).toHaveLength(2));
+    await waitForIdle();
     await user.keyboard('3');
     await waitFor(() => expect(queue.decisions).toHaveLength(3));
 
@@ -620,6 +627,7 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     expect(screen.queryByTestId('people-pair-review-not-undoable')).toBeNull();
     expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 3');
     expect(screen.getByTestId('people-pair-review-undo').getAttribute('disabled')).not.toBeNull();
+    await waitForIdle();
 
     await user.keyboard('3');
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('3 of 3'));
