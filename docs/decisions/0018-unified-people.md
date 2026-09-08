@@ -493,3 +493,65 @@ not discarded as redundant.
 - **Changelog:** this amendment is documentation only and carries no
   `CHANGELOG.md` line. The lines each wave must land are enumerated in
   [tasks/prd-people-pair-review.md](../../tasks/prd-people-pair-review.md).
+
+## Amendment: the incremental path groups a run, not a file
+
+Date: 2026-09-08 · Status: accepted · **Revises D3's last bullet**
+
+D3 kept a greedy per-observation assigner for live indexing on the argument
+that the rebuild makes its mistakes cheap. The measured cost of *how* it was
+greedy was higher than that argument accounts for: the assigner ran inside the
+detection loop, so every decision was taken against the people that happened to
+exist at that moment, and the pool it founded new people from was whatever had
+accumulated so far. The traversal order is not a property of the library —
+`listFaceIndexCandidates` orders video candidates by folder path and **file
+name** — so the same files copied under different names, or split across two
+index runs, produced different people. A reproduction over synthetic embeddings
+— two identities, twenty-eight single-face observations, the same set indexed
+in four orders — produced four different partitions: two people every time, but
+between five and eleven of the twenty-eight observations left unassigned and a
+different set of them each time. The phase this amendment installs produces one
+partition for all four orders, with four observations unassigned.
+
+**D13 — Identity assignment is one deterministic phase per index run.**
+Detection, alignment, embedding and cropping stay file-by-file and keep their
+progress events; every observation is stored unassigned. When the run's files
+are done, `planIdentityAssignments` (`core/domain/faces.ts`) plans the run's
+identities in one pass over the unassigned pool — the observations this run
+added plus the ones earlier runs left over — ordered by quality descending and
+then by `obsId`, and the plan is applied as `assign` and `create` operations.
+The thresholds, the join rule (`classifyFace`) and the founding rule
+(`findNewClusterSeed`, `newClusterMinObservations`) are unchanged, so the
+precision stance is unchanged: nothing joins on weaker evidence than before,
+and a false split is still preferred over a false merge. What changes is that
+the phase's input is a *set*, and `obsId` is derived from the content
+fingerprint, so one observation set groups the same way whatever order the
+files were walked in.
+
+**D14 — The incremental path honours `different` decisions.** The per-detection
+assigner consulted no decisions at all. The run phase excludes a person from an
+observation's candidates when the two are on opposite sides of an active
+cannot-link pair, and drops such a pair out of a founding group. `same`
+decisions need no handling here: they merge the two people when they are
+recorded, and the incremental path never splits a person.
+
+The rebuild keeps its role unchanged — it is still the only path that
+re-derives every person from every embedding, and it is still where the
+constrained agglomerative algorithm of D3 and D11 runs. This amendment only
+stops a scan from depending on the order it read the disk in.
+
+### Consequences
+
+- `peopleCreated` in the `faces_done` and `photo-faces-summary` event data is
+  the number of people the run's identity phase founded; it is no longer
+  accumulated per file, and the photo summary counts the founded people whose
+  founding members include a photo observation. Both fields keep their names
+  and meaning at run level.
+- The identity phase reports one `faces_clustering` step, the step the rebuild
+  already uses. No new NDJSON step, `ErrorCode`, HTTP status, exit code or
+  schema.
+- A run that is cancelled mid-phase leaves the observations it had already
+  stored unassigned; the next run picks them up, because the pool is seeded
+  from every unassigned observation.
+- **Parity:** unchanged; faces remain post-parity and no on-disk layout,
+  event grammar or exit code changes.

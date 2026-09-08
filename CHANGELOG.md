@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Face grouping no longer depends on the order the files were indexed in: a scan stores every detected face unassigned and then groups the whole run's unassigned faces in one pass, in a stable order, so the same photos and videos produce the same people whatever order they were copied in or split across runs, and a pair the owner answered "different" is no longer joined by the indexing path.
 - A file whose catalogued analysis carries a suggested final name that was never applied to the file on disk now shows its cover and its stored analysis artifacts again: the analysis view, the Library and search resolve frames, transcript, summary and thumbnails from the name the file actually carries, so the artifacts already on disk are found instead of being addressed under a name nothing ever wrote.
 
 ## [0.6.36] - 2026-09-08

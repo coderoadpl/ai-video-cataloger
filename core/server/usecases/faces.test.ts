@@ -2293,3 +2293,157 @@ describe('W99 A5 constrained rebuild and names', () => {
     expect(await runFacesReclusterPass(deps, { dryRun: true })).toMatchObject({ value: { constraintsApplied: { cannotLink: 1 }, constraintsStale: 0 } });
   });
 });
+
+describe('W118 face grouping over one observation set', () => {
+  const random = (seed: number): (() => number) => {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  };
+
+  const randomUnit = (next: () => number): number[] => normalizeEmbedding(Array.from({ length: 128 }, () => {
+    const radius = Math.sqrt(-2 * Math.log(Math.max(next(), 1e-9)));
+    return radius * Math.cos(2 * Math.PI * next());
+  }));
+
+  const mixed = (base: readonly number[], noise: readonly number[], weight: number): number[] =>
+    normalizeEmbedding(base.map((value, index) => weight * value + Math.sqrt(1 - weight * weight) * (noise[index] ?? 0)));
+
+  interface SyntheticFace { fingerprint: string; embedding: number[] }
+
+  const syntheticFaces = (perPerson: number): SyntheticFace[] => {
+    const next = random(7);
+    const baseA = randomUnit(next);
+    const noiseB = randomUnit(next);
+    const baseB = mixed(baseA, noiseB, 0.25);
+    const faces: SyntheticFace[] = [];
+    for (const [label, base] of [['a', baseA], ['b', baseB]] as const) {
+      for (let index = 0; index < perPerson; index += 1) {
+        faces.push({
+          fingerprint: `fp-${label}-${String(index).padStart(2, '0')}`,
+          embedding: mixed(base, randomUnit(next), 0.5 + next() * 0.38),
+        });
+      }
+    }
+    return faces;
+  };
+
+  class MappedFaceEngine implements FaceEnginePort {
+    constructor(private readonly embeddings: ReadonlyMap<string, readonly number[]>) {}
+
+    readonly detection: FaceDetection = {
+      bbox: { x: 0, y: 0, width: 200, height: 200 },
+      landmarks: {
+        leftEye: { x: 70, y: 90 },
+        rightEye: { x: 130, y: 90 },
+        nose: { x: 100, y: 120 },
+        leftMouth: { x: 80, y: 160 },
+        rightMouth: { x: 120, y: 160 },
+      },
+      score: 0.95,
+    };
+
+    load(): Promise<Result<void, AppError>> { return Promise.resolve(ok(undefined)); }
+    detect(): Promise<Result<FaceDetection[], AppError>> { return Promise.resolve(ok([this.detection])); }
+
+    align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+      const normalized: FaceFrameInput = typeof frame === 'string' ? { kind: 'image-path', frameJpegPath: frame } : frame;
+      return Promise.resolve(ok({ frame: normalized, detection, width: 112, height: 112, data: new Uint8Array(3) }));
+    }
+
+    embed(crop: AlignedFaceCrop): Promise<Result<Float32Array, AppError>> {
+      const key = crop.frame.kind === 'image-path' ? crop.frame.frameJpegPath : crop.frame.videoPath;
+      const embedding = this.embeddings.get(key);
+      if (embedding === undefined) throw new Error(`no embedding for ${key}`);
+      return Promise.resolve(ok(new Float32Array(embedding)));
+    }
+
+    writeCrop(): Promise<Result<void, AppError>> { return Promise.resolve(ok(undefined)); }
+    dispose(): Promise<Result<void, AppError>> { return Promise.resolve(ok(undefined)); }
+    dependency(): Promise<Result<DependencyStatus, AppError>> {
+      return Promise.resolve(ok({ name: 'faces', available: true, version: null, source: 'managed', path: null, installHint: '' }));
+    }
+  }
+
+  const indexInOrder = async (faces: readonly SyntheticFace[], order: readonly number[]): Promise<string[]> => {
+    const base = buildDeps();
+    const embeddings = new Map<string, readonly number[]>();
+    const deps = { ...base, faceEngine: new MappedFaceEngine(embeddings) };
+    await enableFaces(deps);
+    deps.fs.addDirectory('/work/videos');
+    await deps.globalCatalog.upsertFolder({
+      folderId: '11111111-1111-1111-1111-111111111111',
+      currentPath: '/work/videos',
+      displayName: 'videos',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    for (const [position, faceIndex] of order.entries()) {
+      const face = faces[faceIndex];
+      if (face === undefined) throw new Error('bad ingestion order');
+      const fileName = `${String(position).padStart(2, '0')}.mp4`;
+      const videoPath = `/work/videos/${fileName}`;
+      const framePath = deps.fs.join(deps.fs.tempDirectory(), 'ai-video-cataloger', 'faces', face.fingerprint, 'frame-001.jpg');
+      embeddings.set(framePath, face.embedding);
+      base.media.frameLimits.set(videoPath, 1);
+      await deps.globalCatalog.upsertFile({
+        fingerprint: face.fingerprint,
+        folderId: '11111111-1111-1111-1111-111111111111',
+        fileName,
+        size: 1,
+        durationS: 10,
+        width: null,
+        height: null,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: '2026-01-01T00:00:00.000Z',
+        analyzer: 'claude',
+        model: 'sonnet',
+        missingAt: null,
+        capturedAt: null,
+        capturedAtSource: null,
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
+      });
+      await deps.globalCatalog.upsertAnalysis({
+        fingerprint: face.fingerprint,
+        finalName: fileName,
+        description: 'a clip',
+        transcript: null,
+        language: null,
+        tags: [],
+      });
+    }
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+    if (!result.ok) throw new Error(result.error.message);
+    const observations = await deps.globalCatalog.listFaceObservations();
+    if (!observations.ok) throw new Error(observations.error.message);
+    const groups = new Map<string, string[]>();
+    for (const observation of observations.value) {
+      const key = observation.personId ?? 'unassigned';
+      groups.set(key, [...(groups.get(key) ?? []), observation.obsId].sort());
+    }
+    return [...groups.entries()]
+      .map(([key, members]) => `${key === 'unassigned' ? 'unassigned' : 'person'}: ${members.join(' ')}`)
+      .sort();
+  };
+
+  it('groups the same faces into the same people whatever order the files are indexed in', async () => {
+    const faces = syntheticFaces(14);
+    const count = faces.length;
+    const orders: number[][] = [
+      Array.from({ length: count }, (_value, index) => index),
+      Array.from({ length: count }, (_value, index) => count - 1 - index),
+      Array.from({ length: count }, (_value, index) => (index % 2 === 0 ? index / 2 : count - 1 - (index - 1) / 2)),
+      Array.from({ length: count }, (_value, index) => (index * 5 + 3) % count),
+    ];
+    const partitions: string[][] = [];
+    for (const order of orders) partitions.push(await indexInOrder(faces, order));
+    for (const partition of partitions) expect(partition).toEqual(partitions[0]);
+  });
+});
