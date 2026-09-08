@@ -16,6 +16,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- `process` and `process-drive` reject `--timeout` outside the config schema's 30..600-second range as a CLI usage error.
+- API debug logs redact request, response and transport-error bodies for credential, backup-secret and OAuth routes.
+- Map pin popovers use geographic screen positions, keeping their anchors available when zooming or panning changes the rendered pins.
+- GPS backfill reports failed and precedence-skipped writes in `failures` and re-resolves stored place names when written coordinates change.
+- Video and photo GPS backfill reject invalid numeric options during CLI parsing: tolerance is 0..240 minutes and maximum visit length is 1..720 hours.
+- Drive processing emits `faces_waiting` only for a contended faces-write claim and preserves claim errors instead of reporting every claim failure as cancellation.
+
 - The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.
 
 ## [0.6.38] - 2026-09-08
@@ -1642,7 +1649,7 @@ and this section stays as history.
   ([`01a70d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/01a70d2)).
 - The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu
   ([`c09af23`](https://github.com/coderoadpl/ai-video-cataloger/commit/c09af23)).
-- `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags
+- `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags were requested in English; with `tag_language` unset they now follow pinned `output_language`
   ([`83ed0f8`](https://github.com/coderoadpl/ai-video-cataloger/commit/83ed0f8)).
 - `photos status` counts proxied and proxy-failed photos; `photos forget` deletes the forgotten photos' proxy and thumbnail artifacts
   ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).

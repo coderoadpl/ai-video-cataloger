@@ -1,3 +1,4 @@
+import { invalidateAffected } from '../../api-invalidation.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -293,7 +294,7 @@ export const useProcessing = ({
         if (outcome.completedPath !== undefined && outcome.completedPath !== video.path) {
           onVideoRenamed?.(video.path, outcome.completedPath);
         }
-        await queryClient.invalidateQueries();
+        await invalidateAffected(queryClient, 'video');
       })();
     },
     [runVideo, log, queryClient, checkReadiness, dictionary, onVideoRenamed, guard],
@@ -360,7 +361,7 @@ export const useProcessing = ({
       setAnalyzingPath(null);
       setProgress(null);
       setBatchProgress(null);
-      await queryClient.invalidateQueries();
+      await invalidateAffected(queryClient, 'video');
       setBatchSummary({ open: true, results });
     })();
   }, [runVideo, log, queryClient, checkReadiness, dictionary, guard]);
@@ -426,10 +427,10 @@ export const useProcessing = ({
                 && outcome.fileProgress.currentIndex > lastInvalidatedFileIndexRef.current
               ) {
                 lastInvalidatedFileIndexRef.current = outcome.fileProgress.currentIndex;
-                void queryClient.invalidateQueries();
+                void invalidateAffected(queryClient, 'drive');
               }
-              if (outcome.skippedPath !== null) void queryClient.invalidateQueries();
-              if (outcome.folderComplete) void queryClient.invalidateQueries();
+              if (outcome.skippedPath !== null) void invalidateAffected(queryClient, 'drive');
+              if (outcome.folderComplete) void invalidateAffected(queryClient, 'drive');
             }
           },
         });
@@ -483,7 +484,7 @@ export const useProcessing = ({
         setDriveFileProgress(null);
         setDriveBatchWait(null);
         setAnalyzingPath(null);
-        await queryClient.invalidateQueries();
+        await invalidateAffected(queryClient, 'drive');
         if (outcome.success && driveSummaryRef.current !== null) {
           setDriveSummary({ open: true, counts: driveSummaryRef.current });
         }

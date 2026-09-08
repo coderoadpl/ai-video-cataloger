@@ -46,8 +46,12 @@ export const apiLogLine = (entry: ApiLogEntry): LogLine => {
   }
 };
 
-export const useApiLog = (): ApiLogState => {
-  const entries = useSyncExternalStore(apiLogStore.subscribe, apiLogStore.snapshot);
+const emptyEntries: readonly ApiLogEntry[] = [];
+const emptySnapshot = () => emptyEntries;
+const inactiveSubscribe = () => () => undefined;
+
+export const useApiLog = (enabled = true): ApiLogState => {
+  const entries = useSyncExternalStore(enabled ? apiLogStore.subscribe : inactiveSubscribe, enabled ? apiLogStore.snapshot : emptySnapshot);
   const lines = useMemo(() => entries.map(apiLogLine), [entries]);
   return { lines, clear: apiLogStore.clear };
 };

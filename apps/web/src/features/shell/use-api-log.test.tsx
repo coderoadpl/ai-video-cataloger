@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { apiLogStore, type ApiLogEntry } from '../../api-log.js';
 import { apiLogLine, useApiLog } from './use-api-log.js';
@@ -102,4 +102,26 @@ describe('useApiLog', () => {
     });
     expect(result.current.lines).toHaveLength(0);
   });
+});
+
+
+it('does not subscribe or rerender while the debug panel is closed, then catches up when opened', () => {
+  const subscribe = vi.spyOn(apiLogStore, 'subscribe');
+  let renders = 0;
+  const hook = renderHook(({ open }) => {
+    renders += 1;
+    return useApiLog(open);
+  }, { initialProps: { open: false } });
+  const initialRenders = renders;
+  act(() => apiLogStore.record(requestEntry));
+  expect(subscribe).not.toHaveBeenCalled();
+  expect(renders).toBe(initialRenders);
+  expect(hook.result.current.lines).toEqual([]);
+  hook.rerender({ open: true });
+  expect(hook.result.current.lines).toHaveLength(1);
+  hook.rerender({ open: false });
+  const closedRenders = renders;
+  act(() => apiLogStore.record(responseEntry));
+  expect(renders).toBe(closedRenders);
+  subscribe.mockRestore();
 });

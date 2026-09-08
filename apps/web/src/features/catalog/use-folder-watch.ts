@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { bridge } from '../../api.js';
 
 interface FolderWatchOptions {
@@ -86,7 +87,7 @@ export const useFolderWatch = (
     if (folder === null) return;
     return bridge.folder.onChanged(({ folderPath }) => {
       if (folderPath !== folder) return;
-      void queryClient.invalidateQueries();
+      void invalidateAffected(queryClient, 'folder');
       if (!photosActive) return;
       pendingPhotoRescan.current = true;
       retryAttempt.current = 0;

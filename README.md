@@ -130,6 +130,11 @@ models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|fa
 models whisper-runtime status|install
 ```
 
+`gps backfill` ffprobes reachable source videos when their capture timestamp is
+missing from the catalog; it does not infer capture times from filenames.
+Place-name resolution is a no-op until the offline places dataset is installed,
+so coordinate matching can succeed without adding place names. The same dataset is required for place names in `photos gps backfill`.
+
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`, `output_language`, `tag_language`, `backup_enabled`, `backup_provider`, `backup_include_optional`, `backup_keep_last`, `backup_keep_weekly`, `backup_folder_id`, `backup_shared_drive_id`, `backup_service_account_fingerprint`, `backup_account_email`. `tag_language` follows `output_language` until you set it.
 
 `backup now` runs a backup immediately, ignoring the daily schedule and the

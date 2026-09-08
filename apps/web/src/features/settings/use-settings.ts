@@ -4,10 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IndexStatusOutput } from '@core/client/index.js';
 import type { CredentialsBackendStatus } from '@core/domain/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
+import { useSavedToast } from '../../components/ui/SavedToastProvider.js';
 import { useMountGuard } from '../../components/ui/use-mount-guard.js';
 import {
   analyzerCredentialRef,
@@ -62,6 +63,7 @@ export interface UseSettingsOptions {
 
 export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): SettingsState => {
   const dictionary = useDictionary();
+  const showSavedToast = useSavedToast();
   const enabled = open && folder !== null;
   const queryClient = useQueryClient();
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
@@ -128,7 +130,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
         const deletion = await deleteCredential.mutateAsync({ providerId: credentialRef });
         if (!guard.isMounted()) return;
         setForgetCredentialNotice(credentialDeletionNotice(dictionary, deletion));
-        await queryClient.invalidateQueries();
+        await invalidateAffected(queryClient, 'credentials');
       } catch (error) {
         if (!guard.isMounted()) return;
         setForgetCredentialNotice({ message: apiErrorMessage(error, dictionary), severity: 'error' });
@@ -194,13 +196,14 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       if (!allOk) return;
       setOriginal(draft);
       await configQuery.refetch();
-      await queryClient.invalidateQueries();
-      savedToastStore.show(savedCredentialBackend === null
+      await invalidateAffected(queryClient, 'config');
+      showSavedToast(savedCredentialBackend === null
         ? dictionary.settings.savedToast
         : credentialSavedMessage(dictionary, savedCredentialBackend));
       onSaved?.();
     })();
   }, [
+    showSavedToast,
     apiCredential,
     configQuery,
     data,

@@ -5,6 +5,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse, delay } from 'msw';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
+import { z } from 'zod';
+import * as popoverModule from './MapPinPopover.js';
+
 import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -441,4 +444,21 @@ it('CP-06 renders only viewport clusters and keeps complete visible membership',
   expect(screen.queryAllByTestId('map-pin')).toHaveLength(0);
   expect(screen.getAllByTestId('map-cluster')).toHaveLength(1);
   expect(screen.getByTestId('map-cluster').textContent).toBe('2');
+});
+
+
+it('keeps the selected popover anchored after zoom replaces the screen-cell pin', () => {
+  const popover = vi.spyOn(popoverModule, 'MapPinPopover');
+  onTestFinished(() => popover.mockRestore());
+  renderThemed(<MapCanvas locations={[location({ lat: 10, lon: 20 })]} initialViewport={{ width: 800, height: 600, centerX: 0.5, centerY: 0.5, scale: 2 }} focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenPreview={vi.fn()} onOpenPhoto={vi.fn()} />);
+  const originalPin = screen.getByTestId('map-pin');
+  fireEvent.click(originalPin);
+  fireEvent.click(screen.getByTestId('map-zoom-in'));
+  expect(originalPin.isConnected).toBe(false);
+  const anchor = z.object({
+    anchorEl: z.instanceof(HTMLElement).nullable().optional(),
+    anchorPosition: z.object({ top: z.number(), left: z.number() }).nullable().optional(),
+  }).parse(popover.mock.calls.at(-1)?.[0]);
+  expect(anchor.anchorPosition != null || anchor.anchorEl?.isConnected === true).toBe(true);
+  expect(screen.getByTestId('map-pin-coordinates')).toBeDefined();
 });

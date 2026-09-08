@@ -45,6 +45,10 @@ interface Fixture {
 }
 
 const fixtures = {
+  nfc: {
+    rel: join(coreDir, 'nfc-probe.ts'),
+    content: "export const forbidden = (value: string) => value.normalize('NFC');\n",
+  },
   as: {
     rel: join(coreDir, 'as-probe.ts'),
     content: 'export const forbidden = 1 as number;\n',
@@ -252,6 +256,11 @@ afterAll(() => {
 });
 
 describe('ESLint gate still rejects violations', () => {
+  it('bans direct NFC normalization in a violating probe', () => {
+    const message = findMessage(fixtures.nfc, 'no-restricted-syntax');
+    expect(message?.message).toContain('canonicalPath');
+  });
+
   it('bans `as` type assertions (AS_BAN via no-restricted-syntax)', () => {
     const message = findMessage(fixtures.as, 'no-restricted-syntax');
     expect(message).toBeDefined();

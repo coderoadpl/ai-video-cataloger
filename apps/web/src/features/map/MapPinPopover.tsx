@@ -6,20 +6,21 @@ import { mediaUrl } from '../../lib/media-url.js';
 import type { CatalogLocation } from './use-catalog-locations.js';
 
 interface MapPinPopoverProps {
-  anchorEl: HTMLElement | null;
+  anchorPosition: { top: number; left: number } | null;
   location: CatalogLocation | null;
   onClose: () => void;
   onOpenPreview: (location: CatalogLocation) => void;
   onOpenPhoto: (fingerprint: string) => void;
 }
 
-export const MapPinPopover = ({ anchorEl, location, onClose, onOpenPreview, onOpenPhoto }: MapPinPopoverProps) => {
+export const MapPinPopover = ({ anchorPosition, location, onClose, onOpenPreview, onOpenPhoto }: MapPinPopoverProps) => {
   const dictionary = useDictionary();
 
   return (
     <Popover
-      open={anchorEl !== null && location !== null}
-      anchorEl={anchorEl}
+      open={anchorPosition !== null && location !== null}
+      anchorReference="anchorPosition"
+      anchorPosition={anchorPosition ?? undefined}
       onClose={onClose}
       anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}

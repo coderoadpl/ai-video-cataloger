@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import { ApiError } from '@core/client/index.js';
 import type { catalogFolderOutputSchema } from '@core/contract/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 
 export type AbsentFileEntry = z.output<typeof catalogFolderOutputSchema>['records'][number];
@@ -35,7 +36,7 @@ export const useAbsentFiles = (folder: string): AbsentFilesState => {
       setError(null);
       try {
         await forgetMutation.mutateAsync({ fingerprint });
-        await queryClient.invalidateQueries();
+        await invalidateAffected(queryClient, 'catalog');
         return true;
       } catch (caught) {
         setError(messageOf(caught));

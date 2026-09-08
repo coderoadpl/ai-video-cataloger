@@ -1,3 +1,6 @@
+import { API_ROUTES } from '@core/contract/index.js';
+import { z } from 'zod';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -145,5 +148,29 @@ describe('instrumentFetch', () => {
 
     const entries = apiLogStore.snapshot();
     expect(entries[0]).toMatchObject({ method: 'GET', url: 'http://localhost/api/v1/jobs' });
+  });
+});
+
+
+describe('secret-bearing routes', () => {
+  it('redacts both directions for every contract route with a secret field or secret operation', async () => {
+    const secretField = /^(credential|keyJson|recoveryKey|accessToken|refreshToken|clientSecret|privateKey|password|authorizationCode|access_token|refresh_token|client_secret|private_key)$/i;
+    const carriesSecret = (value: unknown): boolean => {
+      if (value === null || typeof value !== 'object') return false;
+      return Object.entries(value).some(([key, child]) => secretField.test(key) || carriesSecret(child));
+    };
+    const routes = Object.values(API_ROUTES).filter((route) =>
+      /credentials|oauth|backup\/enable|recovery-key/.test(route.path)
+      || carriesSecret(z.toJSONSchema(route.input, { unrepresentable: 'any', io: 'input' }))
+      || carriesSecret(z.toJSONSchema(route.output, { unrepresentable: 'any' })));
+    expect(routes.length).toBeGreaterThan(5);
+    for (const route of routes) {
+      apiLogStore.clear();
+      const response = new Response('secret response');
+      const fetch = instrumentFetch(async () => response);
+      await fetch(route.path, { method: route.method, body: 'secret request' });
+      expect(apiLogStore.snapshot().map((entry) => entry.body), route.path).toEqual(['[redacted]', '[redacted]']);
+      expect(await response.text()).toBe('secret response');
+    }
   });
 });

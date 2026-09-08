@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { appError, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
 
@@ -133,6 +133,7 @@ describe('process-drive faces pass', () => {
     expect(run.ok).toBe(true);
     if (!run.ok) throw new Error(run.error.message);
     expect(run.value.faces).toMatchObject({ ran: true, skippedReason: null, filesIndexed: 1 });
+    expect(events.some((event) => event.step === 'faces_waiting')).toBe(false);
     const observations = await deps.globalCatalog.listFaceObservations({});
     expect(observations.ok && observations.value.length).toBeGreaterThan(0);
     expect(events).toContainEqual(expect.objectContaining({
@@ -173,6 +174,18 @@ describe('process-drive faces pass', () => {
     expect(run.ok).toBe(true);
     if (!run.ok) throw new Error(run.error.message);
     expect(run.value.faces).toMatchObject({ ran: true, skippedReason: null, filesIndexed: 1 });
+  });
+
+  it.each(['processing_error', 'not_found'] as const)('preserves a %s resource claim failure', async (code) => {
+    const deps = makeDeps();
+    await enableFaces(deps);
+    addVideo(deps.fs, '/drive/clip.mp4', 'hash-clip');
+    vi.spyOn(deps.jobs, 'acquireResource').mockResolvedValue({ ok: false, error: appError(code, 'claim failed') });
+    const events: JobProgress[] = [];
+    const run = await processDrive(deps, baseInput, recordingProgress(events), { runId: 'claim-failure' });
+    expect(run.ok && run.value.faces).toMatchObject({ ran: false, skippedReason: 'failed', error: { code, message: 'claim failed' } });
+    expect(events).toContainEqual(expect.objectContaining({ step: 'faces_pass_skipped', data: expect.objectContaining({ reason: 'failed' }) }));
+    expect(deps.faceEngine.loadCalls).toBe(0);
   });
 
   it('leaves faces out of the summary and never loads the engine when faces are off', async () => {

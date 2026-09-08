@@ -3,7 +3,7 @@ import { Alert, Divider, Menu, MenuItem, Snackbar } from '@mui/material';
 
 import { bridge } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
+import { useSavedToast } from '../../components/ui/SavedToastProvider.js';
 import type { LibraryItem } from './core/index.js';
 
 interface TileMenuAnchor {
@@ -46,6 +46,7 @@ export const TileMenu = ({
   onRestoreItem,
 }: TileMenuProps) => {
   const dictionary = useDictionary();
+  const showSavedToast = useSavedToast();
   const { anchor, close } = controller;
   const item = anchor?.item ?? null;
   const [revealFailed, setRevealFailed] = useState(false);
@@ -108,7 +109,7 @@ export const TileMenu = ({
               try {
                 if (navigator.clipboard === undefined) throw new Error('Clipboard API unavailable');
                 await navigator.clipboard.writeText(target);
-                savedToastStore.show(dictionary.common.copied);
+                showSavedToast(dictionary.common.copied);
               } catch {
                 setCopyFailed(true);
               }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import { facesReclusterOutputSchema, type facesPeopleOutputSchema } from '@core/contract/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -114,7 +115,7 @@ export const usePeople = ({
     || reclusterMutation.isPending;
 
   const invalidate = useCallback(async () => {
-    await queryClient.invalidateQueries();
+    await invalidateAffected(queryClient, 'faces');
   }, [queryClient]);
 
   const facesJobWasRunning = useRef(false);

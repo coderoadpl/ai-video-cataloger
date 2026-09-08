@@ -15,12 +15,13 @@ import type {
   readinessOutputSchema,
 } from '@core/contract/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import type { Locale } from '../../i18n/dictionary.js';
 import { useDictionary, useUiLanguage } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { useMountGuard } from '../../components/ui/use-mount-guard.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
+import { useSavedToast } from '../../components/ui/SavedToastProvider.js';
 import {
   analyzerBackendFor,
   bestInstalledWhisperModel,
@@ -135,6 +136,7 @@ export interface UseWizardOptions {
 
 export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWizardOptions): WizardController => {
   const dictionary = useDictionary();
+  const showSavedToast = useSavedToast();
   const uiLanguage = useUiLanguage();
   const queryClient = useQueryClient();
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled: open });
@@ -290,7 +292,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       if (folder !== null && data !== undefined && 'config' in data && data.config[key] !== null) {
         await unsetConfig.mutateAsync({ folder, key });
       }
-      await queryClient.invalidateQueries();
+      await invalidateAffected(queryClient, 'config');
     },
     [configQuery.data, folder, queryClient, setConfig, unsetConfig],
   );
@@ -384,7 +386,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       }
       if (!guard.isMounted()) return;
       setValidation('ok');
-      savedToastStore.show(dictionary.wizard.controller.analyzerSaved);
+      showSavedToast(dictionary.wizard.controller.analyzerSaved);
       setStep('transcription');
     } catch (error) {
       if (!guard.isMounted()) return;
@@ -392,6 +394,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       setValidationMessage(messageOf(error));
     }
   }, [
+    showSavedToast,
     guard,
     analyzerFamily,
     apiDraft,
@@ -443,14 +446,14 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       await persistTranscription();
       if (!guard.isMounted()) return;
       setValidation('ok');
-      savedToastStore.show(dictionary.wizard.controller.transcriptionSaved);
+      showSavedToast(dictionary.wizard.controller.transcriptionSaved);
       setStep('faces');
     } catch (error) {
       if (!guard.isMounted()) return;
       setValidation('error');
       setValidationMessage(messageOf(error));
     }
-  }, [persistTranscription, transcriptionMode, whisperBinaryPath, dictionary, guard]);
+  }, [showSavedToast, persistTranscription, transcriptionMode, whisperBinaryPath, dictionary, guard]);
 
   const setFacesEnabled = useCallback((enabled: boolean): void => {
     setFacesEnabledChoice(enabled);
@@ -465,14 +468,14 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       await writeConfig('faces_enabled', facesEnabled ? 'true' : 'false');
       if (!guard.isMounted()) return;
       setValidation('ok');
-      savedToastStore.show(dictionary.wizard.controller.facesSaved);
+      showSavedToast(dictionary.wizard.controller.facesSaved);
       setStep('downloads');
     } catch (error) {
       if (!guard.isMounted()) return;
       setValidation('error');
       setValidationMessage(messageOf(error));
     }
-  }, [dictionary, facesEnabled, writeConfig, guard]);
+  }, [showSavedToast, dictionary, facesEnabled, writeConfig, guard]);
 
   const pollJob = useCallback(
     async (jobId: string, label: string, index: number): Promise<boolean> => {
@@ -560,7 +563,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         }
       }
       if (!guard.isMounted()) return;
-      await queryClient.invalidateQueries();
+      await invalidateAffected(queryClient, 'setup');
       setIsDownloading(false);
       setStep('readiness');
     } catch (error) {
@@ -620,8 +623,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           try {
             await activateWhisperModel.mutateAsync({ modelName: action.model });
             if (!guard.isMounted()) return;
-            await queryClient.invalidateQueries();
-            savedToastStore.show(dictionary.wizard.controller.whisperModelActive(action.model));
+            await invalidateAffected(queryClient, 'whisper');
+            showSavedToast(dictionary.wizard.controller.whisperModelActive(action.model));
             checkReadiness();
           } catch (error) {
             if (!guard.isMounted()) return;
@@ -631,7 +634,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         })();
         return;
     }
-  }, [activateWhisperModel, checkReadiness, queryClient, dictionary, guard]);
+  }, [showSavedToast, activateWhisperModel, checkReadiness, queryClient, dictionary, guard]);
 
   const next = useCallback(() => {
     switch (step) {

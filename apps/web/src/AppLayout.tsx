@@ -16,6 +16,7 @@ import { TerminalLog } from './components/ui/TerminalLog.js';
 import { mergeLogLines, renderLine, type LogLine, type TerminalViewMode } from './components/ui/use-terminal-log.js';
 import { BackupIndicator } from './features/settings/BackupIndicator.js';
 import { DurabilityIndicator } from './features/settings/DurabilityIndicator.js';
+import { useApiLog } from './features/shell/use-api-log.js';
 import { useMenuEvents } from './features/shell/use-menu-events.js';
 import { type ShellState } from './features/shell/use-shell.js';
 import { useDictionary, useDocumentLanguage } from './i18n/use-dictionary.js';
@@ -122,8 +123,9 @@ export const AppLayout = ({
     });
   }, []);
 
+  const apiLog = useApiLog(!terminalCollapsed && mode === 'analysis' && rawMode === 'raw');
   const terminalLines = useMemo(() => terminal?.lines ?? [], [terminal?.lines]);
-  const terminalApiLines = useMemo(() => terminal?.apiLines ?? [], [terminal?.apiLines]);
+  const terminalApiLines = useMemo(() => terminal?.apiLines ?? apiLog.lines, [terminal?.apiLines, apiLog.lines]);
   const visibleText = useMemo(
     () =>
       (rawMode === 'raw' ? mergeLogLines(terminalLines, terminalApiLines) : terminalLines)
@@ -227,7 +229,7 @@ export const AppLayout = ({
                 >
                   {dictionary.appFrame.terminalCopy}
                 </Button>
-                <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={terminal.onClear}>
+                <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={() => { terminal.onClear(); apiLog.clear(); }}>
                   {dictionary.appFrame.terminalClear}
                 </Button>
               </>

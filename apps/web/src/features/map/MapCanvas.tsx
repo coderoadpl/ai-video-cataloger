@@ -66,7 +66,7 @@ export const MapCanvas = ({
   const theme = useTheme();
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const pinRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [anchorPosition, setAnchorPosition] = useState<{ top: number; left: number } | null>(null);
   const [size, setSize] = useState(FALLBACK_SIZE);
   const [viewport, setViewport] = useState<Viewport>(
     initialViewport ?? fitViewport(unitBounds(locations.map((location) => project(location))), size.width, size.height, VIEWPORT_PADDING_PX),
@@ -148,6 +148,16 @@ export const MapCanvas = ({
   };
 
   const selectedLocation = selectedFingerprint === null ? null : byFingerprint.get(selectedFingerprint) ?? null;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (selectedLocation === null || container === null) {
+      setAnchorPosition(null);
+      return;
+    }
+    const point = toScreen(project(selectedLocation), viewport);
+    const bounds = container.getBoundingClientRect();
+    setAnchorPosition({ left: bounds.left + point.x, top: bounds.top + point.y - 16 });
+  }, [selectedLocation, viewport]);
 
   return (
     <Box
@@ -250,10 +260,6 @@ export const MapCanvas = ({
                 />
               )}
               <ButtonBase
-                ref={(node) => {
-                  if (node === null) pinRefs.current.delete(location.fingerprint);
-                  else pinRefs.current.set(location.fingerprint, node);
-                }}
                 data-testid="map-pin"
                 data-approximate={approximate}
                 data-media={location.media}
@@ -314,7 +320,7 @@ export const MapCanvas = ({
       })}
 
       <MapPinPopover
-        anchorEl={selectedFingerprint === null ? null : pinRefs.current.get(selectedFingerprint) ?? null}
+        anchorPosition={anchorPosition}
         location={selectedLocation}
         onClose={() => setSelectedFingerprint(null)}
         onOpenPreview={onOpenPreview}

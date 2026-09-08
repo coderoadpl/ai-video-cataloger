@@ -1219,3 +1219,11 @@ export const setFolderDefaultVariantMutation = (api: ApiClient) =>
       void invalidateVariantConsumers(context);
     },
   });
+
+
+export const invalidateQueryKeys = async (
+  client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> },
+  keys: readonly QueryKey[],
+): Promise<void> => {
+  await Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
+};
