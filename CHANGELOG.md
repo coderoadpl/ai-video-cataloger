@@ -14,9 +14,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.38] - 2026-09-08
+
 ### Fixed
 
-- The People view no longer shows controls that cannot act: while local face grouping is off the header renders only the heading, the subtitle and the settings call to action; the minimum-occurrences slider's value bubble now clears the label above it instead of covering the heading text; and the Polish folder counter in the catalog tree agrees with its count ("1 oczekuje", "3 oczekują", "5 oczekuje", "0 gotowych").
+- The People view no longer shows controls that cannot act: while local face grouping is off the header renders only the heading, the subtitle and the settings call to action; the minimum-occurrences slider's value bubble now clears the label above it instead of covering the heading text; and the Polish folder counter in the catalog tree agrees with its count ("1 oczekuje", "3 oczekują", "5 oczekuje", "0 gotowych")
+  ([`322aca9`](https://github.com/coderoadpl/ai-video-cataloger/commit/322aca920c50e3169aa53bb86ad3586ea7814297)).
 
 ## [0.6.37] - 2026-09-08
 
