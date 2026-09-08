@@ -6,7 +6,7 @@ const testSchema = z.object({
   projectName: z.string(),
   status: z.enum(['skipped', 'expected', 'unexpected', 'flaky']),
   annotations: z.array(annotationSchema).optional(),
-  results: z.array(z.object({ annotations: z.array(annotationSchema).optional() })).optional(),
+  results: z.array(z.object({ status: z.enum(['passed', 'failed', 'timedOut', 'skipped', 'interrupted']).optional(), annotations: z.array(annotationSchema).optional() })).optional(),
 });
 
 const specSchema = z.object({ title: z.string(), tests: z.array(testSchema) });
@@ -35,6 +35,7 @@ export type LegReport = {
   readonly leg: string;
   readonly passed: number;
   readonly failed: number;
+  readonly flaky: number;
   readonly skippedCount: number;
   readonly skipped: readonly SkippedTest[];
 };
@@ -64,7 +65,7 @@ const skipReasonOf = (test: TestNode): string => {
   return skip?.description ?? 'no reason recorded';
 };
 
-export const parseLegReport = (leg: string, raw: unknown): LegReport => {
+export const parseLegReport = (leg: string, raw: unknown, expectedProjects: readonly string[] = []): LegReport => {
   const parsed = jsonReportSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Leg "${leg}" produced a file that is not a Playwright JSON report.`);
@@ -73,6 +74,12 @@ export const parseLegReport = (leg: string, raw: unknown): LegReport => {
   const tests = flattenSpecs(parsed.data.suites).flatMap((spec) =>
     spec.tests.map((test) => ({ spec, test })),
   );
+  if (tests.length === 0) throw new Error(`Leg "${leg}" has no executed tests.`);
+  for (const project of expectedProjects) {
+    if (!tests.some(({ test }) => test.projectName === project && test.status !== 'skipped' && test.results?.some((result) => result.status !== undefined && result.status !== 'skipped') === true)) {
+      throw new Error(`Leg "${leg}" has no executed tests for expected project "${project}".`);
+    }
+  }
   const skipped = tests
     .filter(({ test }) => test.status === 'skipped')
     .map(({ spec, test }) => ({
@@ -83,7 +90,8 @@ export const parseLegReport = (leg: string, raw: unknown): LegReport => {
 
   return {
     leg,
-    passed: tests.filter(({ test }) => test.status === 'expected' || test.status === 'flaky').length,
+    passed: tests.filter(({ test }) => test.status === 'expected').length,
+    flaky: tests.filter(({ test }) => test.status === 'flaky').length,
     failed: tests.filter(({ test }) => test.status === 'unexpected').length,
     skippedCount: skipped.length,
     skipped,
@@ -104,7 +112,7 @@ export const formatUnexpectedSkipFailure = (skips: readonly SkippedTest[]): stri
     ...skips.map((skip) => `  - [${skip.projectName}] ${skip.title} — ${skip.reason}`),
   ].join('\n');
 
-const HEADER: readonly string[] = ['leg', 'passed', 'failed', 'skipped'];
+const HEADER: readonly string[] = ['leg', 'passed', 'failed', 'flaky', 'skipped'];
 
 export const formatSummaryTable = (reports: readonly LegReport[]): string => {
   const rows: readonly (readonly string[])[] = [
@@ -113,6 +121,7 @@ export const formatSummaryTable = (reports: readonly LegReport[]): string => {
       report.leg,
       String(report.passed),
       String(report.failed),
+      String(report.flaky),
       String(report.skippedCount),
     ]),
   ];

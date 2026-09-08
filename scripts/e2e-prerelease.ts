@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   formatSummaryTable,
@@ -26,7 +27,8 @@ const LEGS: readonly string[] = [
   'map',
 ];
 
-const reportDirectory = path.join(process.cwd(), 'test-results', 'prerelease');
+const expectedProjects = (leg: string): readonly string[] =>
+  leg === 'parity' ? ['cli', 'gui'] : [leg === 'backup' ? 'backup-settings' : leg];
 
 const runLeg = (leg: string, reportFile: string): number => {
   const result = spawnSync('pnpm', ['run', `test:e2e:${leg}`], {
@@ -43,7 +45,7 @@ const readLegReport = (
   required: boolean,
 ): LegReport | undefined => {
   try {
-    return parseLegReport(leg, JSON.parse(readFileSync(reportFile, 'utf8')));
+    return parseLegReport(leg, JSON.parse(readFileSync(reportFile, 'utf8')), expectedProjects(leg));
   } catch (error) {
     if (!required) return undefined;
     const detail = error instanceof Error ? error.message : String(error);
@@ -51,38 +53,50 @@ const readLegReport = (
   }
 };
 
-const main = (): void => {
-  rmSync(reportDirectory, { recursive: true, force: true });
-  mkdirSync(reportDirectory, { recursive: true });
+export const runPrerelease = (root = process.cwd(), executeLeg = runLeg): number => {
+  const reportsRoot = path.join(realpathSync(root), '.e2e-prerelease');
+  mkdirSync(reportsRoot, { recursive: true });
+  const lock = path.join(reportsRoot, 'lock');
+  try {
+    mkdirSync(lock);
+  } catch {
+    throw new Error('Prerelease is already running in this checkout. After confirming it has stopped, remove .e2e-prerelease/lock if left by an interrupted run.');
+  }
+  try {
+    const reportDirectory = mkdtempSync(path.join(reportsRoot, 'run-'));
 
-  const reports: LegReport[] = [];
-  let firstRedLeg: { leg: string; status: number } | undefined;
+    const reports: LegReport[] = [];
+    let firstRedLeg: { leg: string; status: number } | undefined;
 
-  for (const leg of LEGS) {
-    const reportFile = path.join(reportDirectory, `${leg}.json`);
-    const status = runLeg(leg, reportFile);
-    // Playwright wipes test-results/ when it starts, so a leg's report has to be
-    // read before the next leg runs.
-    const report = readLegReport(leg, reportFile, status === 0);
-    if (report !== undefined) reports.push(report);
-    if (status !== 0) {
-      firstRedLeg = { leg, status };
-      break;
+    for (const leg of LEGS) {
+      const reportFile = path.join(reportDirectory, `${leg}.json`);
+      const status = executeLeg(leg, reportFile);
+      const report = readLegReport(leg, reportFile, status === 0);
+      if (report !== undefined) reports.push(report);
+      if (status !== 0 || (report !== undefined && (report.failed > 0 || report.flaky > 0))) {
+        firstRedLeg = { leg, status: status || 1 };
+        break;
+      }
     }
-  }
 
-  process.stdout.write(`\n${formatSummaryTable(reports)}\n`);
+    process.stdout.write(`\n${formatSummaryTable(reports)}\n`);
 
-  if (firstRedLeg !== undefined) {
-    process.stderr.write(`\nLeg "${firstRedLeg.leg}" failed — stopping the pre-release suite.\n`);
-    process.exit(firstRedLeg.status);
-  }
+    if (firstRedLeg !== undefined) {
+      process.stderr.write(`\nLeg "${firstRedLeg.leg}" failed — stopping the pre-release suite.\n`);
+      return firstRedLeg.status;
+    }
 
-  const skips = unexpectedSkips(reports);
-  if (skips.length > 0) {
-    process.stderr.write(`\n${formatUnexpectedSkipFailure(skips)}\n`);
-    process.exit(1);
+    const skips = unexpectedSkips(reports);
+    if (skips.length > 0) {
+      process.stderr.write(`\n${formatUnexpectedSkipFailure(skips)}\n`);
+      return 1;
+    }
+    return 0;
+  } finally {
+    rmSync(lock, { recursive: true });
   }
 };
 
-main();
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = runPrerelease();
+}

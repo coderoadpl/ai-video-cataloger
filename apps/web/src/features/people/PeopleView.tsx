@@ -409,7 +409,13 @@ export const PeopleView = ({
   if (!active) return null;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+    <Box
+      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
+      data-testid="people-pairs-query"
+      data-query-status={pairs.status}
+      data-fetch-status={pairs.fetchStatus}
+      data-pending={pairs.status === 'success' && pairs.fetchStatus === 'idle' ? pairs.pending : undefined}
+    >
       <PageHeader
         testId="people-header"
         title={dictionary.people.title}

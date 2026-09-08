@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -393,7 +394,7 @@ const disappeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
 };
 
 const done = (note = '') => ({ status: 'ok', note });
-const skipped = (note) => ({ status: 'skipped', note });
+const skipped = (note, reason) => ({ status: 'skipped', note, ...(reason === undefined ? {} : { reason }) });
 const failed = (note) => ({ status: 'failed', note });
 
 // Kept free of Playwright so the mapping from observed DOM state to outcome is unit-testable
@@ -436,8 +437,10 @@ export const treeThumbnailOutcome = ({ rowCount, decodedCount, waitMs }) => {
 // cluster cleanly here and leave the queue empty. An empty queue is therefore a tolerated skip;
 // faces that cannot be enabled, missing models, an indexing run that never finishes and a badge
 // whose card does not render all stay failures.
-export const pairsReviewOutcome = ({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount }) => {
-  if (!badgeVisible) return skipped('faces fixture yielded no candidate pairs');
+export const pairsReviewOutcome = ({ queryStatus, pending, badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount }) => {
+  if (queryStatus !== 'success') return failed('the pairs query did not complete successfully');
+  if (pending === 0) return skipped('faces fixture yielded no candidate pairs', 'empty-pair-queue');
+  if (!badgeVisible) return failed('the nonempty pairs queue rendered no review badge');
   if (!reviewVisible) return failed('the review badge did not open the pair-review surface');
   if (!cropsVisible) return failed(`the pair card rendered ${String(cropCount)} face crop(s) instead of both sides`);
   return done(`the pair-review card is on screen (${badgeLabel}); the run answers nothing`);
@@ -445,12 +448,12 @@ export const pairsReviewOutcome = ({ badgeVisible, badgeLabel, reviewVisible, cr
 
 // plan.json asks for a window size; the macOS work area silently caps it, so the PNGs are shorter
 // than the request. The run records what it actually captured rather than repeating the request.
-export const captureGeometry = ({ requestedWidth, requestedHeight, contentWidth, contentHeight }) => ({
+export const captureGeometry = ({ requestedWidth, requestedHeight, contentWidth, contentHeight, outerWidth, outerHeight }) => ({
   requestedWidth,
   requestedHeight,
   width: contentWidth,
   height: contentHeight,
-  cappedByWorkArea: contentWidth < requestedWidth || contentHeight < requestedHeight,
+  cappedByWorkArea: outerWidth < requestedWidth || outerHeight < requestedHeight,
 });
 
 export const photoTreeAnalyzeOutcome = ({ errorVisible, errorNote, badgeVisible }) => {
@@ -522,10 +525,10 @@ export const clearLibrarySearch = async (page, input) => {
 // Each depends on state a run may legitimately not have (a wizard that already got dismissed, a
 // Library tile from an earlier scan, a faces fixture the operator did not point the run at);
 // docs/qa/release-walkthrough.md carries the full rationale.
-export const TOLERATED_SKIPS = new Set(['first-run-wizard', 'library-preview', 'people-pairs']);
+export const TOLERATED_SKIPS = new Set(['first-run-wizard:no-wizard', 'library-preview:fixture-unavailable', 'people-pairs:fixture-unavailable', 'people-pairs:empty-pair-queue']);
 
 export const blockingSkips = (results) =>
-  results.filter((result) => result.status === 'skipped' && !TOLERATED_SKIPS.has(result.name));
+  results.filter((result) => result.status === 'skipped' && !TOLERATED_SKIPS.has(`${result.name}:${result.reason}`));
 
 export const WALKTHROUGH_STEPS = [
   'launch',
@@ -629,7 +632,7 @@ const becameEnabled = async (locator, timeoutMs) => {
 
 const settle = async (page) => {
   try {
-    await page.waitForFunction(noPendingTransitionsOrSpinners, { timeout: SCREENSHOT_SETTLE_TIMEOUT_MS });
+    await page.waitForFunction(noPendingTransitionsOrSpinners, undefined, { timeout: SCREENSHOT_SETTLE_TIMEOUT_MS });
   } catch {
     await page.waitForTimeout(SCREENSHOT_SETTLE_FALLBACK_MS);
   }
@@ -648,7 +651,14 @@ export const createRecorder = (page, outDir) => {
       outcome = { status: 'failed', note: error instanceof Error ? error.message : String(error) };
     }
     await settle(page).catch(() => undefined);
-    await page.screenshot({ path: path.join(outDir, screenshot) }).catch(() => undefined);
+    let captureError;
+    try {
+      await page.screenshot({ path: path.join(outDir, screenshot), scale: 'css' });
+      if (!statSync(path.join(outDir, screenshot)).isFile()) throw new Error('screenshot is not a file');
+    } catch (error) {
+      captureError = error instanceof Error ? error.message : String(error);
+      outcome = failed([outcome.note, `Capture failed: ${captureError}`].filter(Boolean).join('; '));
+    }
     if (afterCapture !== undefined) {
       try {
         await afterCapture();
@@ -656,10 +666,37 @@ export const createRecorder = (page, outDir) => {
         outcome = { status: 'failed', note: error instanceof Error ? error.message : String(error) };
       }
     }
-    results.push({ name, ...outcome, durationMs: Date.now() - startedAt, screenshot });
+    results.push({ name, ...outcome, durationMs: Date.now() - startedAt, screenshot, ...(captureError === undefined ? {} : { captureError }) });
     console.log(`  ${outcome.status.padEnd(7)} ${name}${outcome.note === '' ? '' : ` — ${outcome.note}`}`);
   };
   return { results, record };
+};
+
+export const verifyRecordedScreenshots = (outDir, results) => {
+  for (const result of results) {
+    try {
+      if (!statSync(path.join(outDir, result.screenshot)).isFile()) throw new Error('screenshot is not a file');
+    } catch {
+      result.status = 'failed';
+      result.captureError ??= 'recorded screenshot is missing';
+      result.note = `${result.note}; ${result.captureError}`;
+    }
+  }
+  return results.every((result) => result.captureError === undefined);
+};
+
+export const awaitPairsQuery = async (page) => {
+  const state = page.getByTestId('people-pairs-query');
+  await page.waitForFunction(() => {
+    const node = globalThis.document.querySelector('[data-testid="people-pairs-query"]');
+    return node?.getAttribute('data-query-status') === 'error'
+      || (node?.getAttribute('data-query-status') === 'success' && node.getAttribute('data-fetch-status') === 'idle');
+  }, undefined, { timeout: VISIBLE_TIMEOUT_MS });
+  const queryStatus = await state.getAttribute('data-query-status');
+  if (queryStatus !== 'success') throw new Error('the pairs query failed');
+  const rawPending = await state.getAttribute('data-pending');
+  const pending = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().nonnegative()).parse(rawPending);
+  return { queryStatus, pending };
 };
 
 const dismissWizard = async (page) => {
@@ -718,6 +755,9 @@ const stubSaveDialog = async (app, filePath) => {
 };
 
 const drive = async (plan) => {
+  const checked = spawnSync(process.execPath, ['--import', 'tsx', path.join(REPO_ROOT, 'scripts/installed-runtime-cli.ts')], { encoding: 'utf8', timeout: 45_000 });
+  if (checked.status !== 0) throw new Error(checked.stderr || 'Installed runtime validation failed; run pnpm install --frozen-lockfile --force');
+  const expectedElectron = z.string().min(1).parse(checked.stdout.trim());
   seedWindowState(plan);
   seedUiLanguage(plan);
   seedLocalAnalyzer(plan);
@@ -732,11 +772,21 @@ const drive = async (plan) => {
     args: [`--user-data-dir=${plan.userDataDir}`],
     env: isolatedEnvironment(plan, fakeDrive),
   });
+  const electronVersion = await app.evaluate(() => process.versions.electron);
+  writeFileSync(path.join(plan.outDir, 'electron-runtime.json'), JSON.stringify({ expected: expectedElectron, exercised: electronVersion }));
+  if (electronVersion !== expectedElectron) {
+    await app.close();
+    await fakeDrive.close();
+    throw new Error('Exercised Electron does not match the lockfile; reinstall dependencies and rebuild the package.');
+  }
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   const timeToWindowMs = Date.now() - launchedAt;
   const content = await page.evaluate(contentSize);
+  const outer = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
   const capture = captureGeometry({
+    outerWidth: outer.width,
+    outerHeight: outer.height,
     requestedWidth: plan.windowWidth,
     requestedHeight: plan.windowHeight,
     contentWidth: content.width,
@@ -754,7 +804,7 @@ const drive = async (plan) => {
 
   await record('first-run-wizard', async () => {
     if (!(await appeared(page.getByTestId('setup-wizard'), SETTLE_TIMEOUT_MS))) {
-      return skipped('no first-run wizard on this profile');
+      return skipped('no first-run wizard on this profile', 'no-wizard');
     }
     await dismissWizard(page);
     return done('dismissed with "configure later"');
@@ -873,20 +923,20 @@ const drive = async (plan) => {
     const searchInput = page.getByTestId(SEARCH_INPUT).locator('input').first();
     if (!(await appeared(searchInput, SETTLE_TIMEOUT_MS))) return failed('no library search input to clear before preview');
     await clearLibrarySearch(page, searchInput);
-    const tile = page.getByTestId('library-tile').first();
-    if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview');
+    const tile = page.locator('[data-testid="library-tile"][data-media="video"]').first();
+    if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview', 'fixture-unavailable');
     await tile.click();
     const viewer = page.getByTestId('library-media-viewer');
-    if (!(await appeared(viewer, VISIBLE_TIMEOUT_MS))) return skipped('media viewer did not open');
-    if ((await viewer.getAttribute('data-media')) !== 'video') return skipped('first Kolekcja tile is not a video');
+    if (!(await appeared(viewer, VISIBLE_TIMEOUT_MS))) return failed('media viewer did not open');
+    if ((await viewer.getAttribute('data-media')) !== 'video') return failed('selected video tile opened a non-video viewer');
     if (!(await appeared(page.getByTestId('library-media-viewer-player'), SETTLE_TIMEOUT_MS))) {
-      return skipped('viewer player did not render (offline or missing file)');
+      return failed('viewer player did not render (offline or missing file)');
     }
     const escapeHatch = page.getByTestId('library-media-viewer-open-analysis');
-    if (!(await appeared(escapeHatch, SETTLE_TIMEOUT_MS))) return skipped('no open-in-analysis escape hatch');
+    if (!(await appeared(escapeHatch, SETTLE_TIMEOUT_MS))) return failed('no open-in-analysis escape hatch');
     await escapeHatch.click();
     if (!(await appeared(page.getByTestId('detail-layout'), VISIBLE_TIMEOUT_MS))) {
-      return skipped('escape hatch did not land in Analysis with the file selected');
+      return failed('escape hatch did not land in Analysis with the file selected');
     }
     return done('video tile opened the shared viewer; escape hatch landed in Analysis');
   });
@@ -1070,7 +1120,7 @@ const drive = async (plan) => {
   });
 
   await record('people-pairs', async () => {
-    if (plan.facesSamplesDir === null) return skipped('faces fixture not provided');
+    if (plan.facesSamplesDir === null) return skipped('faces fixture not provided', 'fixture-unavailable');
     if (!existsSync(plan.faceModelsDir)) {
       return failed(`no cached face models under ${plan.faceModelsDir}; install them into that cache home first`);
     }
@@ -1118,10 +1168,11 @@ const drive = async (plan) => {
     await page.keyboard.press('Home');
     if (!(await appeared(card, VISIBLE_TIMEOUT_MS))) return failed('the unfolded Osoby grid rendered no person card');
 
+    const query = await awaitPairsQuery(page);
     const badge = page.getByTestId('people-pair-review-open');
-    const badgeVisible = await appeared(badge, VISIBLE_TIMEOUT_MS);
+    const badgeVisible = query.pending > 0 && await appeared(badge, VISIBLE_TIMEOUT_MS);
     if (!badgeVisible) {
-      return pairsReviewOutcome({ badgeVisible, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+      return pairsReviewOutcome({ ...query, badgeVisible, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
     }
     const badgeLabel = ((await badge.first().textContent()) ?? '').trim();
     await badge.click();
@@ -1132,7 +1183,7 @@ const drive = async (plan) => {
     const cropsVisible = reviewVisible
       && (await appeared(cropA, VISIBLE_TIMEOUT_MS))
       && (await appeared(cropB, VISIBLE_TIMEOUT_MS));
-    return pairsReviewOutcome({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount: await crops.count() });
+    return pairsReviewOutcome({ ...query, badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount: await crops.count() });
   });
 
   await record('settings', async () => {
@@ -1252,6 +1303,7 @@ const main = async () => {
   }
 
   const { timeToWindowMs, capture, results } = await drive(plan);
+  verifyRecordedScreenshots(plan.outDir, results);
   const capturedPlan = { ...plan, capture };
   writeFileSync(path.join(plan.outDir, 'plan.json'), JSON.stringify(capturedPlan, null, 2));
   writeFileSync(
@@ -1272,8 +1324,10 @@ const main = async () => {
   );
   console.log(`release-walkthrough: review the screenshots in ${plan.outDir}`);
   if (plan.archiveTo !== null) {
+    if (!verifyRecordedScreenshots(plan.outDir, results)) return 1;
     mkdirSync(plan.archiveTo, { recursive: true });
     cpSync(plan.outDir, plan.archiveTo, { recursive: true });
+    if (!verifyRecordedScreenshots(plan.archiveTo, results)) return 1;
     console.log(`release-walkthrough: archived the screenshot set to ${plan.archiveTo}`);
   }
   const blocking = blockingSkips(skippedSteps);
