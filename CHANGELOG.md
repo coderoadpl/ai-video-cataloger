@@ -14,9 +14,25 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Video rows in expanded sub-folders now show their thumbnail: a freshly generated thumbnail is written into the tree-folder list the row was fetched into instead of only the opened root's scan, and a generation skipped because the artifact already exists surfaces that artifact instead of counting as a failure.
+
 ### Changed
 
 - The release walkthrough now proves that a freshly expanded sub-folder shows real decoded thumbnails before it captures the frame, and adds an optional `people-pairs` step that enables face grouping through the real Settings controls and captures the pair-review card when `AVC_WALKTHROUGH_FACES_SAMPLES` names a photo fixture.
+
+## [0.6.35] - 2026-09-08
+
+### Security
+
+- Desktop dependency floor moved to Electron 41.10.7, which replaces the `extract-zip` transitive dependency carrying GHSA-jmr9-qjv8-65gv with a maintained fork and drops it from the installed tree
+  ([`eeb0759`](https://github.com/coderoadpl/ai-video-cataloger/commit/eeb07591ccc619195b0bed97bed24ca16362208c)).
+
+### Changed
+
+- `pnpm run test:e2e:prerelease` now runs its legs through a TypeScript runner that collects a per-leg Playwright JSON report, prints a leg/passed/failed/skipped summary and fails when a test self-skips outside the runner's allowlist, so a missing face-fixture environment variable can no longer pass as a green pre-release run
+  ([`36b69c0`](https://github.com/coderoadpl/ai-video-cataloger/commit/36b69c0e8eee340c34f59d5b91c26c9768c8a30c)).
 
 ## [0.6.34] - 2026-09-07
 

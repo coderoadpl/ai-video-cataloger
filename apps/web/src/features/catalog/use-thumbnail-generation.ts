@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type z } from 'zod';
 
-import type { scanOutputSchema } from '@core/contract/index.js';
+import type { catalogTreeFolderOutputSchema, scanOutputSchema } from '@core/contract/index.js';
 import { actions } from '../../api.js';
 import { type CatalogVideo } from './core/index.js';
 
@@ -10,6 +10,21 @@ const EMPTY: readonly CatalogVideo[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const FOREGROUND_THUMBNAIL_COUNT = 12;
 type ScanOutput = z.output<typeof scanOutputSchema>;
+type TreeFolderOutput = z.output<typeof catalogTreeFolderOutputSchema>;
+
+const parentFolder = (path: string): string => {
+  const separator = path.lastIndexOf('/');
+  return separator <= 0 ? path : path.slice(0, separator);
+};
+
+const withThumbnail = (
+  videos: readonly CatalogVideo[],
+  videoPath: string,
+  thumbnailPath: string,
+): CatalogVideo[] =>
+  videos.map((entry) => entry.path === videoPath
+    ? { ...entry, artifacts: { ...entry.artifacts, thumbnailPath, thumbnailMtime: Date.now() } }
+    : entry);
 
 // A read-only folder keeps its thumbnails in the home mirror, which the first analysis of the
 // session creates: an attempt made before that has nowhere to write, so a completed analysis earns
@@ -70,26 +85,20 @@ export const useThumbnailGeneration = (
               ? 'foreground'
               : 'background',
           });
-          if (result.generated) {
+          if (result.generated || result.skipped) {
             recoveries.push(video.path);
             for (const cached of [true, false]) {
               const queryKey = actions.scan({ folder, cached }).queryKey;
               queryClient.setQueryData<ScanOutput>(queryKey, (current) => current === undefined
                 ? undefined
-                : {
-                    ...current,
-                    videos: current.videos.map((entry) => entry.path === video.path
-                      ? {
-                          ...entry,
-                          artifacts: {
-                            ...entry.artifacts,
-                            thumbnailPath: result.thumbnailPath,
-                            thumbnailMtime: Date.now(),
-                          },
-                        }
-                      : entry),
-                  });
+                : { ...current, videos: withThumbnail(current.videos, video.path, result.thumbnailPath) });
             }
+            // Sub-folder rows are served by the tree-folder query for their own folder, never by the
+            // scan of the opened root this hook is given, so patching only the latter leaves them grey.
+            const treeKey = actions.catalogTreeFolder({ folder: parentFolder(video.path) }).queryKey;
+            queryClient.setQueryData<TreeFolderOutput>(treeKey, (current) => current === undefined
+              ? undefined
+              : { videos: withThumbnail(current.videos, video.path, result.thumbnailPath) });
           } else failures.push(video.path);
         } catch {
           failures.push(video.path);

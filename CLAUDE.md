@@ -120,7 +120,10 @@ no Dock icon and never steals keyboard focus from whoever is at the keyboard;
   not configured` under an agent Bash sandbox.
 - `pnpm run test:e2e:prerelease` = sequential mandatory pre-DMG e2e set
   covering every on-demand e2e script except `test:e2e:matrix`; outside
-  `check`, `smoke`, and package build commands.
+  `check`, `smoke`, and package build commands. It fails closed on unexpected
+  skipped tests — every self-skip outside the runner's allowlist is a red run,
+  so the people legs need both `E2E_FACES_SAMPLE_PHOTOS` and
+  `E2E_FACES_PAIR_SAMPLES` set to run at all.
 - `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.

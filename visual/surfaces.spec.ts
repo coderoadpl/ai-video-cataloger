@@ -13,6 +13,7 @@ const SURFACES = [
   'catalog-sidebar-wide',
   'photos-sidebar-narrow',
   'photos-sidebar-wide',
+  'people-pair-review',
 ] as const;
 
 for (const surface of SURFACES) {
@@ -23,6 +24,9 @@ for (const surface of SURFACES) {
       await expect(page.getByRole('heading', { name: 'AI Video Cataloger' })).toBeVisible();
     } else if (surface === 'variant-compare') {
       await expect(page.getByRole('heading', { name: 'Compare analysis variants' })).toBeVisible();
+    } else if (surface === 'people-pair-review') {
+      await expect(page.getByTestId('people-pair-review-question')).toBeVisible();
+      await expect(page.getByTestId('people-pair-review-position')).toHaveText('1 of 6');
     } else {
       await expect(page.getByTestId('sidebar-folder-panel')).toBeVisible();
     }
