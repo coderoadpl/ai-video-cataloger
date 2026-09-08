@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- A file whose catalogued analysis carries a suggested final name that was never applied to the file on disk now shows its cover and its stored analysis artifacts again: the analysis view, the Library and search resolve frames, transcript, summary and thumbnails from the name the file actually carries, so the artifacts already on disk are found instead of being addressed under a name nothing ever wrote.
+
 ## [0.6.36] - 2026-09-08
 
 ### Fixed

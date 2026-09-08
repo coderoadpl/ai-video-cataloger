@@ -300,8 +300,9 @@ describe('drive processing over a read-only folder', () => {
     expect(run.ok && run.value.filesDone).toBe(1);
     const afterAnalysis = await generateThumbnail(deps, { videoPath: '/drive/ro/clip.mp4', force: false });
 
-    expect(beforeAnalysis.ok && beforeAnalysis.value.thumbnailPath)
-      .toBe('/drive/ro/.ai-video-cataloger/thumbnails/clip.jpg');
+    expect(beforeAnalysis.ok).toBe(false);
+    expect(deps.media.thumbnailInputs.map((input) => input.thumbnailPath))
+      .toContain('/drive/ro/.ai-video-cataloger/thumbnails/clip.jpg');
     expect(afterAnalysis.ok && afterAnalysis.value.thumbnailPath)
       .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
   });
@@ -369,6 +370,41 @@ describe('drive processing over a read-only folder', () => {
     expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['completed']);
     expect(scanned.ok && scanned.value.videos[0]?.artifacts.thumbnailPath)
       .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
+  });
+
+  it('finds the mirrored artifacts of a file whose indexed final name was never applied on disk', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro-stale-final-name' });
+    expect(run.ok && run.value.filesDone).toBe(1);
+
+    const analysis = await deps.globalCatalog.getAnalysis('hash-ro');
+    expect(analysis.ok && analysis.value !== null).toBe(true);
+    if (!analysis.ok || analysis.value === null) return;
+    const stored = await deps.globalCatalog.upsertAnalysis({ ...analysis.value, finalName: '2026-01-01_a-clip.mp4' });
+    expect(stored.ok).toBe(true);
+
+    fs.addFile('/drive/ro/.ai-video-cataloger/folder-id', {
+      content: JSON.stringify({
+        folderId: derivedFolderId(fs.resolve('/drive/ro')),
+        schemaVersion: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+    const restarted = { ...deps, catalogs: new InMemoryCatalogs([{ folder: '/drive/ro', videos: [] }], fs) };
+    const scanned = await scanFolder(restarted, { folder: '/drive/ro' });
+
+    expect(scanned.ok).toBe(true);
+    if (!scanned.ok) return;
+    const mirror = mirrorRoot(fs, '/drive/ro');
+    expect(scanned.value.videos[0]?.artifacts).toMatchObject({
+      thumbnailPath: `${mirror}/thumbnails/clip.jpg`,
+      summaryPath: `${mirror}/summaries/clip.txt`,
+      newFilename: '2026-01-01_a-clip.mp4',
+    });
+    expect(scanned.value.videos[0]?.artifacts.summary).not.toBeNull();
+    expect(scanned.value.videos[0]?.artifacts.framePaths).not.toBeNull();
   });
 
   it('leaves a read-only folder nothing analysed reported as untracked', async () => {

@@ -189,6 +189,22 @@ export const search = async (
   });
 };
 
+// The catalog records `finalName` before the rename and `fileName` after it, so the final name is
+// authoritative only while it still names a file: once it does not, it is a rename that was skipped
+// or never applied, and the artifacts sit under the name the file actually carries.
+const onDiskVideoPath = async (
+  fs: FileSystemPort,
+  folderPath: string,
+  fileName: string,
+  finalName: string | null,
+): Promise<Result<string, AppError>> => {
+  if (finalName === null || finalName === fileName) return ok(fs.join(folderPath, fileName));
+  const renamed = fs.join(folderPath, finalName);
+  const exists = await fs.isFile(renamed);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? renamed : fs.join(folderPath, fileName));
+};
+
 export const resolveOfflineReason = async (
   fs: FileSystemPort,
   currentPath: string,
@@ -206,12 +222,13 @@ export const resolveThumbnailPath = async (
   knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
-  const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
+  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName);
+  if (!videoPath.ok) return videoPath;
   const root = knownRoot === undefined
     ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
     : ok(knownRoot);
   if (!root.ok) return root;
-  const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
+  const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath.value, null);
   const exists = await deps.fs.exists(thumbnailPath);
   if (!exists.ok) return exists;
   if (exists.value) return ok(thumbnailPath);
@@ -220,7 +237,7 @@ export const resolveThumbnailPath = async (
   const analysis = await deps.globalCatalog.getAnalysis(row.fingerprint);
   if (!analysis.ok) return analysis;
   if (analysis.value === null) return ok(null);
-  const generated = await generateThumbnail(deps, { videoPath, force: false });
+  const generated = await generateThumbnail(deps, { videoPath: videoPath.value, force: false });
   return ok(generated.ok ? generated.value.thumbnailPath : null);
 };
 
@@ -232,12 +249,13 @@ export const resolveGridThumbnailPath = async (
   knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
-  const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
+  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName);
+  if (!videoPath.ok) return videoPath;
   const root = knownRoot === undefined
     ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
     : ok(knownRoot);
   if (!root.ok) return root;
-  const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
+  const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath.value, null);
   const exists = await deps.fs.exists(gridThumbnailPath);
   if (!exists.ok) return exists;
   if (exists.value) return ok(gridThumbnailPath);
@@ -249,7 +267,7 @@ export const resolveGridThumbnailPath = async (
   const framePath = await storedAnalysisFramePath(deps.fs, framesDir);
   if (!framePath.ok) return framePath;
   const generated = await ensureGridThumbnail(deps, {
-    videoPath,
+    videoPath: videoPath.value,
     projectedFramePath: framePath.value,
     catalogDirectory: root.value.catalogDirectory,
     fingerprint: row.fingerprint,
@@ -361,10 +379,11 @@ const loadPreviewPlayerDetail = async (
   deps: SearchDeps,
   input: { folderId: string; folderPath: string; fileName: string; finalName: string | null },
 ): Promise<PreviewPlayerDetail> => {
-  const videoPath = deps.fs.join(input.folderPath, input.finalName ?? input.fileName);
+  const resolved = await onDiskVideoPath(deps.fs, input.folderPath, input.fileName, input.finalName);
+  const videoPath = resolved.ok ? resolved.value : deps.fs.join(input.folderPath, input.fileName);
   const root = await discoverArtifactRoot(deps.fs, input.folderPath, input.folderId);
   const transcriptSegments = root.ok
-    ? await loadPreviewTranscriptSegments(deps.fs, root.value, videoPath, input.finalName)
+    ? await loadPreviewTranscriptSegments(deps.fs, root.value, videoPath)
     : null;
   const probe = await deps.media.probe({ videoPath });
   return {
@@ -379,9 +398,8 @@ const loadPreviewTranscriptSegments = async (
   fs: FileSystemPort,
   root: ArtifactRoot,
   videoPath: string,
-  finalName: string | null,
 ): Promise<LibraryPreviewTranscriptSegment[] | null> => {
-  const paths = artifactPaths(fs, root, videoPath, finalName);
+  const paths = artifactPaths(fs, root, videoPath, null);
   const rawText = await fs.readTextFile(paths.transcriptPath);
   if (!rawText.ok || rawText.value === null) return null;
   const filtered = filterTranscript(rawText.value, await readRichSegments(fs, paths.transcriptJsonPath));
