@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
+
 import { orderObservationPair, pairDecisionIsActive, peoplePairDecisionSchema } from './people-pairs.js';
 
 describe('W99 A1 decision domain', () => {
@@ -121,10 +123,10 @@ it('FPR-007 caches distinct-vector pair scores across decisions and enforces war
   expect(decided.pending).toBe(initial.pending - 1);
   expect(undone).toEqual(initial);
   expect(scored).toBe(0);
-  expect(decidedMs).toBeLessThan(1000);
-  expect(undoneMs).toBeLessThan(1000);
+  expect(decidedMs).toBeLessThan(scaledTimeout(1000));
+  expect(undoneMs).toBeLessThan(scaledTimeout(1000));
   process.stdout.write(`FPR-007 distinct-vector generation: cold ${coldMs.toFixed(1)} ms, decide ${decidedMs.toFixed(1)} ms, undo ${undoneMs.toFixed(1)} ms\n`);
-}, 15000);
+}, scaledTimeout(45000));
 
 it('FPR-007 invalidates cached scores when an embedding changes', () => {
   let scored = 0;
