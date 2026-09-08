@@ -432,6 +432,7 @@ describe('library trash', () => {
     const moveToTrash = setup.trash.moveToTrash.bind(setup.trash);
     setup.trash.moveToTrash = async (targetPath) => {
       for (const [kind, resourceKey] of [
+        ['faces_recluster', 'faces-write'],
         ['process', '/library/videos/clip.mp4'],
         ['process_drive', '/library/videos'],
         ['photo_scan', 'photo-scan:/library/videos'],
@@ -447,6 +448,7 @@ describe('library trash', () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(refusals).toEqual([
+      { kind: 'faces_recluster', refused: true },
       { kind: 'process', refused: true },
       { kind: 'process_drive', refused: true },
       { kind: 'photo_scan', refused: true },

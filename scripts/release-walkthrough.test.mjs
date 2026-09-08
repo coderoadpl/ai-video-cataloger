@@ -20,6 +20,8 @@ import {
   clearLibrarySearch,
   collectionPhotoChipOutcome,
   createRecorder,
+  verifyRecordedScreenshots,
+  awaitPairsQuery,
   FACES_SAMPLES_DIRNAME,
   facesSamplesDirectory,
   fakeDriveArchives,
@@ -101,8 +103,8 @@ describe('library walkthrough search state', () => {
 describe('blockingSkips', () => {
   it('excludes the tolerated allowlist from the blocking set', () => {
     const results = [
-      { name: 'first-run-wizard', status: 'skipped', note: 'no first-run wizard on this profile' },
-      { name: 'library-preview', status: 'skipped', note: 'no library tile to preview' },
+      { name: 'first-run-wizard', reason: 'no-wizard', status: 'skipped', note: 'no first-run wizard on this profile' },
+      { name: 'library-preview', reason: 'fixture-unavailable', status: 'skipped', note: 'no library tile to preview' },
       { name: 'analyze', status: 'skipped', note: 'analyzer not configured in this home' },
       { name: 'launch', status: 'ok', note: '' },
     ];
@@ -111,7 +113,7 @@ describe('blockingSkips', () => {
   });
 
   it('reports no blocking skips when every skip is tolerated', () => {
-    const results = [...TOLERATED_SKIPS].map((name) => ({ name, status: 'skipped', note: '' }));
+    const results = [...TOLERATED_SKIPS].map((key) => { const [name, reason] = key.split(':'); return { name, reason, status: 'skipped', note: '' }; });
 
     expect(blockingSkips(results)).toEqual([]);
   });
@@ -599,7 +601,8 @@ describe('createRecorder', () => {
   const recorderPageStub = () => {
     const calls = [];
     const page = {
-      screenshot: vi.fn(() => {
+      screenshot: vi.fn((options) => {
+        writeFileSync(options.path, 'png');
         calls.push('screenshot');
         return Promise.resolve();
       }),
@@ -711,8 +714,8 @@ describe('the people-pairs step', () => {
   });
 
   it('is tolerated as a skip, the way the first-run wizard is', () => {
-    expect(TOLERATED_SKIPS.has('people-pairs')).toBe(true);
-    expect(blockingSkips([{ name: 'people-pairs', status: 'skipped', note: 'faces fixture not provided' }])).toEqual([]);
+    expect(TOLERATED_SKIPS.has('people-pairs:fixture-unavailable')).toBe(true);
+    expect(blockingSkips([{ name: 'people-pairs', reason: 'fixture-unavailable', status: 'skipped', note: 'faces fixture not provided' }])).toEqual([]);
   });
 
   it('enables faces through the real settings switch and the wide pair scope, never a seeded config key', () => {
@@ -743,7 +746,7 @@ describe('the people-pairs step', () => {
 
 describe('pairsReviewOutcome', () => {
   it('reports a tolerated skip when the indexed fixture yielded no candidate pair', () => {
-    const outcome = pairsReviewOutcome({ badgeVisible: false, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+    const outcome = pairsReviewOutcome({ queryStatus: 'success', pending: 0, badgeVisible: false, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
 
     expect(outcome.status).toBe('skipped');
     expect(outcome.note).toBe('faces fixture yielded no candidate pairs');
@@ -751,20 +754,20 @@ describe('pairsReviewOutcome', () => {
   });
 
   it('reports failed when the badge is there but the pair surface never opened', () => {
-    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+    const outcome = pairsReviewOutcome({ queryStatus: 'success', pending: 6, badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: false, cropsVisible: false, cropCount: 0 });
 
     expect(outcome.status).toBe('failed');
   });
 
   it('reports failed, naming the crop count, when the opened card renders only one side', () => {
-    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: false, cropCount: 1 });
+    const outcome = pairsReviewOutcome({ queryStatus: 'success', pending: 6, badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: false, cropCount: 1 });
 
     expect(outcome.status).toBe('failed');
     expect(outcome.note).toContain('1');
   });
 
   it('reports ok and names the badge once both sides of the card are on screen', () => {
-    const outcome = pairsReviewOutcome({ badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: true, cropCount: 2 });
+    const outcome = pairsReviewOutcome({ queryStatus: 'success', pending: 6, badgeVisible: true, badgeLabel: 'Do sprawdzenia: 6', reviewVisible: true, cropsVisible: true, cropCount: 2 });
 
     expect(outcome.status).toBe('ok');
     expect(outcome.note).toContain('Do sprawdzenia: 6');
@@ -785,16 +788,71 @@ describe('pairsReviewOutcome', () => {
 
 describe('captureGeometry', () => {
   it('records the requested size when the window got exactly what the plan asked for', () => {
-    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1200 });
+    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1200, outerWidth: 1920, outerHeight: 1200 });
 
     expect(capture).toEqual({ requestedWidth: 1920, requestedHeight: 1200, width: 1920, height: 1200, cappedByWorkArea: false });
   });
 
   it('records the effective size, not the requested one, when the display work area caps the window', () => {
-    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1018 });
+    const capture = captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, contentWidth: 1920, contentHeight: 1018, outerWidth: 1920, outerHeight: 1046 });
 
     expect(capture.height).toBe(1018);
     expect(capture.requestedHeight).toBe(1200);
     expect(capture.cappedByWorkArea).toBe(true);
   });
+});
+
+describe('R5 capture integrity', () => {
+  it('preserves screenshot rejection as a failed step and enforces the settle budget', async () => {
+    const page = {
+      waitForFunction: vi.fn().mockResolvedValue(undefined),
+      screenshot: vi.fn().mockRejectedValue(new Error('PNG write failed')),
+    };
+    const { record, results } = createRecorder(page, mkdtempSync(path.join(tmpdir(), 'avc-capture-probe-')));
+    await record('launch', async () => ({ status: 'ok', note: '' }));
+    expect(results[0]).toMatchObject({ status: 'failed', captureError: 'PNG write failed' });
+    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), undefined, { timeout: 3000 });
+    expect(page.screenshot).toHaveBeenCalledWith(expect.objectContaining({ scale: 'css' }));
+  });
+
+  it('does not tolerate a functional library-preview skip without an explicit fixture reason', () => {
+    expect(blockingSkips([{ name: 'library-preview', status: 'skipped', note: 'viewer did not open' }])).toHaveLength(1);
+  });
+
+  it('does not treat an absent badge as a successful empty query', () => {
+    expect(pairsReviewOutcome({ badgeVisible: false }).status).toBe('failed');
+  });
+
+  it('does not mistake window chrome for work-area capping', () => {
+    expect(captureGeometry({ requestedWidth: 1920, requestedHeight: 1200, outerWidth: 1920, outerHeight: 1200, contentWidth: 1920, contentHeight: 1172 }).cappedByWorkArea).toBe(false);
+  });
+});
+
+it('rejects evidence removed after capture before success or archive', () => {
+  const results = [{ name: 'launch', status: 'ok', note: '', screenshot: 'missing.png' }];
+  expect(verifyRecordedScreenshots(mkdtempSync(path.join(tmpdir(), 'avc-evidence-probe-')), results)).toBe(false);
+  expect(results[0]).toMatchObject({ status: 'failed', captureError: 'recorded screenshot is missing' });
+});
+
+it.each(['pending', 'error'])('never permits an empty queue from query state %s', (queryStatus) => {
+  expect(pairsReviewOutcome({ queryStatus, pending: 0, badgeVisible: false }).status).toBe('failed');
+});
+
+it('propagates pair readiness timeout instead of using initial badge absence', async () => {
+  const page = { getByTestId: vi.fn(), waitForFunction: vi.fn().mockRejectedValue(new Error('query timeout')) };
+  await expect(awaitPairsQuery(page)).rejects.toThrow('query timeout');
+});
+
+it('rejects a pairs endpoint error and accepts only an explicit successful zero', async () => {
+  const state = { getAttribute: vi.fn().mockResolvedValue('error') };
+  const page = { getByTestId: vi.fn(() => state), waitForFunction: vi.fn().mockResolvedValue(undefined) };
+  await expect(awaitPairsQuery(page)).rejects.toThrow('pairs query failed');
+  state.getAttribute.mockImplementation((name) => Promise.resolve(name === 'data-query-status' ? 'success' : '0'));
+  await expect(awaitPairsQuery(page)).resolves.toEqual({ queryStatus: 'success', pending: 0 });
+});
+
+it('fails every viewer interaction after a suitable video fixture exists', () => {
+  const source = stepSource('library-preview', 'library-hide-restore');
+  expect(source.slice(source.indexOf('await tile.click()'))).not.toContain('return skipped(');
+  expect(source).toContain('[data-media="video"]');
 });

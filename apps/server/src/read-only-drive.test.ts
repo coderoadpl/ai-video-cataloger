@@ -1,3 +1,4 @@
+import { InMemoryJobs } from '../../../test/server/usecases/test-fakes.js';
 import { chmod, cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -242,7 +243,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     if (!found.ok) throw new Error(found.error.message);
     const fingerprint = found.value.results[0]?.fingerprint ?? '';
 
-    const forgotten = await forgetCatalogEntry({ globalCatalog, fs: deps.fs }, { fingerprint });
+    const forgotten = await forgetCatalogEntry({ globalCatalog, fs: deps.fs, jobs: deps.jobs ?? new InMemoryJobs() }, { fingerprint });
     if (!forgotten.ok) throw new Error(`${forgotten.error.code}: ${forgotten.error.message}`);
 
     expect(forgotten.value.deleted).toBe(true);

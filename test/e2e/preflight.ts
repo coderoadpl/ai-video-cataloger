@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { z } from 'zod';
+
+import { checkInstalledRuntime } from '../../scripts/installed-runtime.js';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
 import {
@@ -10,6 +12,7 @@ import {
   E2E_WHISPER_MODELS,
   ELECTRON_MAIN,
   RENDERER_HTML,
+  REPO_ROOT,
   cachedWhisperModelPath,
   scratchDirectory,
 } from './helpers.js';
@@ -45,9 +48,27 @@ function verifyClaudeAuth(): void {
   }
 }
 
-function verifyHomeIsolation(): void {
-  if ((process.env.HOME ?? '') === userInfo().homedir) {
-    fail('Playwright e2e requires HOME to point at an isolated temp directory.');
+export function verifyHomeIsolation(environment: NodeJS.ProcessEnv = process.env, accountHome = userInfo().homedir): void {
+  const canonicalDirectory = (value: string | undefined, label: string): string => {
+    if (value === undefined || value.trim() === '' || !isAbsolute(value)) fail(`${label} must name an existing absolute isolated directory.`);
+    try {
+      if (!statSync(value).isDirectory()) fail(`${label} must be an isolated directory.`);
+      return realpathSync(value);
+    } catch {
+      return fail(`${label} must name an existing isolated directory.`);
+    }
+  };
+  const account = realpathSync(accountHome);
+  const home = canonicalDirectory(environment.HOME, 'HOME');
+  if (home === account) fail('HOME must point at an isolated temp directory, not an alias of the account home.');
+  const scratch = canonicalDirectory(environment.AVC_SCRATCH_DIR, 'AVC_SCRATCH_DIR');
+  const protectedData = join(account, '.ai-video-cataloger');
+  const inside = (root: string, target: string): boolean => {
+    const child = relative(root, target);
+    return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+  };
+  if (inside(protectedData, home) || scratch === account || scratch === home || inside(protectedData, scratch) || inside(REPO_ROOT, scratch)) {
+    fail('HOME and AVC_SCRATCH_DIR must be isolated; scratch must be outside the checkout and account catalog.');
   }
 }
 
@@ -118,6 +139,8 @@ function ensureCachedWhisperModel(model: string): void {
 
 export default async function preflight(): Promise<void> {
   verifyHomeIsolation();
+  const runtime = checkInstalledRuntime(REPO_ROOT);
+  if (!runtime.ok) fail(runtime.error.message);
   const argv = process.argv.join(' ');
   if (/--project[= ]matrix(\s|$)/.test(argv)) return;
   const samples = selectedSamples();

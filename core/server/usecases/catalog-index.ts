@@ -12,6 +12,7 @@ import {
 } from '@core/domain/index.js';
 
 import type {
+  JobsPort,
   CatalogFileRecord,
   DriveRunRecord,
   FileSystemPort,
@@ -22,7 +23,7 @@ import type {
 } from '../ports.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
-import { reanchorFaceCropPath } from './faces.js';
+import { reanchorFaceCropPath, withFaceMutation } from './faces.js';
 import { isSupportedVideoExtension } from './shared.js';
 
 export interface CatalogIndexDeps {
@@ -323,9 +324,9 @@ export const healRestoredRecords = async (
 };
 
 export const forgetCatalogEntry = async (
-  deps: CatalogIndexDeps,
+  deps: CatalogIndexDeps & { jobs: JobsPort },
   input: { fingerprint: string },
-): Promise<Result<ForgetCatalogEntryResult, AppError>> => {
+): Promise<Result<ForgetCatalogEntryResult, AppError>> => withFaceMutation(deps.jobs, async (): Promise<Result<ForgetCatalogEntryResult, AppError>> => {
   const forgotten = await deps.globalCatalog.forgetEntry(input.fingerprint);
   if (!forgotten.ok) return forgotten;
   const flushed = await deps.globalCatalog.flush();
@@ -343,7 +344,7 @@ export const forgetCatalogEntry = async (
   if (snapshot.ok) return ok({ ...forgotten.value, snapshotSkipped: false });
   if (!isReadOnlyWriteError(snapshot.error)) return snapshot;
   return ok({ ...forgotten.value, snapshotSkipped: true });
-};
+});
 
 export const hasProcessedAnalysis = async (
   deps: CatalogIndexDeps,

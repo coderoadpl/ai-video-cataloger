@@ -30,6 +30,7 @@ export class GuiDriver implements PipelineDriver {
   private closed = false;
 
   async open(workdir: string): Promise<void> {
+    this.closed = false;
     this.workdir = workdir;
     await this.configureAnalyzer();
 
@@ -42,7 +43,7 @@ export class GuiDriver implements PipelineDriver {
       args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
       cwd: REPO_ROOT,
       slowMo,
-      env: desktopLaunchEnv({
+      env: desktopLaunchEnv(userDataDir, {
         AVC_RENDERER_HTML: RENDERER_HTML,
         AVC_HOME_DIRECTORY: isolatedHome(workdir),
       }),
@@ -186,7 +187,21 @@ export class GuiDriver implements PipelineDriver {
 
   async close(): Promise<void> {
     if (this.app !== undefined) {
-      await this.app.close().catch(() => undefined);
+      const child = this.app.process();
+      await this.app.close();
+      if (child.exitCode === null && child.signalCode === null) {
+        await new Promise<void>((resolve, reject) => {
+          const onExit = (): void => {
+            clearTimeout(timeout);
+            resolve();
+          };
+          const timeout = setTimeout(() => {
+            child.off('exit', onExit);
+            reject(new Error('Electron did not terminate; fixtures retained.'));
+          }, 5_000);
+          child.once('exit', onExit);
+        });
+      }
       this.app = undefined;
       this.page = undefined;
     }

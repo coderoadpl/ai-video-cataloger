@@ -263,9 +263,9 @@ covers the grid and intercepts the preview tile click.
      it never fires again once a prepared QA home has opened it before; a
      home reused across walkthrough runs (as `--home` recommends) will
      legitimately skip this every time after the first.
-   - `library-preview` — depends on the Library already holding a tile left
-     over from a previous scan into that home; a home whose most recent scan
-     was into a different folder can legitimately have nothing to preview.
+   - `library-preview:fixture-unavailable` — no video tile is available to preview.
+     Once a suitable tile is selected, viewer, player, and navigation failures
+     are failed steps.
    - `people-pairs` — runs only when `AVC_WALKTHROUGH_FACES_SAMPLES` names a
      folder of photos of a handful of people (see "The people-pairs step"
      below); without one the run reports the skip reason "faces fixture not
@@ -401,13 +401,10 @@ gap, and it is optional because it needs a fixture the repository cannot carry:
   decisions into the QA home.
 - With `AVC_WALKTHROUGH_FACES_SAMPLES` unset the step is skipped and `--strict`
   tolerates it, exactly as it tolerates `first-run-wizard`.
-- An indexed fixture that yields **no** candidate pair is also a tolerated skip,
-  with the reason "faces fixture yielded no candidate pairs": the same 28-photo
-  fixture yields 6 pairs in the e2e spec and 0 in the walkthrough because greedy
-  incremental clustering depends on ingestion order, so an empty queue means the
-  clusterer legitimately produced clean people, not that the surface is broken.
-  Do not hunt that ghost — point the run at a fixture whose people the
-  conservative cut splits if you need the card captured.
+- An indexed fixture with a successful, completed pairs query explicitly reporting
+  `pending=0` receives the `empty-pair-queue` skip reason. A missing badge alone
+  proves nothing: query errors and readiness timeouts fail the step. The e2e
+  relaunch assertions apply the same readiness rule.
 - Everything else stays a failure: face grouping that will not turn on, missing
   face models, an indexing run that never finishes or ends in the sidebar error
   alert, and a review badge whose card does not render both face crops. The step
@@ -534,3 +531,11 @@ Read every screenshot against the sensitivities that have burned us before:
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.
+
+
+Capture failures are failed steps with a preserved `captureError` in the manifest.
+Every listed screenshot is checked before success or archiving. PNGs use CSS
+pixels, while display capping compares requested and actual outer window bounds.
+The three-second settle timeout is passed as Playwright's options argument.
+`electron-runtime.json` records the locked and exercised Electron versions; a
+mismatch requires reinstalling dependencies and rebuilding the package.

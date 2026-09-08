@@ -18,6 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 
+import { CardGridSkeleton } from '../../components/ui/CardGridSkeleton.js';
 import { EmptyState } from '../../components/ui/EmptyState.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
 import { personLabel } from '../../i18n/person-label.js';
@@ -64,22 +65,20 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
   const [confirming, setConfirming] = useState<FacesPairCandidate | null>(null);
   const [chosenNamePersonId, setChosenNamePersonId] = useState<string | null>(null);
   const current = state.current;
-  const blocked = disabled || state.isBusy;
+  const confirmationAvailable = confirming !== null && state.isPairAvailable({ personAId: confirming.a.personId, personBId: confirming.b.personId });
+  if (confirming !== null && !confirmationAvailable) setConfirming(null);
+  const blocked = disabled || state.isBusy || state.isLoading || state.isError;
 
   const askSame = (): void => {
     if (current === null) return;
-    if (current.a.displayName !== null && current.b.displayName !== null) {
-      setChosenNamePersonId(current.survivorIfSame);
-      setConfirming(current);
-      return;
-    }
-    state.decide('same');
+    setChosenNamePersonId(current.survivorIfSame);
+    setConfirming(current);
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const key = reviewKey(event);
-      if (key === null || keyboardIsClaimedElsewhere(event.target) || blocked) return;
+      if (key === null || keyboardIsClaimedElsewhere(event.target) || blocked || confirming !== null) return;
       event.preventDefault();
       if (key === '1') askSame();
       if (key === '2') state.decide('different');
@@ -89,6 +88,9 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   });
+
+  if (state.isLoading) return <CardGridSkeleton label={dictionary.people.loadingPeople} testId="people-pair-review-loading" cards={2} />;
+  if (state.isError) return <Alert severity="error" data-testid="people-pair-review-error">{state.queryError}</Alert>;
 
   if (current === null) {
     const done = state.answeredThisSession > 0;
@@ -226,7 +228,7 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
               )}
             </DialogContentText>
           )}
-          <FormControl>
+          {nameChoices.length === 2 ? <FormControl>
             <FormLabel id="people-pair-review-name-label">{dictionary.people.mergeNameChoice}</FormLabel>
             <RadioGroup
               aria-labelledby="people-pair-review-name-label"
@@ -242,7 +244,7 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
                 />
               ))}
             </RadioGroup>
-          </FormControl>
+          </FormControl> : null}
         </DialogContent>
         <DialogActions>
           <Button variant="outlined" onClick={() => setConfirming(null)}>{dictionary.common.cancel}</Button>
@@ -251,8 +253,8 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
             disabled={blocked || chosenNamePersonId === null}
             data-testid="people-pair-review-confirm-accept"
             onClick={() => {
-              if (chosenNamePersonId === null) return;
-              state.decide('same', chosenNamePersonId);
+              if (chosenNamePersonId === null || confirming === null || !confirmationAvailable) return;
+              state.decide('same', chosenNamePersonId, { personAId: confirming.a.personId, personBId: confirming.b.personId });
               setConfirming(null);
             }}
           >

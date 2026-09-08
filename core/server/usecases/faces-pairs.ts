@@ -1,7 +1,7 @@
 import type { GlobalCatalogStore } from '../ports.js';
 import {
   FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, PAIR_REVIEW_DEFAULT_LIMIT, buildPeoplePairCandidates, configValueSchema,
-  selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, type LabelledPair, appError, ok, type AppError, type Result, type PeoplePairCandidate,
+  selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, type LabelledPair, appError, ok, type AppError, type Result, type PeoplePairCandidate, type PeoplePairScoreCache,
 } from '@core/domain/index.js';
 import { buildVisiblePeople, ensureFacesEnabled, reanchorFaceCropPath, withFaceMutation, type FacesDeps, type FacesPeopleDeps } from './faces.js';
 import { resolveConfigValues } from './config-resolution.js';
@@ -35,6 +35,8 @@ export interface FacesPairsCache {
   output: FacesPairsOutput | null;
 }
 
+const pairScoreCaches = new WeakMap<GlobalCatalogStore, PeoplePairScoreCache>();
+
 export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }, cache?: FacesPairsCache): Promise<Result<FacesPairsOutput, AppError>> => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
@@ -62,7 +64,13 @@ export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }
   const activeDecisions = decisions.value.filter((d) => pairDecisionIsActive(d, nowIso));
   const revision = JSON.stringify([loaded.value, [...embeddings.value].map(([id, vector]) => [id, [...vector]]), activeDecisions, scope.data, input.limit]);
   if (cache?.revision === revision && cache.output !== null) return ok(cache.output);
+  let scoreCache = pairScoreCaches.get(deps.globalCatalog);
+  if (scoreCache === undefined) {
+    scoreCache = {};
+    pairScoreCaches.set(deps.globalCatalog, scoreCache);
+  }
   const queue = buildPeoplePairCandidates({
+    scoreCache,
     people: loaded.value.people, visibleObservations: loaded.value.visible, anchorObservations: loaded.value.anchors,
     exemplarEmbeddings: embeddings.value, decisions: activeDecisions, nowIso,
     askLow, cut: FACE_CLUSTERING.clusterCutSimilarity, limit: input.limit,
