@@ -62,6 +62,17 @@ quickstart that lies.
 **Done = check green AND smoke green.** Never weaken lint to get there; every
 new lint rule must first fail on a violating probe file.
 
+**A red gate is a stop, not a retry.** Fix the change or the gate; an
+environment red (host load, network, provider outage) is re-run only after the
+cause is removed and the removal is recorded with the run — never by retrying
+blind. See [docs/qa/release-readiness.md](docs/qa/release-readiness.md).
+
+**Releases are not rationed.** Every merged wave that changes user-visible
+behaviour ships as a patch release through the three-stage cycle — gates,
+pre-release e2e, package + strict walkthrough + independent screenshot review +
+publish + install — recorded in
+[docs/qa/release-readiness.md](docs/qa/release-readiness.md).
+
 The package manager is **pnpm**, pinned by `packageManager` (`pnpm@10.34.5`)
 and `engines.pnpm` (`>=10 <11`), on **Node 22.23.1** (`.nvmrc`), whose bundled
 Corepack 0.34.6 activates that pin — Node 24 is deferred because V8 there
@@ -118,6 +129,9 @@ no Dock icon and never steals keyboard focus from whoever is at the keyboard;
   work batch and before a release; never add it to a normal gate. It must be
   run from a normal (unsandboxed) shell — `hdiutil create` fails with `Device
   not configured` under an agent Bash sandbox.
+- A **large UI wave runs `pnpm run test:e2e:prerelease` before merging**, not
+  only `check` and `smoke`: only the real-UI suites catch a broad UI change
+  breaking a real flow.
 - `pnpm run test:e2e:prerelease` = sequential mandatory pre-DMG e2e set
   covering every on-demand e2e script except `test:e2e:matrix`; outside
   `check`, `smoke`, and package build commands. It fails closed on unexpected

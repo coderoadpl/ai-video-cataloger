@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.
+
 ## [0.6.38] - 2026-09-08
 
 ### Fixed
