@@ -16,3 +16,5 @@ playwright-report/
 .claude/privacy-denylist.local
 .claude/
 .gallery-shots/
+
+.e2e-prerelease/

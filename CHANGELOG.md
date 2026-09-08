@@ -24,6 +24,24 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Materializing a rename carries cover and grid thumbnails with grid provenance and removes owned obsolete name-based artifacts after durable catalog relocation.
 - Duplicate scan links use the verified reachable canonical video path when a suggested rename was skipped.
 - The first write to a legacy read-only artifact mirror merges it into the canonical mirror, preserving canonical files on collisions and retaining legacy-only artifacts.
+- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
+- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
+- Pair review prevents additional answers and undo actions until the queue refresh completes.
+- Pair review disables undo after an irreversible merge.
+- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower.
+- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable.
+- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person.
+- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision.
+- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities.
+- Smoke and GUI gates reject declared dependency versions or Electron runtime versions that differ from the lockfile, provide a reinstall instruction, and record the Electron version exercised by GUI runs.
+- Prerelease reports must contain executed tests for every expected project; empty or missing-project reports fail the gate.
+- Prerelease invocations use unique report directories outside Playwright output and a checkout lock to prevent concurrent report and build interference.
+- E2E failures receive one diagnostic retry with tracing; recovered failures remain red and are counted separately as flaky.
+- Walkthrough steps fail on screenshot rejection or missing evidence, capture CSS-pixel PNGs, and measure work-area capping from outer window bounds with a bounded settle wait.
+- Strict walkthrough skips require explicit fixture reasons; viewer, player, and Analysis navigation failures after selecting a video fail the run.
+- Pair-review gates accept an empty queue only after a successful completed query, including after relaunch, and fail on query errors or timeouts.
+- GUI fixtures retain their files when shutdown fails and wait for process termination before marking the driver closed.
+- E2E preflight requires a canonical isolated HOME and an explicit scratch directory; every desktop launch overrides inherited profile paths and keeps pair-review windows inactive.
 
 ### Changed
 

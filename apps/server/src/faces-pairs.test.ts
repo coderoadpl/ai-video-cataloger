@@ -285,3 +285,45 @@ describe('W99 A7 import', () => {
     expect(await deps.globalCatalog.listPeoplePairDecisions()).toEqual(ok([]));
   });
 });
+
+it('FPR-006 catalog forget waits without deleting an anchor while faces-write is held', async () => {
+  const deps = await pairTestDeps();
+  await seedPairPerson(deps, pairTestPerson('a'));
+  const held = await deps.jobs.acquireResource('faces-write');
+  expect(held.ok).toBe(true);
+  const forget = vi.spyOn(deps.globalCatalog, 'forgetEntry');
+  const acquire = deps.jobs.acquireResource.bind(deps.jobs);
+  let entered = () => {};
+  const waiting = new Promise<void>((resolve) => { entered = resolve; });
+  vi.spyOn(deps.jobs, 'acquireResource').mockImplementation((key, signal) => {
+    const result = acquire(key, signal);
+    entered();
+    return result;
+  });
+  const { forgetCatalogEntry } = await import('@core/server/index.js');
+  const operation = forgetCatalogEntry(deps, { fingerprint: 'a-0' });
+  try {
+    await waiting;
+    expect(forget).not.toHaveBeenCalled();
+    expect(await deps.globalCatalog.listFaceObservationSummaries()).toMatchObject({ value: [{ obsId: 'a-0' }] });
+  } finally { if (held.ok) held.value(); }
+  expect(await operation).toMatchObject({ ok: true });
+  expect(forget).toHaveBeenCalledOnce();
+});
+
+it('FPR-007 reuses scores through decide, undo and their following GET requests', async () => {
+  const domain = await import('@core/domain/index.js');
+  const build = domain.buildPeoplePairCandidates;
+  let scored = 0;
+  vi.spyOn(domain, 'buildPeoplePairCandidates').mockImplementation((input) => build({ ...input, onPairScored: () => { scored += 1; } }));
+  const deps = await pairTestDeps();
+  for (const [id, similarity] of [['a', 1], ['b', 0.99], ['c', 0.98]] as const) await seedPairPerson(deps, pairTestPerson(id, similarity), 5);
+  const app = buildApp(deps);
+  await app.request('/api/faces/pairs');
+  expect(scored).toBe(3);
+  await decidePair(app, 'different');
+  expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(2);
+  await postPair(app, 'undo');
+  expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(3);
+  expect(scored).toBe(3);
+});

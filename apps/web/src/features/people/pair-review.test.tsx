@@ -127,6 +127,7 @@ const stubReview = (input: {
   };
   const answered: Candidate[] = [];
   server.use(
+    http.get('/api/jobs', () => HttpResponse.json({ ok: true, data: { jobs: [] } })),
     http.get('/api/config', () => HttpResponse.json({ ok: true, data: configPayload(input.facesEnabled ?? true) })),
     http.get('/api/models/faces', () => HttpResponse.json({ ok: true, data: { artifacts: [], ready: true } })),
     http.get('/api/faces/status', () => HttpResponse.json({
@@ -255,6 +256,33 @@ const openReview = async (user: ReturnType<typeof userEvent.setup>) => {
 
 describe('Osoby pair review entry point', () => {
   beforeEach(() => window.localStorage.clear());
+
+  it('exposes pending until the pair response explicitly supplies zero', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get('/api/faces/pairs', async () => {
+      await pending;
+      return HttpResponse.json({ ok: true, data: { scope: 'standard', askLow: 0.44, clusterCut: 0.5, candidates: [], pending: 0, truncated: false } });
+    }));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-fetch-status')).toBe('fetching'));
+    expect(state.getAttribute('data-query-status')).toBe('pending');
+    expect(state.hasAttribute('data-pending')).toBe(false);
+    release();
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('success'));
+    expect(state.getAttribute('data-pending')).toBe('0');
+  });
+
+  it('exposes a pair endpoint failure without presenting an empty queue', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    server.use(http.get('/api/faces/pairs', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'pair query failed' } }, { status: 500 })));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('error'));
+    expect(state.hasAttribute('data-pending')).toBe(false);
+  });
 
   it('stays out of the DOM when nothing is pending', async () => {
     stubReview({ candidates: [], pending: 0 });
@@ -429,6 +457,7 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(queue.decisions).toHaveLength(1));
     await user.keyboard('2');
     await waitFor(() => expect(queue.decisions).toHaveLength(2));
@@ -438,7 +467,7 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     expect(queue.decisions.map((entry) => entry.decision)).toEqual(['same', 'different', 'skip']);
   });
 
-  it('applies a named/unnamed "yes" immediately and asks which name wins on a named/named pair', async () => {
+  it('confirms a named/unnamed "yes" and asks which name wins on a named/named pair', async () => {
     const user = userEvent.setup();
     const queue = stubReview({
       candidates: [
@@ -457,9 +486,10 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(queue.decisions).toHaveLength(1));
-    expect(queue.decisions[0]?.survivorPersonId).toBeUndefined();
-    expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull();
+    expect(queue.decisions[0]?.survivorPersonId).toBe('a');
+    await waitFor(() => expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull());
 
     await waitFor(() =>
       expect(screen.getByTestId('people-pair-review-person-a').getAttribute('data-person-id')).toBe('c'));
@@ -537,7 +567,7 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     expect(screen.getByTestId('people-pair-review-open').textContent).toBe('To review: 3');
   });
 
-  it('refuses to undo a merge and locks the undo control until the next reversible answer', async () => {
+  it('disables undo after a merge until the next reversible answer', async () => {
     const user = userEvent.setup();
     stubReview({
       candidates: [
@@ -550,10 +580,11 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 3'));
 
     await user.keyboard('{Backspace}');
-    await screen.findByTestId('people-pair-review-not-undoable');
+    expect(screen.queryByTestId('people-pair-review-not-undoable')).toBeNull();
     expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 3');
     expect(screen.getByTestId('people-pair-review-undo').getAttribute('disabled')).not.toBeNull();
 

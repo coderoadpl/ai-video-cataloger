@@ -1979,3 +1979,24 @@ change; the release walkthrough tolerated skips remain unchanged.
 Backlog `6hCrvVvrqp4FQV6m` item 2 is already implemented: standalone faces index,
 recluster and exemplars jobs use `faces-write`, and the drive faces pass acquires
 and releases that same resource. This audit leaves those resource keys unchanged.
+
+### Release gate evidence and isolation
+
+Prerelease runs acquire `.e2e-prerelease/lock` in the canonical checkout before
+building. Each invocation writes reports to `.e2e-prerelease/run-<unique>/<leg>.json`,
+outside Playwright's `test-results` cleanup. Reports are retained for diagnosis;
+the lock is removed after completion. After an interrupted run, confirm all of
+its processes have stopped before removing a leftover lock. Concurrent runs in
+the same checkout fail before building.
+
+Smoke and E2E preflight compare every declared installed package version and
+Electron's installed runtime version file against lockfile resolutions. GUI
+launches attach the exercised `process.versions.electron` value and compare it
+to the lockfile. Packaged walkthroughs write `electron-runtime.json` alongside
+`plan.json`, `manifest.json`, and CSS-pixel screenshots. Missing screenshots or
+capture errors fail the walkthrough before a successful archive.
+
+E2E preflight requires existing absolute, canonical isolated HOME and
+AVC_SCRATCH_DIR directories. Scratch must be outside the checkout and account
+catalog. Every GUI launch sets AI_VIDEO_CATALOGER_USER_DATA_DIR to its allocated
+profile. Driver teardown retains fixtures unless Electron termination is observed.

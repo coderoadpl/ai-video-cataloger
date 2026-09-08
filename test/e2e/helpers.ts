@@ -1,4 +1,4 @@
-import { expect, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -23,6 +23,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
 import { z } from 'zod';
+
+import { checkInstalledRuntime } from '../../scripts/installed-runtime.js';
 
 import type { SampleSource, VideoSample } from './samples.js';
 
@@ -121,13 +123,20 @@ function stageCachedWhisperModels(appDir: string): void {
 }
 
 export function desktopLaunchEnv(
+  userDataDir: string,
   overrides: NodeJS.ProcessEnv,
   base: NodeJS.ProcessEnv = process.env,
-): NodeJS.ProcessEnv {
-  return { ...base, NODE_ENV: 'production', AVC_WINDOW_INACTIVE: '1', ...overrides };
+): Record<string, string> {
+  const environment = { ...base, NODE_ENV: 'production', ...overrides, AVC_WINDOW_INACTIVE: '1', AI_VIDEO_CATALOGER_USER_DATA_DIR: userDataDir };
+  return z.record(z.string(), z.string()).parse(Object.fromEntries(Object.entries(environment).filter((entry) => entry[1] !== undefined)));
 }
 
 export async function expectInactiveWindow(app: ElectronApplication): Promise<void> {
+  const runtime = await app.evaluate(() => process.versions.electron);
+  const expected = checkInstalledRuntime(REPO_ROOT);
+  if (!expected.ok) throw new Error(expected.error.message);
+  await test.info().attach('electron-runtime', { body: JSON.stringify({ expected: expected.value, exercised: runtime }), contentType: 'application/json' });
+  expect(runtime, 'Electron runtime must match the lockfile; run pnpm install --frozen-lockfile --force').toBe(expected.value);
   const presentation = await app.evaluate(({ BrowserWindow, app: electronApp }) => ({
     focused: BrowserWindow.getAllWindows().some((window) => window.isFocused()),
     dock: process.platform === 'darwin' ? electronApp.dock?.isVisible() === true : false,

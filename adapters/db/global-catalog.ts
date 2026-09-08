@@ -1561,12 +1561,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async recordPeoplePairDecision(decision: PeoplePairDecision): Promise<Result<void, AppError>> {
-    return this.write((db) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const row = normalizePeoplePairDecision(decision);
+      const a = db.select().from(faceObservations).where(eq(faceObservations.obsId, row.obsAId)).get();
+      const b = db.select().from(faceObservations).where(eq(faceObservations.obsId, row.obsBId)).get();
+      if (a === undefined || b === undefined || a.personId !== row.personAId || b.personId !== row.personBId) {
+        throw new CatalogAppError(appError('conflict', 'Pair anchors changed before the decision was recorded'));
+      }
       db.insert(peoplePairDecisions).values(row).onConflictDoUpdate({
         target: [peoplePairDecisions.obsAId, peoplePairDecisions.obsBId], set: row,
       }).run();
-    });
+    }));
   }
 
   async deletePeoplePairDecision(obsAId: string, obsBId: string): Promise<Result<void, AppError>> {
@@ -1640,12 +1645,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>> {
-    return this.write((db, client) => {
+    return this.write((db, client) => this.runTransaction(client, () => {
       const observation = db.select().from(faceObservations).where(eq(faceObservations.obsId, obsId)).get();
       if (observation === undefined) throw new CatalogAppError(appError('not_found', `Face observation not found: ${obsId}`));
       db.update(faceObservations).set({ personId }).where(eq(faceObservations.obsId, obsId)).run();
+      db.update(peoplePairDecisions).set({ personAId: personId }).where(eq(peoplePairDecisions.obsAId, obsId)).run();
+      db.update(peoplePairDecisions).set({ personBId: personId }).where(eq(peoplePairDecisions.obsBId, obsId)).run();
       syncSearchDocument(db, client, observation.fingerprint);
-    });
+    }));
   }
 
   async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; decisionsInvalidated: number; affectedFingerprints: string[] }, AppError>> {
@@ -1661,12 +1668,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           : []),
       ]);
       client.run(`DELETE FROM people_pair_decisions WHERE decision = 'different' AND
-        ((person_a_id = ? AND person_b_id = ?) OR (person_a_id = ? AND person_b_id = ?))`,
+        ((obs_a_id IN (SELECT obs_id FROM face_observations WHERE person_id = ?) AND obs_b_id IN (SELECT obs_id FROM face_observations WHERE person_id = ?))
+        OR (obs_a_id IN (SELECT obs_id FROM face_observations WHERE person_id = ?) AND obs_b_id IN (SELECT obs_id FROM face_observations WHERE person_id = ?)))`,
       [input.fromPersonId, input.toPersonId, input.toPersonId, input.fromPersonId]);
       const decisionsInvalidated = client.getRowsModified();
-      db.update(peoplePairDecisions).set({ personAId: input.toPersonId }).where(eq(peoplePairDecisions.personAId, input.fromPersonId)).run();
-      db.update(peoplePairDecisions).set({ personBId: input.toPersonId }).where(eq(peoplePairDecisions.personBId, input.fromPersonId)).run();
       db.update(faceObservations).set({ personId: input.toPersonId }).where(eq(faceObservations.personId, input.fromPersonId)).run();
+      client.run(`UPDATE people_pair_decisions SET
+        person_a_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_a_id),
+        person_b_id = (SELECT person_id FROM face_observations WHERE obs_id = obs_b_id)`);
       const embeddings = db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
         .map((row) => rowToFaceObservation(row).embedding);
       const centroid = centroidFor(embeddings);

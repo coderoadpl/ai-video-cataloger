@@ -59,7 +59,15 @@ export interface PeoplePairCandidatesInput {
   askLow: number;
   cut: number;
   limit: number;
+  scoreCache?: PeoplePairScoreCache;
+  onPairScored?: () => void;
   onPairVisited?: () => void;
+}
+
+export interface PeoplePairScoreCache {
+  revision?: string;
+  centroids?: Float64Array;
+  exemplars?: Float64Array;
 }
 
 export const PAIR_REVIEW_ASK_LOW_BY_SCOPE = { careful: 0.5, standard: 0.44, wide: 0.34 } as const;
@@ -155,6 +163,16 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
       },
     };
   });
+  const scoreCache = input.scoreCache;
+  if (scoreCache !== undefined) {
+    const revision = JSON.stringify(people.map((entry) => [entry.person.personId, entry.centroid, entry.exemplars]));
+    if (scoreCache.revision !== revision) {
+      scoreCache.revision = revision;
+      const count = people.length * (people.length - 1) / 2;
+      scoreCache.centroids = new Float64Array(count).fill(NaN);
+      scoreCache.exemplars = new Float64Array(count).fill(NaN);
+    }
+  }
   const candidates: PeoplePairCandidate[] = [];
   const limit = Math.min(PAIR_REVIEW_MAX_LIMIT, Math.max(1, input.limit));
   let pending = 0;
@@ -167,10 +185,18 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
       if (b === undefined) continue;
       input.onPairVisited?.();
       if (a.person.personId === b.person.personId || excludedPartners?.has(b.person.personId)) continue;
-      const centroidSimilarity = dot(a.centroid, b.centroid);
+      const scoreIndex = i * (2 * people.length - i - 1) / 2 + j - i - 1;
+      const cachedCentroid = scoreCache?.centroids?.[scoreIndex] ?? NaN;
+      const centroidSimilarity = Number.isNaN(cachedCentroid) ? dot(a.centroid, b.centroid) : cachedCentroid;
+      if (scoreCache?.centroids !== undefined) scoreCache.centroids[scoreIndex] = centroidSimilarity;
       if (centroidSimilarity < input.askLow - PAIR_REVIEW_PREFILTER_MARGIN) continue;
-      let bestObservationSimilarity = -1;
-      for (const left of a.exemplars) for (const right of b.exemplars) bestObservationSimilarity = Math.max(bestObservationSimilarity, dot(left, right));
+      let bestObservationSimilarity = scoreCache?.exemplars?.[scoreIndex] ?? NaN;
+      if (Number.isNaN(bestObservationSimilarity)) {
+        input.onPairScored?.();
+        bestObservationSimilarity = -1;
+        for (const left of a.exemplars) for (const right of b.exemplars) bestObservationSimilarity = Math.max(bestObservationSimilarity, dot(left, right));
+        if (scoreCache?.exemplars !== undefined) scoreCache.exemplars[scoreIndex] = bestObservationSimilarity;
+      }
       if (centroidSimilarity < input.askLow && bestObservationSimilarity < input.cut) continue;
       pending += 1;
       const similarity = Math.max(centroidSimilarity, bestObservationSimilarity);

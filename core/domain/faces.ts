@@ -348,13 +348,16 @@ export const classifyFace = (
   return { decision: 'unassigned', similarity: best.similarity, margin };
 };
 
-export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): number[] => {
+export const findNewClusterSeed = (
+  embeddings: readonly (readonly number[])[],
+  compatible: (left: number, right: number) => boolean = () => true,
+): number[] => {
   const ranked = embeddings
     .map((candidate, index) => ({
       index,
       supporters: embeddings
         .flatMap((other, otherIndex) =>
-          otherIndex === index ? [] : [{ otherIndex, similarity: cosineSimilarity(candidate, other) }])
+          otherIndex === index || !compatible(index, otherIndex) ? [] : [{ otherIndex, similarity: cosineSimilarity(candidate, other) }])
         .filter((supporter) => supporter.similarity >= FACE_CLUSTERING.newClusterSimilarity)
         .sort((left, right) => right.similarity - left.similarity || left.otherIndex - right.otherIndex),
     }))
@@ -365,7 +368,7 @@ export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): 
     const group = [candidate.index];
     for (const supporter of candidate.supporters) {
       const coherent = group.every((member) =>
-        cosineSimilarity(embeddings[member] ?? [], embeddings[supporter.otherIndex] ?? [])
+        compatible(member, supporter.otherIndex) && cosineSimilarity(embeddings[member] ?? [], embeddings[supporter.otherIndex] ?? [])
           >= FACE_CLUSTERING.newClusterSimilarity);
       if (coherent) group.push(supporter.otherIndex);
     }
@@ -438,7 +441,6 @@ export const planIdentityAssignments = (
     .filter((candidate) => candidate.quality >= FACE_IDENTITY_MIN_SCORE)
     .sort((left, right) => right.quality - left.quality || left.obsId.localeCompare(right.obsId));
   const assigned = new Set<string>();
-  const excluded = new Set<string>();
   const steps: IdentityStep[] = [];
 
   const blocks = (obsIds: Iterable<string>, obsId: string): boolean => {
@@ -468,36 +470,27 @@ export const planIdentityAssignments = (
   };
 
   const seedPass = (): boolean => {
-    for (;;) {
-      const usable = pending.filter((candidate) => !assigned.has(candidate.obsId) && !excluded.has(candidate.obsId));
-      if (usable.length < FACE_CLUSTERING.newClusterMinObservations) return false;
-      const seed = findNewClusterSeed(usable.map((candidate) => candidate.embedding));
-      const anchor = usable[seed[0] ?? -1];
-      if (seed.length === 0 || anchor === undefined) return false;
-      const members: IdentityCandidate[] = [];
-      for (const index of seed) {
-        const candidate = usable[index];
-        if (candidate === undefined) continue;
-        if (blocks(members.map((member) => member.obsId), candidate.obsId)) continue;
-        members.push(candidate);
-      }
-      if (members.length < FACE_CLUSTERING.newClusterMinObservations) {
-        excluded.add(anchor.obsId);
-        continue;
-      }
-      const index = groups.filter((group) => group.target.kind === 'created').length;
-      const centroid = meanEmbedding(members.map((member) => member.embedding));
-      groups.push({
-        key: `created:${String(index)}`,
-        target: { kind: 'created', index },
-        centroid,
-        exemplarCount: members.length,
-        members: new Set(members.map((member) => member.obsId)),
-      });
-      for (const member of members) assigned.add(member.obsId);
-      steps.push({ kind: 'create', index, memberObsIds: members.map((member) => member.obsId), centroid });
-      return true;
-    }
+    const usable = pending.filter((candidate) => !assigned.has(candidate.obsId));
+    if (usable.length < FACE_CLUSTERING.newClusterMinObservations) return false;
+    const seed = findNewClusterSeed(usable.map((candidate) => candidate.embedding), (left, right) => {
+      const a = usable[left];
+      const b = usable[right];
+      return a !== undefined && b !== undefined && !blocks([a.obsId], b.obsId);
+    });
+    if (seed.length === 0) return false;
+    const members = seed.flatMap((index) => usable[index] ?? []);
+    const index = groups.filter((group) => group.target.kind === 'created').length;
+    const centroid = meanEmbedding(members.map((member) => member.embedding));
+    groups.push({
+      key: `created:${String(index)}`,
+      target: { kind: 'created', index },
+      centroid,
+      exemplarCount: members.length,
+      members: new Set(members.map((member) => member.obsId)),
+    });
+    for (const member of members) assigned.add(member.obsId);
+    steps.push({ kind: 'create', index, memberObsIds: members.map((member) => member.obsId), centroid });
+    return true;
   };
 
   for (;;) {
@@ -988,7 +981,8 @@ function* clusterPreparedFaceObservationSteps(
 
   const indices = new Map(ordered.map((o, i) => [o.obsId, i]));
   const existing = new Set([...indices.keys(), ...unassignedObsIds]);
-  const parents = Uint32Array.from(ordered.map((_, i) => i));
+  const allIndices = new Map([...existing].map((id, i) => [id, i]));
+  const parents = Uint32Array.from(existing, (_, i) => i);
   const root = (index: number): number => {
     let current = index;
     while (at(parents, current) !== current) {
@@ -1003,8 +997,8 @@ function* clusterPreparedFaceObservationSteps(
   for (const [a, b] of options.constraints?.mustLink ?? []) {
     if (!existing.has(a) || !existing.has(b)) { constraintsStale += 1; continue; }
     constraintsApplied.mustLink += 1;
-    const left = indices.get(a);
-    const right = indices.get(b);
+    const left = allIndices.get(a);
+    const right = allIndices.get(b);
     if (left === undefined || right === undefined) continue;
     const leftRoot = root(left);
     const rightRoot = root(right);
