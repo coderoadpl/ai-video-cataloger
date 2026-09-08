@@ -94,3 +94,46 @@ describe('W99 A2 candidates', () => {
     expect(result.candidates).toHaveLength(7);
   });
 });
+
+it('FPR-007 caches distinct-vector pair scores across decisions and enforces warm generation time', () => {
+  const people = Array.from({ length: 600 }, (_, i) => ({
+    ...pairPerson(`p-${String(i).padStart(4, '0')}`, 0, 5),
+    centroid: Array.from({ length: 128 }, (_, axis) => axis === 0 ? 1 : Math.sin(i * 131 + axis) * 0.01),
+  }));
+  const observations = people.flatMap((p) => Array.from({ length: 5 }, (_, i) => pairObs(`${p.personId}-${i}`, p.personId)));
+  const embeddings = new Map(observations.map((o, i) => [o.obsId, Float32Array.from({ length: 128 }, (_, axis) => axis === 0 ? 1 : Math.sin(i * 137 + axis) * 0.02)]));
+  expect(new Set([...embeddings.values()].map((vector) => JSON.stringify([...vector]))).size).toBe(3000);
+  const scoreCache = {};
+  let scored = 0;
+  const input = { ...pairInput(people), visibleObservations: observations, anchorObservations: observations, exemplarEmbeddings: embeddings, scoreCache, onPairScored: () => { scored += 1; } };
+  const start = performance.now();
+  const initial = buildPeoplePairCandidates(input);
+  const coldMs = performance.now() - start;
+  expect(scored).toBe(600 * 599 / 2);
+  const decision = peoplePairDecisionSchema.parse({ obsAId: 'p-0000-0', obsBId: 'p-0001-0', personAId: 'p-0000', personBId: 'p-0001', decision: 'different', source: 'user', decidedAt: input.nowIso });
+  scored = 0;
+  const warmStart = performance.now();
+  const decided = buildPeoplePairCandidates({ ...input, decisions: [decision] });
+  const decidedMs = performance.now() - warmStart;
+  const undoStart = performance.now();
+  const undone = buildPeoplePairCandidates(input);
+  const undoneMs = performance.now() - undoStart;
+  expect(decided.pending).toBe(initial.pending - 1);
+  expect(undone).toEqual(initial);
+  expect(scored).toBe(0);
+  expect(decidedMs).toBeLessThan(1000);
+  expect(undoneMs).toBeLessThan(1000);
+  process.stdout.write(`FPR-007 distinct-vector generation: cold ${coldMs.toFixed(1)} ms, decide ${decidedMs.toFixed(1)} ms, undo ${undoneMs.toFixed(1)} ms\n`);
+}, 15000);
+
+it('FPR-007 invalidates cached scores when an embedding changes', () => {
+  let scored = 0;
+  const embeddings = new Map([['a', new Float32Array([1, 0])], ['b', new Float32Array([1, 0])]]);
+  const input = { ...pairInput([pairPerson('a', 0), pairPerson('b', Math.acos(0.4))]), exemplarEmbeddings: embeddings, scoreCache: {}, onPairScored: () => { scored += 1; } };
+  expect(buildPeoplePairCandidates(input).pending).toBe(1);
+  expect(buildPeoplePairCandidates(input).pending).toBe(1);
+  expect(scored).toBe(1);
+  embeddings.set('b', new Float32Array([0, 1]));
+  expect(buildPeoplePairCandidates(input).pending).toBe(0);
+  expect(scored).toBe(2);
+});

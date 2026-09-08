@@ -14,6 +14,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
+- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
+- Pair review prevents additional answers and undo actions until the queue refresh completes.
+- Pair review disables undo after an irreversible merge.
+- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower.
+- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable.
+- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person.
+- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision.
+- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities.
+
 ### Changed
 
 - The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.

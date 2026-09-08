@@ -1669,7 +1669,7 @@ export const en: Dictionary = {
     pairReviewNotUndoable: 'A merge cannot be undone',
     pairReviewConfirmTitle: 'Merge these two people',
     pairReviewConfirmBody: (first, second) =>
-      `“${first}” and “${second}” become one person, and only one of the names stays.`,
+      `“${first}” and “${second}” become one person, and only one of the names stays. This cannot be undone.`,
     pairReviewEmptyTitle: 'Nothing to review right now',
     pairReviewEmptyBody: 'Come back after the next analysis — new look-alikes land here on their own.',
     pairReviewCrop: (name) => `Face of ${name}`,
@@ -2866,7 +2866,7 @@ export const pl: Dictionary = {
     pairReviewNotUndoable: 'Scalenia nie da się cofnąć',
     pairReviewConfirmTitle: 'Scal te dwie osoby',
     pairReviewConfirmBody: (first, second) =>
-      `„${first}” i „${second}” staną się jedną osobą, a zostanie tylko jedno z imion.`,
+      `„${first}” i „${second}” staną się jedną osobą, a zostanie tylko jedno z imion. Tego nie można cofnąć.`,
     pairReviewEmptyTitle: 'Na razie nie ma o co pytać',
     pairReviewEmptyBody: 'Wróć tu po kolejnej analizie — nowe podobieństwa pojawią się same.',
     pairReviewCrop: (name) => `Twarz osoby ${name}`,
