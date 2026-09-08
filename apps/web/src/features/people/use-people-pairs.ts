@@ -24,11 +24,15 @@ export interface PeoplePairsState {
   fetchStatus: 'fetching' | 'paused' | 'idle';
   isLoading: boolean;
   isBusy: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  queryError: string | null;
+  isPairAvailable: (pair: { personAId: string; personBId: string }) => boolean;
   canUndo: boolean;
   notUndoable: boolean;
   error: string | null;
   openSession: () => void;
-  decide: (decision: PeoplePairDecisionKind, survivorPersonId?: string) => void;
+  decide: (decision: PeoplePairDecisionKind, survivorPersonId?: string, pair?: { personAId: string; personBId: string }) => void;
   undo: () => void;
 }
 
@@ -53,20 +57,20 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
   const decideMutation = useMutation(actions.facesPairsDecide);
   const undoMutation = useMutation(actions.facesPairsUndo);
 
-  const [answered, setAnswered] = useState<FacesPairCandidate[]>([]);
+  const [answered, setAnswered] = useState<Array<{ candidate: FacesPairCandidate; decision: PeoplePairDecisionKind }>>([]);
   const [restored, setRestored] = useState<FacesPairCandidate | null>(null);
   const [undoRefused, setUndoRefused] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const candidates = useMemo(() => pairs.data?.candidates ?? [], [pairs.data]);
-  const queue = useMemo(
-    () => restored === null || candidates.some((entry) => isSamePair(entry, restored.a.personId, restored.b.personId))
-      ? candidates
-      : [restored, ...candidates],
-    [candidates, restored],
-  );
+  const queue = useMemo(() => {
+    const remaining = candidates.filter((entry) => !answered.some(({ candidate }) => isSamePair(entry, candidate.a.personId, candidate.b.personId)));
+    return restored === null ? remaining : [restored, ...remaining.filter((entry) => !isSamePair(entry, restored.a.personId, restored.b.personId))];
+  }, [answered, candidates, restored]);
   const inFlight = useRef(false);
-  const isBusy = decideMutation.isPending || undoMutation.isPending;
+  const [isBusy, setIsBusy] = useState(false);
+  const isPairAvailable = useCallback((pair: { personAId: string; personBId: string }) =>
+    pairs.isSuccess && queue.some((entry) => isSamePair(entry, pair.personAId, pair.personBId)), [pairs.isSuccess, queue]);
 
   const openSession = useCallback(() => {
     setAnswered([]);
@@ -81,10 +85,11 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
   );
 
   const decide = useCallback(
-    (decision: PeoplePairDecisionKind, survivorPersonId?: string) => {
-      const candidate = queue[0];
+    (decision: PeoplePairDecisionKind, survivorPersonId?: string, pair?: { personAId: string; personBId: string }) => {
+      const candidate = pair === undefined ? queue[0] : queue.find((entry) => isSamePair(entry, pair.personAId, pair.personBId));
       if (candidate === undefined || inFlight.current) return;
       inFlight.current = true;
+      setIsBusy(true);
       void (async () => {
         setError(null);
         try {
@@ -95,14 +100,20 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
             ...(survivorPersonId === undefined ? {} : { survivorPersonId }),
           });
           if (!guard.isMounted()) return;
-          setAnswered((current) => [...current, candidate]);
+          setAnswered((current) => [...current, { candidate, decision }]);
           setRestored(null);
           setUndoRefused(false);
         } catch (caught) {
           if (guard.isMounted()) setError(messageOf(caught));
         } finally {
-          inFlight.current = false;
-          await refreshQueue(decision === 'same');
+          try {
+            await refreshQueue(decision === 'same');
+          } catch (caught) {
+            if (guard.isMounted()) setError(messageOf(caught));
+          } finally {
+            inFlight.current = false;
+            if (guard.isMounted()) setIsBusy(false);
+          }
         }
       })();
     },
@@ -111,8 +122,9 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
 
   const undo = useCallback(() => {
     const last = answered[answered.length - 1];
-    if (last === undefined || undoRefused || inFlight.current) return;
+    if (last === undefined || last.decision === 'same' || undoRefused || inFlight.current) return;
     inFlight.current = true;
+    setIsBusy(true);
     void (async () => {
       setError(null);
       try {
@@ -124,12 +136,18 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
         }
         if (output.personAId === null || output.personBId === null) return;
         setAnswered((current) => current.slice(0, -1));
-        if (isSamePair(last, output.personAId, output.personBId)) setRestored(last);
+        if (isSamePair(last.candidate, output.personAId, output.personBId)) setRestored(last.candidate);
       } catch (caught) {
         if (guard.isMounted()) setError(messageOf(caught));
       } finally {
-        inFlight.current = false;
-        await refreshQueue(false);
+        try {
+          await refreshQueue(false);
+        } catch (caught) {
+          if (guard.isMounted()) setError(messageOf(caught));
+        } finally {
+          inFlight.current = false;
+          if (guard.isMounted()) setIsBusy(false);
+        }
       }
     })();
   }, [answered, guard, refreshQueue, undoMutation, undoRefused]);
@@ -144,8 +162,12 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
     queueLength: queue.length,
     answeredThisSession: answered.length,
     isLoading: enabled && pairs.isLoading,
+    isSuccess: pairs.isSuccess,
+    isError: pairs.isError,
+    queryError: pairs.error === null ? null : messageOf(pairs.error),
+    isPairAvailable,
     isBusy,
-    canUndo: answered.length > 0 && !undoRefused && !isBusy,
+    canUndo: answered.length > 0 && answered[answered.length - 1]?.decision !== 'same' && !undoRefused && !isBusy,
     notUndoable: undoRefused,
     error,
     openSession,

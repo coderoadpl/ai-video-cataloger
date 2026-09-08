@@ -16,6 +16,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
+- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
+- Pair review prevents additional answers and undo actions until the queue refresh completes.
+- Pair review disables undo after an irreversible merge.
+- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower.
+- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable.
+- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person.
+- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision.
+- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities.
 - Smoke and GUI gates reject declared dependency versions or Electron runtime versions that differ from the lockfile, provide a reinstall instruction, and record the Electron version exercised by GUI runs.
 - Prerelease reports must contain executed tests for every expected project; empty or missing-project reports fail the gate.
 - Prerelease invocations use unique report directories outside Playwright output and a checkout lock to prevent concurrent report and build interference.

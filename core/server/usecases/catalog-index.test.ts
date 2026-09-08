@@ -14,7 +14,7 @@ import {
 import { folderSnapshotPath } from './catalog-snapshot.js';
 import { aliasTag, listTags } from './tags.js';
 import type { CatalogSearchFilters } from '../ports.js';
-import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
+import { InMemoryJobs, InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
 
 const EMPTY_SEARCH_FILTERS: CatalogSearchFilters = {
   tagTermSets: [],
@@ -175,7 +175,7 @@ describe('missing-file reconciliation', () => {
     const seededSnapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
     expect(seededSnapshot.ok && seededSnapshot.value).toContain('fp-1');
 
-    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs, jobs: new InMemoryJobs() }, { fingerprint: 'fp-1' });
     expect(forgotten.ok && forgotten.value.deleted).toBe(true);
 
     const gone = await store.getFile('fp-1');
@@ -206,7 +206,7 @@ describe('missing-file reconciliation', () => {
       media: 'video',
     });
 
-    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs, jobs: new InMemoryJobs() }, { fingerprint: 'fp-1' });
     expect(forgotten.ok && forgotten.value.deleted).toBe(true);
     const cropExists = await fs.exists(cropPath);
     expect(cropExists.ok && cropExists.value).toBe(false);
@@ -232,7 +232,7 @@ describe('missing-file reconciliation', () => {
       media: 'video',
     });
 
-    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs, jobs: new InMemoryJobs() }, { fingerprint: 'fp-1' });
     expect(forgotten.ok && forgotten.value.deleted).toBe(true);
     const cropExists = await fs.exists(currentCropPath);
     expect(cropExists.ok && cropExists.value).toBe(false);
