@@ -624,8 +624,9 @@ F3. Every item below is implemented.
 - **Clustering becomes deterministic agglomerative average-linkage** over
   cosine similarity on a sparse neighbour graph (edges at cosine ≥ 0.36,
   non-edges counted as 0), replacing the order-dependent greedy centroid
-  assigner. Live indexing keeps the greedy assignment; the rebuild is what
-  makes its mistakes cheap.
+  assigner. Live indexing keeps the same join and founding rules, applied once
+  per index run over that run's unassigned pool in a stable order (ADR-0018
+  D13), and the rebuild is what makes its remaining mistakes cheap.
 - **The cut threshold is calibrated, not guessed**, by `scripts/faces-benchmark.ts`
   against a user-supplied reference partition plus a user-labelled pair sample,
   reporting purity, completeness and pairwise F1, and chosen on the

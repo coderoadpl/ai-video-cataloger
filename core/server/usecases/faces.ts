@@ -5,13 +5,12 @@ import {
   FACE_LIMITS,
   FILE_ARTIFACTS,
   boxIoU,
-  classifyFace,
   clusterFaceObservationSteps,
-  findNewClusterSeed,
   normalizeEmbedding,
   parseFaceObsId,
   passesFaceQuality,
   planExemplarBackfill,
+  planIdentityAssignments,
   faceCropFileName,
   selectDisplayedExemplars,
   pairDecisionIsActive,
@@ -626,7 +625,6 @@ export const runFacesIndexPass = async (
       }
       observationsAdded += outcome.result.value.observationsAdded;
       rejectedLowQuality += outcome.result.value.rejectedLowQuality;
-      peopleCreated += outcome.result.value.peopleCreated;
       filesIndexed += 1;
       streak = 0;
       streakCode = null;
@@ -676,12 +674,19 @@ export const runFacesIndexPass = async (
       photosCompleted += 1;
       photoObservationsAdded += outcome.result.value.observationsAdded;
       photoRejectedLowQuality += outcome.result.value.rejectedLowQuality;
-      photoPeopleCreated += outcome.result.value.peopleCreated;
-      peopleCreated += outcome.result.value.peopleCreated;
     }
   } finally {
     await deps.faceEngine.dispose();
   }
+
+  const identities = await assignPoolIdentities(deps, pool, progress);
+  if (!identities.ok) {
+    const flushedStores = await flushFaceStores(deps);
+    if (!flushedStores.ok) return flushedStores;
+    return identities;
+  }
+  peopleCreated = identities.value.peopleCreated;
+  photoPeopleCreated = identities.value.photoPeopleCreated;
 
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
@@ -816,11 +821,17 @@ export const runPhotoFacesIndexPass = async (
       indexed += 1;
       observationsAdded += outcome.result.value.observationsAdded;
       rejectedLowQuality += outcome.result.value.rejectedLowQuality;
-      peopleCreated += outcome.result.value.peopleCreated;
     }
   } finally {
     await deps.faceEngine.dispose();
   }
+  const identities = await assignPoolIdentities(deps, pool, progress);
+  if (!identities.ok) {
+    const flushedStores = await flushFaceStores(deps);
+    if (!flushedStores.ok) return flushedStores;
+    return identities;
+  }
+  peopleCreated = identities.value.peopleCreated;
   const catalogFlushed = await deps.globalCatalog.flush();
   if (!catalogFlushed.ok) return catalogFlushed;
   const photosFlushed = await deps.photos.flush();
@@ -853,7 +864,6 @@ interface IndexCandidateOutcome {
 interface FacesIndexedCandidateCounts {
   observationsAdded: number;
   rejectedLowQuality: number;
-  peopleCreated: number;
 }
 
 const indexCandidate = async (
@@ -965,7 +975,7 @@ const indexPhotoCandidate = async (
   if (completedAtCurrentVersion && existing.value.length > 0) {
     const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
     if (!completed.ok) return { result: completed, pool };
-    return { result: ok({ observationsAdded: 0, rejectedLowQuality: 0, peopleCreated: 0 }), pool };
+    return { result: ok({ observationsAdded: 0, rejectedLowQuality: 0 }), pool };
   }
   const detecting = await report(progress, {
     step: 'photo-faces-detecting',
@@ -979,7 +989,6 @@ const indexPhotoCandidate = async (
   if (!detections.ok) return { result: detections, pool };
   let observationsAdded = 0;
   let rejectedLowQuality = 0;
-  let peopleCreated = 0;
   for (let detectionIndex = 0; detectionIndex < detections.value.length; detectionIndex += 1) {
     const detection = detections.value[detectionIndex];
     if (detection === undefined) continue;
@@ -998,11 +1007,10 @@ const indexPhotoCandidate = async (
     if (!indexed.ok) return { result: indexed, pool };
     observationsAdded += indexed.value.observationsAdded;
     rejectedLowQuality += indexed.value.rejectedLowQuality;
-    peopleCreated += indexed.value.peopleCreated;
   }
   const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
   if (!completed.ok) return { result: completed, pool };
-  return { result: ok({ observationsAdded, rejectedLowQuality, peopleCreated }), pool };
+  return { result: ok({ observationsAdded, rejectedLowQuality }), pool };
 };
 
 type ExemplarSource =
@@ -1230,7 +1238,6 @@ const indexFramesForFile = async (
 ): Promise<Result<FacesIndexedCandidateCounts, AppError>> => {
   let observationsAdded = 0;
   let rejectedLowQuality = 0;
-  let peopleCreated = 0;
   for (let frameIndex = 0; frameIndex < input.framePaths.length; frameIndex += 1) {
     const framePath = input.framePaths[frameIndex];
     if (framePath === undefined) continue;
@@ -1255,11 +1262,10 @@ const indexFramesForFile = async (
       if (!indexed.ok) return indexed;
       observationsAdded += indexed.value.observationsAdded;
       rejectedLowQuality += indexed.value.rejectedLowQuality;
-      peopleCreated += indexed.value.peopleCreated;
       detectionIndex += 1;
     }
   }
-  return ok({ observationsAdded, rejectedLowQuality, peopleCreated });
+  return ok({ observationsAdded, rejectedLowQuality });
 };
 
 const indexDetection = async (
@@ -1275,9 +1281,9 @@ const indexDetection = async (
   sourceDimensions?: { sourceWidth: number; sourceHeight: number } | undefined,
 ): Promise<Result<FacesIndexedCandidateCounts, AppError>> => {
   const obsId = `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`;
-  if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, rejectedLowQuality: 0, peopleCreated: 0 });
+  if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, rejectedLowQuality: 0 });
   const boxPx = Math.min(detection.bbox.width, detection.bbox.height);
-  if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, rejectedLowQuality: 1, peopleCreated: 0 });
+  if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, rejectedLowQuality: 1 });
   const aligned = await deps.faceEngine.align(frame, detection);
   if (!aligned.ok) return aligned;
   const cropPath = await writeObservationCrop(deps, obsId, aligned.value);
@@ -1285,14 +1291,6 @@ const indexDetection = async (
   const embedded = await deps.faceEngine.embed(aligned.value);
   if (!embedded.ok) return embedded;
   const embedding = normalizeEmbedding([...embedded.value]);
-  const people = await deps.globalCatalog.listPeople();
-  if (!people.ok) return people;
-  const identityEligible = detection.score >= FACE_IDENTITY_MIN_SCORE;
-  let assignedPersonId: string | null = null;
-  if (identityEligible) {
-    const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
-    assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
-  }
   const observation: FaceObservation = {
     obsId,
     fingerprint: input.fingerprint,
@@ -1301,52 +1299,96 @@ const indexDetection = async (
     bbox: sourceDimensions === undefined ? detection.bbox : { ...detection.bbox, ...sourceDimensions },
     embedding,
     quality: detection.score,
-    personId: assignedPersonId,
+    personId: null,
     cropPath,
     media,
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
-  if (identityEligible) pool.push(observation);
-  if (assignedPersonId !== null) {
-    const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
-    if (!updated.ok) return updated;
-    return ok({ observationsAdded: 1, rejectedLowQuality: 0, peopleCreated: 0 });
-  }
-  const clustered = await seedNewPersonIfReady(deps, pool);
-  if (!clustered.ok) return clustered;
-  return ok({ observationsAdded: 1, rejectedLowQuality: 0, peopleCreated: clustered.value });
+  if (detection.score >= FACE_IDENTITY_MIN_SCORE) pool.push(observation);
+  return ok({ observationsAdded: 1, rejectedLowQuality: 0 });
 };
 
-const seedNewPersonIfReady = async (
+interface IdentityPassCounts {
+  peopleCreated: number;
+  photoPeopleCreated: number;
+}
+
+const assignPoolIdentities = async (
   deps: FacesIndexDeps,
-  pool: FaceObservation[],
-): Promise<Result<number, AppError>> => {
-  const unassigned = pool.filter((observation) => observation.personId === null && observation.quality >= FACE_IDENTITY_MIN_SCORE);
-  const seed = findNewClusterSeed(unassigned.map((observation) => observation.embedding));
-  if (seed.length === 0) return ok(0);
-  const personId = `person-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const embeddings = seed.map((index) => unassigned[index]?.embedding).filter((value): value is number[] => value !== undefined);
-  const person: Person = {
-    personId,
-    displayName: null,
-    kind: 'face',
-    createdAt: new Date().toISOString(),
-    centroid: centroidFor(embeddings),
-    exemplarCount: embeddings.length,
-  };
-  const stored = await deps.globalCatalog.upsertPerson(person);
-  if (!stored.ok) return stored;
-  for (const index of seed) {
-    const observation = unassigned[index];
-    if (observation === undefined) continue;
-    const updatedObservation = { ...observation, personId };
-    const updated = await deps.globalCatalog.upsertFaceObservation(updatedObservation);
-    if (!updated.ok) return updated;
-    const poolIndex = pool.indexOf(observation);
-    if (poolIndex !== -1) pool[poolIndex] = updatedObservation;
+  pool: readonly FaceObservation[],
+  progress: JobExecutionContext | undefined,
+): Promise<Result<IdentityPassCounts, AppError>> => {
+  const candidates = pool.filter((observation) => observation.personId === null);
+  if (candidates.length === 0) return ok({ peopleCreated: 0, photoPeopleCreated: 0 });
+  const people = await deps.globalCatalog.listPeople();
+  if (!people.ok) return people;
+  const decisions = await deps.globalCatalog.listPeoplePairDecisions();
+  if (!decisions.ok) return decisions;
+  const nowIso = new Date().toISOString();
+  const cannotLink = decisions.value
+    .filter((decision) => decision.decision === 'different' && pairDecisionIsActive(decision, nowIso))
+    .map((decision): [string, string] => [decision.obsAId, decision.obsBId]);
+  const memberObsIds = new Map<string, string[]>();
+  if (cannotLink.length > 0) {
+    const summaries = await deps.globalCatalog.listFaceObservationSummaries();
+    if (!summaries.ok) return summaries;
+    for (const summary of summaries.value) {
+      if (summary.personId === null) continue;
+      memberObsIds.set(summary.personId, [...(memberObsIds.get(summary.personId) ?? []), summary.obsId]);
+    }
   }
-  return ok(1);
+  const reported = await report(progress, {
+    step: 'faces_clustering',
+    data: { observations: candidates.length, people: people.value.length },
+  });
+  if (!reported.ok) return reported;
+  const steps = planIdentityAssignments(
+    candidates.map((observation) => ({ obsId: observation.obsId, embedding: observation.embedding, quality: observation.quality })),
+    people.value.map((person) => ({
+      personId: person.personId,
+      centroid: person.centroid,
+      exemplarCount: person.exemplarCount,
+      memberObsIds: memberObsIds.get(person.personId) ?? [],
+    })),
+    cannotLink,
+  );
+  const observationByObsId = new Map(candidates.map((observation) => [observation.obsId, observation]));
+  const createdPersonIds = new Map<number, string>();
+  const counts: IdentityPassCounts = { peopleCreated: 0, photoPeopleCreated: 0 };
+  for (const step of steps) {
+    const cancellation = cancelled(progress);
+    if (!cancellation.ok) return cancellation;
+    if (step.kind === 'create') {
+      const personId = `person-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const person: Person = {
+        personId,
+        displayName: null,
+        kind: 'face',
+        createdAt: nowIso,
+        centroid: step.centroid,
+        exemplarCount: step.memberObsIds.length,
+      };
+      const storedPerson = await deps.globalCatalog.upsertPerson(person);
+      if (!storedPerson.ok) return storedPerson;
+      for (const obsId of step.memberObsIds) {
+        const assigned = await deps.globalCatalog.assignFaceObservation(obsId, personId);
+        if (!assigned.ok) return assigned;
+      }
+      createdPersonIds.set(step.index, personId);
+      counts.peopleCreated += 1;
+      if (step.memberObsIds.some((obsId) => observationByObsId.get(obsId)?.media === 'photo')) counts.photoPeopleCreated += 1;
+      continue;
+    }
+    const personId = step.target.kind === 'existing' ? step.target.personId : createdPersonIds.get(step.target.index);
+    const observation = observationByObsId.get(step.obsId);
+    if (personId === undefined || observation === undefined) continue;
+    const assigned = await deps.globalCatalog.assignFaceObservation(step.obsId, personId);
+    if (!assigned.ok) return assigned;
+    const updated = await updatePersonCentroid(deps.globalCatalog, personId, observation.embedding);
+    if (!updated.ok) return updated;
+  }
+  return ok(counts);
 };
 
 const frameTimestamp = (durationS: number | null, frameIndex: number, frameCount: number): number =>
@@ -1443,18 +1485,6 @@ export const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly st
     deleted += 1;
   }
   return ok(deleted);
-};
-
-const centroidFor = (embeddings: readonly (readonly number[])[]): number[] => {
-  if (embeddings.length === 0) return Array.from({ length: 128 }, () => 0);
-  const totals = Array.from({ length: 128 }, () => 0);
-  for (const embedding of embeddings) {
-    embedding.forEach((value, index) => {
-      const current = totals[index];
-      if (current !== undefined) totals[index] = current + value;
-    });
-  }
-  return normalizeEmbedding(totals.map((value) => value / embeddings.length));
 };
 
 const appliedFaceFailure = (error: AppError, phase: 'durability' | 'cleanup', cleanup?: { cropPathsDeleted: number; cropPathsPending: number }): Result<never, AppError> => ({

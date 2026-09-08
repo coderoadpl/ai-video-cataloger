@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Face grouping no longer depends on the order the files were indexed in: a scan stores every detected face unassigned and then groups the whole run's unassigned faces in one pass, in a stable order, so the same photos and videos produce the same people whatever order they were copied in or split across runs, and a pair the owner answered "different" is no longer joined by the indexing path.
+
 ## [0.6.36] - 2026-09-08
 
 ### Fixed

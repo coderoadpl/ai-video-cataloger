@@ -1666,9 +1666,12 @@ deterministic **constrained** agglomerative average-linkage over cosine similari
 sparse neighbour graph, calibrated by a repo benchmark script against a user-supplied
 reference partition and cut on the conservative side of the measured optimum (split
 rather than merge), with the stored `same` / `different` answers applied as must-link and
-cannot-link pairs; the greedy per-observation assignment stays as the *incremental* path,
+cannot-link pairs. The *incremental* path keeps the same join and founding rules but
+applies them once per index run, over that run's unassigned pool in a stable order
+(quality descending, then `obsId`) and with the same cannot-link pairs honoured, so one
+observation set groups the same way whatever order the files were walked in; it stays
 cheap to be wrong on precisely because the rebuild exists. ADR-0018, D11 and D12 for the
-constraints and for name carrying.
+constraints and for name carrying, D13 and D14 for the run phase.
 
 People payloads keep observation counts because grouping quality is about detected face
 frames, but the Osoby card and person-media panel also need distinct file counts per

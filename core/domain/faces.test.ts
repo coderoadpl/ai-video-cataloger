@@ -23,12 +23,16 @@ import {
   passesFaceQuality,
   personSchema,
   planExemplarBackfill,
+  planIdentityAssignments,
   selectExemplars,
   shouldMergePeople,
   totalsByPerson,
   updateCentroid,
   type ExemplarCandidate,
   type FaceObservationSummary,
+  type IdentityCandidate,
+  type IdentityStep,
+  type IdentityTarget,
   type ExemplarPlanObservation,
   type PreparedFaceClustering,
 } from './faces.js';
@@ -130,6 +134,58 @@ describe('updateCentroid', () => {
     const updated = updateCentroid([1, 0], 1, [0, 1]);
     expect(updated[0]).toBeCloseTo(Math.SQRT1_2);
     expect(updated[1]).toBeCloseTo(Math.SQRT1_2);
+  });
+});
+
+describe('planIdentityAssignments', () => {
+  const poolOf = (angles: readonly number[]): IdentityCandidate[] => angles.map((angle, index) => ({
+    obsId: `obs-${String(index).padStart(2, '0')}`,
+    embedding: unitAtAngleDeg(angle),
+    quality: index % 3 === 0 ? 0.9 : 0.8,
+  }));
+
+  const keyOf = (target: IdentityTarget): string =>
+    target.kind === 'existing' ? `existing:${target.personId}` : `created:${String(target.index)}`;
+
+  const membership = (steps: readonly IdentityStep[]): string[] => {
+    const groups = new Map<string, string[]>();
+    for (const step of steps) {
+      const key = step.kind === 'create' ? `created:${String(step.index)}` : keyOf(step.target);
+      const members = step.kind === 'create' ? step.memberObsIds : [step.obsId];
+      groups.set(key, [...(groups.get(key) ?? []), ...members].sort());
+    }
+    return [...groups.values()].map((members) => members.join(' ')).sort();
+  };
+
+  const reordered = (pool: readonly IdentityCandidate[], stride: number): IdentityCandidate[] =>
+    pool.flatMap((_candidate, index) => {
+      const candidate = pool[(index * stride + 1) % pool.length];
+      return candidate === undefined ? [] : [candidate];
+    });
+
+  const rotations = (pool: readonly IdentityCandidate[]): IdentityCandidate[][] =>
+    [[...pool], [...pool].reverse(), reordered(pool, 2), reordered(pool, 5)];
+
+  it('plans the same identities whatever order the observations arrive in', () => {
+    const pool = poolOf([0, 6, 12, 18, 91, 97, 103, 109, 45]);
+    const plans = rotations(pool).map((ordered) => membership(planIdentityAssignments(ordered, [], [])));
+    expect(plans[0]).toHaveLength(2);
+    for (const plan of plans) expect(plan).toEqual(plans[0]);
+  });
+
+  it('keeps an observation away from a person the owner marked as someone else', () => {
+    const pool = poolOf([5]);
+    const person = { personId: 'p-1', centroid: unitAtAngleDeg(0), exemplarCount: 2, memberObsIds: ['old-1'] };
+    expect(planIdentityAssignments(pool, [person], [])).toEqual([
+      { kind: 'assign', obsId: 'obs-00', target: { kind: 'existing', personId: 'p-1' } },
+    ]);
+    expect(planIdentityAssignments(pool, [person], [['obs-00', 'old-1']])).toEqual([]);
+  });
+
+  it('never founds a person on a pair the owner marked as two people', () => {
+    expect(planIdentityAssignments(poolOf([0, 5]), [], [['obs-00', 'obs-01']])).toEqual([]);
+    const steps = planIdentityAssignments(poolOf([0, 5, 10]), [], [['obs-00', 'obs-01']]);
+    expect(membership(steps)).toEqual(['obs-00 obs-02']);
   });
 });
 

@@ -374,6 +374,139 @@ export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): 
   return [];
 };
 
+const meanEmbedding = (embeddings: readonly (readonly number[])[]): number[] => {
+  if (embeddings.length === 0) return Array.from({ length: FACE_EMBEDDING_DIM }, () => 0);
+  const totals = Array.from({ length: FACE_EMBEDDING_DIM }, () => 0);
+  for (const embedding of embeddings) {
+    embedding.forEach((value, index) => {
+      const current = totals[index];
+      if (current !== undefined) totals[index] = current + value;
+    });
+  }
+  return normalizeEmbedding(totals.map((value) => value / embeddings.length));
+};
+
+export interface IdentityCandidate {
+  obsId: string;
+  embedding: readonly number[];
+  quality: number;
+}
+
+export interface IdentityPerson {
+  personId: string;
+  centroid: readonly number[];
+  exemplarCount: number;
+  memberObsIds: readonly string[];
+}
+
+export type IdentityTarget =
+  | { kind: 'existing'; personId: string }
+  | { kind: 'created'; index: number };
+
+export type IdentityStep =
+  | { kind: 'create'; index: number; memberObsIds: string[]; centroid: number[] }
+  | { kind: 'assign'; obsId: string; target: IdentityTarget };
+
+interface IdentityGroup {
+  key: string;
+  target: IdentityTarget;
+  centroid: number[];
+  exemplarCount: number;
+  members: Set<string>;
+}
+
+export const planIdentityAssignments = (
+  pool: readonly IdentityCandidate[],
+  people: readonly IdentityPerson[],
+  cannotLink: readonly (readonly [string, string])[],
+): IdentityStep[] => {
+  const blocked = new Map<string, Set<string>>();
+  for (const [left, right] of cannotLink) {
+    blocked.set(left, (blocked.get(left) ?? new Set<string>()).add(right));
+    blocked.set(right, (blocked.get(right) ?? new Set<string>()).add(left));
+  }
+  const groups: IdentityGroup[] = [...people]
+    .sort((left, right) => left.personId.localeCompare(right.personId))
+    .map((person) => ({
+      key: `existing:${person.personId}`,
+      target: { kind: 'existing', personId: person.personId },
+      centroid: [...person.centroid],
+      exemplarCount: person.exemplarCount,
+      members: new Set(person.memberObsIds),
+    }));
+  const pending = [...pool]
+    .filter((candidate) => candidate.quality >= FACE_IDENTITY_MIN_SCORE)
+    .sort((left, right) => right.quality - left.quality || left.obsId.localeCompare(right.obsId));
+  const assigned = new Set<string>();
+  const excluded = new Set<string>();
+  const steps: IdentityStep[] = [];
+
+  const blocks = (obsIds: Iterable<string>, obsId: string): boolean => {
+    const partners = blocked.get(obsId);
+    if (partners === undefined) return false;
+    for (const member of obsIds) if (partners.has(member)) return true;
+    return false;
+  };
+
+  const assignPass = (): boolean => {
+    let progressed = false;
+    for (const candidate of pending) {
+      if (assigned.has(candidate.obsId)) continue;
+      const eligible = groups.filter((group) => !blocks(group.members, candidate.obsId));
+      const decision = classifyFace(candidate.embedding, eligible.map((group) => ({ personId: group.key, centroid: group.centroid })));
+      if (decision.decision !== 'assign') continue;
+      const group = eligible.find((entry) => entry.key === decision.personId);
+      if (group === undefined) continue;
+      group.centroid = updateCentroid(group.centroid, group.exemplarCount, candidate.embedding);
+      group.exemplarCount += 1;
+      group.members.add(candidate.obsId);
+      assigned.add(candidate.obsId);
+      steps.push({ kind: 'assign', obsId: candidate.obsId, target: group.target });
+      progressed = true;
+    }
+    return progressed;
+  };
+
+  const seedPass = (): boolean => {
+    for (;;) {
+      const usable = pending.filter((candidate) => !assigned.has(candidate.obsId) && !excluded.has(candidate.obsId));
+      if (usable.length < FACE_CLUSTERING.newClusterMinObservations) return false;
+      const seed = findNewClusterSeed(usable.map((candidate) => candidate.embedding));
+      const anchor = usable[seed[0] ?? -1];
+      if (seed.length === 0 || anchor === undefined) return false;
+      const members: IdentityCandidate[] = [];
+      for (const index of seed) {
+        const candidate = usable[index];
+        if (candidate === undefined) continue;
+        if (blocks(members.map((member) => member.obsId), candidate.obsId)) continue;
+        members.push(candidate);
+      }
+      if (members.length < FACE_CLUSTERING.newClusterMinObservations) {
+        excluded.add(anchor.obsId);
+        continue;
+      }
+      const index = groups.filter((group) => group.target.kind === 'created').length;
+      const centroid = meanEmbedding(members.map((member) => member.embedding));
+      groups.push({
+        key: `created:${String(index)}`,
+        target: { kind: 'created', index },
+        centroid,
+        exemplarCount: members.length,
+        members: new Set(members.map((member) => member.obsId)),
+      });
+      for (const member of members) assigned.add(member.obsId);
+      steps.push({ kind: 'create', index, memberObsIds: members.map((member) => member.obsId), centroid });
+      return true;
+    }
+  };
+
+  for (;;) {
+    if (assignPass()) continue;
+    if (!seedPass()) break;
+  }
+  return steps;
+};
+
 export interface FaceClusterInput {
   obsId: string;
   embedding: readonly number[];
