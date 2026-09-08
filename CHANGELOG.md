@@ -18,9 +18,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.
 
+## [0.6.38] - 2026-09-08
+
 ### Fixed
 
-- The People view no longer shows controls that cannot act: while local face grouping is off the header renders only the heading, the subtitle and the settings call to action; the minimum-occurrences slider's value bubble now clears the label above it instead of covering the heading text; and the Polish folder counter in the catalog tree agrees with its count ("1 oczekuje", "3 oczekują", "5 oczekuje", "0 gotowych").
+- The People view no longer shows controls that cannot act: while local face grouping is off the header renders only the heading, the subtitle and the settings call to action; the minimum-occurrences slider's value bubble now clears the label above it instead of covering the heading text; and the Polish folder counter in the catalog tree agrees with its count ("1 oczekuje", "3 oczekują", "5 oczekuje", "0 gotowych")
+  ([`322aca9`](https://github.com/coderoadpl/ai-video-cataloger/commit/322aca920c50e3169aa53bb86ad3586ea7814297)).
 
 ## [0.6.37] - 2026-09-08
 
