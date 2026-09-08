@@ -20,6 +20,8 @@ export interface PeoplePairsState {
   current: FacesPairCandidate | null;
   queueLength: number;
   answeredThisSession: number;
+  status: 'pending' | 'error' | 'success';
+  fetchStatus: 'fetching' | 'paused' | 'idle';
   isLoading: boolean;
   isBusy: boolean;
   canUndo: boolean;
@@ -133,6 +135,8 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
   }, [answered, guard, refreshQueue, undoMutation, undoRefused]);
 
   return {
+    status: pairs.status,
+    fetchStatus: pairs.fetchStatus,
     pending: pairs.data?.pending ?? 0,
     truncated: pairs.data?.truncated ?? false,
     limit: PAIR_REVIEW_DEFAULT_LIMIT,

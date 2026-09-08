@@ -6,7 +6,7 @@ import initSqlJs from 'sql.js';
 import { z } from 'zod';
 
 import { ensureE2eFaceModels } from './face-models.js';
-import { awaitPeopleGridUnfolded, copyPhotoFixtures, dismissSetupWizard, ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
+import { awaitPeopleGridUnfolded, copyPhotoFixtures, desktopLaunchEnv, dismissSetupWizard, ELECTRON_MAIN, expectInactiveWindow, isolatedHome, makeEmptyWorkdir, removeTempDir, RENDERER_HTML, REPO_ROOT, stubOpenDialog } from './helpers.js';
 
 interface Session {
   app: ElectronApplication;
@@ -36,15 +36,14 @@ async function launch(workdir: string): Promise<Session> {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
     cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
+    env: desktopLaunchEnv(userDataDir, {
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
-    },
+    }),
   });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+  await expectInactiveWindow(app);
   await page.waitForFunction(() => window.desktopBridge !== undefined);
 
   await dismissSetupWizard(page);
@@ -58,11 +57,11 @@ const openPeople = async (page: Page): Promise<void> => {
 };
 
 const badgeCount = async (page: Page): Promise<number> => {
-  const badge = page.getByTestId('people-pair-review-open');
-  if (await badge.count() === 0) return 0;
-  const text = await badge.textContent({ timeout: READ_TIMEOUT_MS });
-  const digits = numberInText.parse(text ?? '');
-  return countSchema.parse(Number(digits[digits.length - 1] ?? Number.NaN));
+  const state = page.getByTestId('people-pairs-query');
+  await expect(state).toHaveAttribute('data-query-status', /^(success|error)$/, { timeout: SETTLE_TIMEOUT_MS });
+  await expect(state).toHaveAttribute('data-query-status', 'success');
+  await expect(state).toHaveAttribute('data-fetch-status', 'idle', { timeout: SETTLE_TIMEOUT_MS });
+  return countSchema.parse(Number(z.string().regex(/^\d+$/).parse(await state.getAttribute('data-pending'))));
 };
 
 const position = async (page: Page): Promise<{ index: number; total: number }> => {
@@ -261,6 +260,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
       expect(relaunchedCardIds).not.toContain(merged.absorbed);
       expect(relaunchedCardIds).toHaveLength(cardsBefore - 1);
 
+      expect(await badgeCount(session.page)).toBe(pendingAfterMerge);
       const relaunchedBadge = session.page.getByTestId('people-pair-review-open');
       if (pendingAfterMerge === 0) {
         await expect(relaunchedBadge).toHaveCount(0, { timeout: SETTLE_TIMEOUT_MS });
@@ -291,7 +291,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
 
       expect(await decisionCounts(home), 'the stored decisions changed across the relaunch').toEqual(counts);
     } finally {
-      await session.app.close().catch(() => undefined);
+      await session.app.close();
       await removeTempDir(workdir);
     }
   });

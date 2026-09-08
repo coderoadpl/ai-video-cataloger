@@ -256,6 +256,33 @@ const openReview = async (user: ReturnType<typeof userEvent.setup>) => {
 describe('Osoby pair review entry point', () => {
   beforeEach(() => window.localStorage.clear());
 
+  it('exposes pending until the pair response explicitly supplies zero', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get('/api/faces/pairs', async () => {
+      await pending;
+      return HttpResponse.json({ ok: true, data: { scope: 'standard', askLow: 0.44, clusterCut: 0.5, candidates: [], pending: 0, truncated: false } });
+    }));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-fetch-status')).toBe('fetching'));
+    expect(state.getAttribute('data-query-status')).toBe('pending');
+    expect(state.hasAttribute('data-pending')).toBe(false);
+    release();
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('success'));
+    expect(state.getAttribute('data-pending')).toBe('0');
+  });
+
+  it('exposes a pair endpoint failure without presenting an empty queue', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    server.use(http.get('/api/faces/pairs', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'pair query failed' } }, { status: 500 })));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('error'));
+    expect(state.hasAttribute('data-pending')).toBe(false);
+  });
+
   it('stays out of the DOM when nothing is pending', async () => {
     stubReview({ candidates: [], pending: 0 });
     renderPeople();

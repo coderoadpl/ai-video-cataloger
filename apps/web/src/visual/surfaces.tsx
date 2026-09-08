@@ -416,6 +416,8 @@ const PAIR_REVIEW_STATE: PeoplePairsState = {
   current: PAIR_REVIEW_CANDIDATE,
   queueLength: 6,
   answeredThisSession: 0,
+  status: 'success',
+  fetchStatus: 'idle',
   isLoading: false,
   isBusy: false,
   canUndo: false,

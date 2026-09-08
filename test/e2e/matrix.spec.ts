@@ -502,7 +502,7 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userData}`],
     cwd: REPO_ROOT,
-    env: desktopLaunchEnv({ AVC_RENDERER_HTML: RENDERER_HTML }, unavailableManagedOllamaEnvironment(freshHome)),
+    env: desktopLaunchEnv(userData, { AVC_RENDERER_HTML: RENDERER_HTML }, unavailableManagedOllamaEnvironment(freshHome)),
   });
   try {
     const page = await app.firstWindow();
