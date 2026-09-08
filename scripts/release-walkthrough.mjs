@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
@@ -35,6 +35,10 @@ const runPhotoMarker = () => Buffer.from(`\n<!-- avc-walkthrough-run ${randomUUI
 // which is what makes its folder a tree node of its own.
 export const TREE_PHOTO_PATH = path.join('subfolder', 'tree-photo.jpg');
 const TREE_PHOTO_SUFFIX = Buffer.from('\n');
+
+// Sorts after the planted tree subfolder, so the folder row the tree steps expand stays the same
+// one whether or not a faces fixture was provided.
+export const FACES_SAMPLES_DIRNAME = 'walkthrough-faces';
 
 // Matches adapters/ollama-runtime/index.ts's SYSTEM_OLLAMA_BASE_URL: this script runs as
 // plain node (no TS path aliases), so the value is duplicated rather than imported.
@@ -77,6 +81,12 @@ Options:
                                analyzes with exactly the requested model.
   --help                       Print this help.
 
+AVC_WALKTHROUGH_FACES_SAMPLES may name a folder of photos of a handful of people. When it is set,
+the runner copies that folder into the scratch fixtures as ${FACES_SAMPLES_DIRNAME}/ and the
+optional people-pairs step enables face grouping through the real Settings controls, indexes faces
+and captures the pair-review card. When it is unset the step reports itself skipped, which
+--strict tolerates.
+
 Every run launches with an isolated user-data directory, an isolated home and
 AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1: it never reads or writes the real catalog,
 the real settings or the login keychain. The home's config.json is seeded with
@@ -104,6 +114,9 @@ const DEFAULT_WINDOW_SIZE = '1920x1200';
 const WINDOW_SIZE_PATTERN = /^(\d+)x(\d+)$/;
 const OLLAMA_CHECK_TIMEOUT_MS = 5_000;
 const BACKUP_TIMEOUT_MS = 180_000;
+const TREE_THUMBNAIL_TIMEOUT_MS = 60_000;
+const CONTROL_POLL_MS = 250;
+const FACES_TIMEOUT_MS = 600_000;
 const ANALYZER_FLAG_PATTERN = /^local:(.+)$/;
 
 const optionsSchema = z.object({
@@ -206,6 +219,19 @@ const requireDirectory = (candidate, label) => {
   return resolved;
 };
 
+const facesSamplesSchema = z.string().optional();
+
+export const facesSamplesDirectory = (environment) => {
+  const raw = facesSamplesSchema.parse(environment.AVC_WALKTHROUGH_FACES_SAMPLES);
+  if (raw === undefined || raw.trim().length === 0) return null;
+  return requireDirectory(raw, 'AVC_WALKTHROUGH_FACES_SAMPLES');
+};
+
+// Same scratch cache the on-demand faces e2e legs fill (test/e2e/face-models.ts): the walkthrough
+// drives a packaged app and cannot import the downloader, so it stages what that cache already holds.
+const faceModelsCacheDirectory = (environment) =>
+  path.join(environment.AVC_SCRATCH_DIR ?? path.join(homedir(), '.ai-video-cataloger-scratch'), 'face-models', '.ai-video-cataloger', 'models');
+
 const executableInside = (appPath) => {
   const macosDir = path.join(appPath, 'Contents', 'MacOS');
   if (!existsSync(macosDir)) throw new Error(`not an app bundle (no Contents/MacOS): ${appPath}`);
@@ -235,9 +261,10 @@ const plantTreePhoto = (scratchDir, sourcePhotoPath) => {
   writeFileSync(treePhotoPath, Buffer.concat([readFileSync(sourcePhotoPath), TREE_PHOTO_SUFFIX]));
 };
 
-export const prepareScratchFixtures = (fixturesDir) => {
+export const prepareScratchFixtures = (fixturesDir, facesSamplesDir = null) => {
   const scratchDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-scratch-'));
   cpSync(fixturesDir, scratchDir, { recursive: true });
+  if (facesSamplesDir !== null) cpSync(facesSamplesDir, path.join(scratchDir, FACES_SAMPLES_DIRNAME), { recursive: true });
   const copiedPhotos = scratchPhotoPaths(scratchDir);
   const marker = runPhotoMarker();
   for (const photoPath of copiedPhotos) appendFileSync(photoPath, marker);
@@ -251,7 +278,8 @@ export const prepareScratchFixtures = (fixturesDir) => {
 const buildPlan = async (options) => {
   const appPath = requireDirectory(options.app, '--app');
   const sourceFixturesDir = requireDirectory(options.fixtures, '--fixtures');
-  const fixturesDir = prepareScratchFixtures(sourceFixturesDir);
+  const facesSamplesDir = facesSamplesDirectory(process.env);
+  const fixturesDir = prepareScratchFixtures(sourceFixturesDir, facesSamplesDir);
   const outRoot = options.out === undefined ? path.join(REPO_ROOT, 'release', 'walkthrough') : path.resolve(options.out);
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-userdata-'));
   const homeDir = options.home === undefined
@@ -276,6 +304,8 @@ const buildPlan = async (options) => {
     strict: options.strict,
     archiveTo: options.archiveTo === undefined ? null : path.resolve(options.archiveTo),
     analyzer,
+    facesSamplesDir,
+    faceModelsDir: faceModelsCacheDirectory(process.env),
   };
 };
 
@@ -331,6 +361,14 @@ export const localAnalyzerConfig = (existing, model) => {
   return seeded;
 };
 
+// Environment setup, not a stand-in for a user flow: the face grouping the people-pairs step turns
+// on through the real Settings switch stays unavailable until the two model files exist in the home,
+// and a packaged QA run has no other way to put them there.
+const seedFaceModels = (plan) => {
+  if (plan.facesSamplesDir === null || !existsSync(plan.faceModelsDir)) return;
+  cpSync(plan.faceModelsDir, path.join(plan.homeDir, '.ai-video-cataloger', 'models'), { recursive: true });
+};
+
 const seedLocalAnalyzer = (plan) => {
   if (plan.analyzer === null) return;
   updateHomeConfig(plan.homeDir, (existing) => localAnalyzerConfig(existing, plan.analyzer.model));
@@ -377,6 +415,43 @@ export const treeSelectAnalyzeOutcome = ({ treeVisible, rowVisible, usableRowVis
   }
   return done(`tree-selected ${photoPath ?? 'a photo'} has Analizuj enabled`);
 };
+
+// W116: the capture used to land while the freshly expanded sub-folder still showed skeletons, so
+// "real decoded frames appear when a folder opens" was never proven for the tree scope.
+export const treeThumbnailOutcome = ({ rowCount, decodedCount, waitMs }) => {
+  if (rowCount === 0) return skipped('the expanded sub-folder lists no video row to prove a thumbnail with');
+  if (decodedCount < rowCount) {
+    return skipped(
+      `only ${String(decodedCount)}/${String(rowCount)} sub-folder thumbnails decoded within ${String(waitMs)} ms ` +
+        '(the capture would show a skeleton)',
+    );
+  }
+  return done(
+    `first subfolder expanded under the whole-tree scope; ${String(rowCount)} sub-folder thumbnail(s) decoded after ${String(waitMs)} ms`,
+  );
+};
+
+// The pair queue is a property of the fixture, not of the build: greedy incremental clustering
+// depends on ingestion order, so the same photo set that splits into reviewable pairs elsewhere can
+// cluster cleanly here and leave the queue empty. An empty queue is therefore a tolerated skip;
+// faces that cannot be enabled, missing models, an indexing run that never finishes and a badge
+// whose card does not render all stay failures.
+export const pairsReviewOutcome = ({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount }) => {
+  if (!badgeVisible) return skipped('faces fixture yielded no candidate pairs');
+  if (!reviewVisible) return failed('the review badge did not open the pair-review surface');
+  if (!cropsVisible) return failed(`the pair card rendered ${String(cropCount)} face crop(s) instead of both sides`);
+  return done(`the pair-review card is on screen (${badgeLabel}); the run answers nothing`);
+};
+
+// plan.json asks for a window size; the macOS work area silently caps it, so the PNGs are shorter
+// than the request. The run records what it actually captured rather than repeating the request.
+export const captureGeometry = ({ requestedWidth, requestedHeight, contentWidth, contentHeight }) => ({
+  requestedWidth,
+  requestedHeight,
+  width: contentWidth,
+  height: contentHeight,
+  cappedByWorkArea: contentWidth < requestedWidth || contentHeight < requestedHeight,
+});
 
 export const photoTreeAnalyzeOutcome = ({ errorVisible, errorNote, badgeVisible }) => {
   if (errorVisible) return failed(errorNote === '' ? 'photo analysis ended in error' : errorNote);
@@ -444,10 +519,10 @@ export const clearLibrarySearch = async (page, input) => {
   await page.locator(AUTOCOMPLETE_POPPER).first().waitFor({ state: 'hidden', timeout: SETTLE_TIMEOUT_MS });
 };
 
-// Both steps depend on state a reused QA home may legitimately not have (a
-// wizard that already got dismissed, a Library tile from an earlier scan);
+// Each depends on state a run may legitimately not have (a wizard that already got dismissed, a
+// Library tile from an earlier scan, a faces fixture the operator did not point the run at);
 // docs/qa/release-walkthrough.md carries the full rationale.
-export const TOLERATED_SKIPS = new Set(['first-run-wizard', 'library-preview']);
+export const TOLERATED_SKIPS = new Set(['first-run-wizard', 'library-preview', 'people-pairs']);
 
 export const blockingSkips = (results) =>
   results.filter((result) => result.status === 'skipped' && !TOLERATED_SKIPS.has(result.name));
@@ -471,6 +546,7 @@ export const WALKTHROUGH_STEPS = [
   'collection-photo-analyzed',
   'collection-photo-viewer',
   'people',
+  'people-pairs',
   'settings',
   'backup',
   'backup-indicator',
@@ -486,6 +562,8 @@ export const assertStepName = (index, name) => {
 };
 
 /* eslint-disable no-undef -- runs inside the driven page via Playwright's waitForFunction, not this Node process */
+const contentSize = () => ({ width: window.innerWidth, height: window.innerHeight });
+
 const noPendingTransitionsOrSpinners = () =>
   document.getAnimations().every((animation) => animation.playState !== 'running') &&
   document.querySelector('[role="progressbar"], [data-testid*="spinner" i], [data-testid*="loading" i]') === null;
@@ -499,6 +577,16 @@ const libraryTileCountAtMost = (count) =>
 
 const libraryTileCountAtLeast = (count) =>
   document.querySelectorAll('[data-testid="library-tile"]').length >= count;
+
+const subfolderThumbnailCounts = (folderPath) => {
+  const rows = [...document.querySelectorAll('[data-testid="video-item"]')]
+    .filter((row) => (row.getAttribute('title') ?? '').startsWith(`${folderPath}/`));
+  const decoded = rows.filter((row) => {
+    const image = row.querySelector('[data-testid="media-thumbnail-img"]');
+    return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+  });
+  return { rowCount: rows.length, decodedCount: decoded.length };
+};
 
 const hiddenLibraryViewEmpty = () =>
   document.querySelectorAll('[data-testid="library-tile"]').length === 0 ||
@@ -519,6 +607,24 @@ const SELECTED_PHOTO_ROW = '[data-testid="photos-sidebar-row"].Mui-selected';
 // would collapse whatever it was meant to open.
 const expandTreeRow = async (row) => {
   if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
+};
+
+const becameDisabled = async (locator, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await locator.isDisabled()) return true;
+    await delay(CONTROL_POLL_MS);
+  }
+  return false;
+};
+
+const becameEnabled = async (locator, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await locator.isDisabled())) return true;
+    await delay(CONTROL_POLL_MS);
+  }
+  return false;
 };
 
 const settle = async (page) => {
@@ -615,6 +721,7 @@ const drive = async (plan) => {
   seedWindowState(plan);
   seedUiLanguage(plan);
   seedLocalAnalyzer(plan);
+  seedFaceModels(plan);
   resetBackupState(plan);
   const fakeDrive = await startFakeDriveServer({ port: 0 });
   const serviceAccountKey = serviceAccountKeyJson(fakeDrive.tokenUri);
@@ -628,6 +735,13 @@ const drive = async (plan) => {
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   const timeToWindowMs = Date.now() - launchedAt;
+  const content = await page.evaluate(contentSize);
+  const capture = captureGeometry({
+    requestedWidth: plan.windowWidth,
+    requestedHeight: plan.windowHeight,
+    contentWidth: content.width,
+    contentHeight: content.height,
+  });
 
   const { results, record } = createRecorder(page, plan.outDir);
   let selectedFilename = '';
@@ -687,7 +801,15 @@ const drive = async (plan) => {
     const folderRow = page.getByTestId('folder-row').first();
     if (!(await appeared(folderRow, SETTLE_TIMEOUT_MS))) return skipped('fixture folder has no subfolders');
     await expandTreeRow(folderRow);
-    return done('first subfolder expanded under the whole-tree scope');
+    const folderPath = (await folderRow.getAttribute('title')) ?? '';
+    const startedAt = Date.now();
+    const deadline = startedAt + TREE_THUMBNAIL_TIMEOUT_MS;
+    let counts = await page.evaluate(subfolderThumbnailCounts, folderPath);
+    while ((counts.rowCount === 0 || counts.decodedCount < counts.rowCount) && Date.now() < deadline) {
+      await delay(CONTROL_POLL_MS);
+      counts = await page.evaluate(subfolderThumbnailCounts, folderPath);
+    }
+    return treeThumbnailOutcome({ ...counts, waitMs: Date.now() - startedAt });
   }, async () => {
     const scopeFolder = page.getByTestId('scope-folder');
     if (await appeared(scopeFolder, SETTLE_TIMEOUT_MS)) await scopeFolder.click();
@@ -902,7 +1024,7 @@ const drive = async (plan) => {
     const errorAlert = page.getByTestId('photos-job-error');
     const errorVisible = await appeared(errorAlert, SETTLE_TIMEOUT_MS);
     const errorNote = errorVisible ? ((await errorAlert.first().textContent()) ?? '').trim() : '';
-    const badgeVisible = await appeared(badge, SETTLE_TIMEOUT_MS);
+    const badgeVisible = await appeared(badge, VISIBLE_TIMEOUT_MS);
     return photoTreeAnalyzeOutcome({ errorVisible, errorNote, badgeVisible });
   });
 
@@ -945,6 +1067,72 @@ const drive = async (plan) => {
       : null;
     const emptyState = chipLabels === null ? await visiblePeopleEmptyState(page) : null;
     return peopleOutcome({ headingVisible, chipLabels, emptyState });
+  });
+
+  await record('people-pairs', async () => {
+    if (plan.facesSamplesDir === null) return skipped('faces fixture not provided');
+    if (!existsSync(plan.faceModelsDir)) {
+      return failed(`no cached face models under ${plan.faceModelsDir}; install them into that cache home first`);
+    }
+    const modeAnalysis = page.getByTestId('mode-analysis');
+    if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return failed('no mode switcher in this build');
+    await modeAnalysis.click();
+    const mediaPhotos = page.getByTestId('analysis-media-photos');
+    if (!(await appeared(mediaPhotos, SETTLE_TIMEOUT_MS))) return failed('no Analysis media toggle in this build');
+    await mediaPhotos.click();
+
+    await page.getByTestId('open-settings-button').click();
+    const modal = page.getByTestId('settings-modal');
+    await modal.waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    const facesSwitch = page.getByTestId('faces-enabled-switch').locator('input');
+    if (!(await facesSwitch.isChecked())) await facesSwitch.click();
+    if (!(await facesSwitch.isChecked())) return failed('the Settings face-grouping switch would not turn on');
+    await page.getByTestId('settings-faces-pair-scope-wide').click();
+    await page.getByTestId('settings-save').click();
+    await modal.waitFor({ state: 'hidden', timeout: VISIBLE_TIMEOUT_MS });
+
+    const indexAction = page.getByTestId('people-index');
+    if (!(await appeared(indexAction, VISIBLE_TIMEOUT_MS))) return failed('no faces index action in the photos sidebar');
+    if (!(await becameEnabled(indexAction, VISIBLE_TIMEOUT_MS))) {
+      return failed(`the faces index action stayed disabled: ${(await indexAction.getAttribute('title')) ?? 'no reason given'}`);
+    }
+    await indexAction.click();
+    if (!(await becameDisabled(indexAction, VISIBLE_TIMEOUT_MS))) {
+      return failed('the faces index action never went busy, so no indexing run started');
+    }
+    if (!(await becameEnabled(indexAction, FACES_TIMEOUT_MS))) {
+      return failed(`the faces indexing run did not finish within ${String(FACES_TIMEOUT_MS)} ms`);
+    }
+    const indexError = page.getByTestId('people-index-error');
+    if (await indexError.isVisible()) {
+      return failed(`the faces indexing run failed: ${((await indexError.textContent()) ?? 'no reason given').trim()}`);
+    }
+
+    await page.getByTestId('mode-library').click();
+    await page.getByTestId('subnav-people').click();
+    const card = page.getByTestId('people-card');
+    if (!(await appeared(card.or(page.getByTestId('people-other-tile')), VISIBLE_TIMEOUT_MS))) {
+      return failed('the faces pass grouped nobody out of the faces fixture');
+    }
+    await page.getByTestId('people-threshold-slider').locator('input').focus();
+    await page.keyboard.press('Home');
+    if (!(await appeared(card, VISIBLE_TIMEOUT_MS))) return failed('the unfolded Osoby grid rendered no person card');
+
+    const badge = page.getByTestId('people-pair-review-open');
+    const badgeVisible = await appeared(badge, VISIBLE_TIMEOUT_MS);
+    if (!badgeVisible) {
+      return pairsReviewOutcome({ badgeVisible, badgeLabel: '', reviewVisible: false, cropsVisible: false, cropCount: 0 });
+    }
+    const badgeLabel = ((await badge.first().textContent()) ?? '').trim();
+    await badge.click();
+    const reviewVisible = await appeared(page.getByTestId('people-pair-review'), VISIBLE_TIMEOUT_MS);
+    const crops = page.getByTestId('people-pair-review-crop');
+    const cropA = page.getByTestId('people-pair-review-person-a').getByTestId('people-pair-review-crop').first();
+    const cropB = page.getByTestId('people-pair-review-person-b').getByTestId('people-pair-review-crop').first();
+    const cropsVisible = reviewVisible
+      && (await appeared(cropA, VISIBLE_TIMEOUT_MS))
+      && (await appeared(cropB, VISIBLE_TIMEOUT_MS));
+    return pairsReviewOutcome({ badgeVisible, badgeLabel, reviewVisible, cropsVisible, cropCount: await crops.count() });
   });
 
   await record('settings', async () => {
@@ -1032,7 +1220,7 @@ const drive = async (plan) => {
 
   await app.close().catch(() => undefined);
   await fakeDrive.close().catch(() => undefined);
-  return { timeToWindowMs, results };
+  return { timeToWindowMs, capture, results };
 };
 
 const main = async () => {
@@ -1063,11 +1251,19 @@ const main = async () => {
     return 0;
   }
 
-  const { timeToWindowMs, results } = await drive(plan);
+  const { timeToWindowMs, capture, results } = await drive(plan);
+  const capturedPlan = { ...plan, capture };
+  writeFileSync(path.join(plan.outDir, 'plan.json'), JSON.stringify(capturedPlan, null, 2));
   writeFileSync(
     path.join(plan.outDir, 'manifest.json'),
-    JSON.stringify({ plan, timeToWindowMs, steps: results }, null, 2),
+    JSON.stringify({ plan: capturedPlan, timeToWindowMs, steps: results }, null, 2),
   );
+  if (capture.cappedByWorkArea) {
+    console.log(
+      `release-walkthrough: the display work area capped the window; every PNG is ` +
+        `${String(capture.width)}x${String(capture.height)}, not ${String(capture.requestedWidth)}x${String(capture.requestedHeight)}`,
+    );
+  }
   const failedSteps = results.filter((result) => result.status === 'failed');
   const skippedSteps = results.filter((result) => result.status === 'skipped');
   console.log(

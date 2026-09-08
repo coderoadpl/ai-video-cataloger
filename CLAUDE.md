@@ -130,7 +130,9 @@ no Dock icon and never steals keyboard focus from whoever is at the keyboard;
 - `pnpm run qa:walkthrough` = scripted self-QA pass over the packaged app
   (launch, open folder, tree, analysis, search, settings, wizard) that captures
   one screenshot per step into a timestamped directory, with an isolated
-  user-data directory, an isolated home and the keychain disabled. Mandatory
+  user-data directory, an isolated home and the keychain disabled; the
+  `people-pairs` step runs only when `AVC_WALKTHROUGH_FACES_SAMPLES` names a
+  photo fixture, and is a tolerated skip otherwise. Mandatory
   before any DMG handoff, together with the screenshot review listed in
   [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md); never part
   of `check` or `smoke`.
