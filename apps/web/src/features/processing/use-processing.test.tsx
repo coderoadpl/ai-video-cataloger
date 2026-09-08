@@ -60,6 +60,22 @@ describe('useProcessing batch', () => {
     expect(processed).not.toHaveBeenCalled();
   });
 
+  it('counts errored rows apart from the pending rows a batch will attempt', () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const mixed: Videos = [
+      { path: '/v/a.mp4', filename: 'a.mp4', status: 'pending' },
+      { path: '/v/b.mp4', filename: 'b.mp4', status: 'not_tracked' },
+      { path: '/v/c.mp4', filename: 'c.mp4', status: 'error' },
+    ];
+    const { result } = renderHook(() => useProcessing({ videos: mixed, addLine: vi.fn(), intervalMs: 0 }), { wrapper });
+
+    expect(result.current.pendingCount).toBe(2);
+    expect(result.current.erroredCount).toBe(1);
+  });
+
   it('continues past a failure and reports every result', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

@@ -67,6 +67,52 @@ describe('ScopeAnalyzeToolbar', () => {
     expect(screen.getByTestId('analyze-all-button')).toBeDefined();
   });
 
+  it('says the errored rows are not re-attempted next to the pending-only count', () => {
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        pendingCount={2}
+        erroredCount={1}
+        isBusy={false}
+        progress={null}
+        onAnalyze={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('analyze-all-button').textContent).toContain(en.batchToolbar.analyzeAll(2));
+    expect(screen.getByTestId('analyze-errored-hint').textContent).toBe(en.batchToolbar.analyzeSkipsErrored(1));
+  });
+
+  it('keeps the errored explanation when nothing is pending any more', () => {
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        pendingCount={0}
+        erroredCount={3}
+        isBusy={false}
+        progress={null}
+        onAnalyze={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('analyze-all-button')).toBeNull();
+    expect(screen.getByTestId('analyze-errored-hint').textContent).toBe(en.batchToolbar.analyzeSkipsErrored(3));
+  });
+
+  it('stays silent when no row errored', () => {
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        pendingCount={2}
+        isBusy={false}
+        progress={null}
+        onAnalyze={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('analyze-errored-hint')).toBeNull();
+  });
+
   it('renders the batch wait state over any per-file bar and keeps Stop wired', async () => {
     const onStop = vi.fn();
     renderThemed(

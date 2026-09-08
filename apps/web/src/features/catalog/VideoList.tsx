@@ -98,7 +98,7 @@ const VideoRow = ({
       <MediaThumbnail
         path={video.artifacts.thumbnailPath}
         mtime={video.artifacts.thumbnailMtime}
-        alt={video.filename}
+        alt=""
         width={THUMB_BOX}
         square
         source={video.source}

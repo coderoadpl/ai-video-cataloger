@@ -57,6 +57,7 @@ export interface ProcessingState {
   progress: ProgressView | null;
   isBusy: boolean;
   pendingCount: number;
+  erroredCount: number;
   batchProgress: BatchProgressView | null;
   driveProgress: DriveProgressView | null;
   driveFileProgress: BatchProgressView | null;
@@ -547,12 +548,14 @@ export const useProcessing = ({
   }, []);
 
   const pendingCount = videos.filter((video) => isPending(video.status)).length;
+  const erroredCount = videos.filter((video) => video.status === 'error').length;
 
   return {
     analyzingPath,
     progress,
     isBusy: analyzingPath !== null || driveActive,
     pendingCount,
+    erroredCount,
     batchProgress,
     driveProgress,
     driveFileProgress,
