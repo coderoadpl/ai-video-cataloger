@@ -252,6 +252,16 @@ demand. Neither introduces a new artifact layout or variant model: both read
 ADR-0002's artifact layout and ADR-0010's variant projection rather than
 re-deriving them, so no new ADR is needed for this track.
 
+The `{video-base}` of that layout — the parity inventory's per-folder on-disk
+layout, unchanged here — is the base name the video file carries **on disk**,
+never a catalogued `finalName`. Every writer already derives it that way (the
+`thumbnail` command has only a video path to work from, and the rename step
+moves the artifacts along with the file), so the readers do too: the scan
+derives it from the directory entry it found, and the Library and search
+resolve the file first — `finalName` names the file only in the window between
+the catalog write and the rename, so once no file bears it, `fileName` is the
+on-disk truth and the artifacts sit under it.
+
 ### Grid thumbnails (~512, frame-first)
 
 Alongside the 128x72 cover, `process`/`process-drive` and `photos proxies`

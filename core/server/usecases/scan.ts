@@ -393,7 +393,9 @@ const loadArtifacts = async (
   status: VideoStatus | 'not_tracked',
   newName: string | null,
 ): Promise<Result<ScanArtifacts, AppError>> => {
-  const paths = artifactPaths(fs, artifactRoot, videoPath, newName);
+  // `videoPath` is the directory entry itself, so its own base name is where the artifacts were
+  // written; a final name that was never applied to the file addresses a set nothing ever wrote.
+  const paths = artifactPaths(fs, artifactRoot, videoPath, null);
   const artifacts: ScanArtifacts = {
     framePaths: null,
     transcriptContent: null,

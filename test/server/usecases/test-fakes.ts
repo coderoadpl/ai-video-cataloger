@@ -717,9 +717,18 @@ export class InMemoryMedia implements MediaPort {
     return Promise.resolve(ok({ hasAudio: this.hasAudio, audioPath: this.hasAudio ? input.outputPath : null }));
   }
 
-  thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
+  async thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
     this.thumbnailInputs.push(input);
-    return Promise.resolve(ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force }));
+    if (this.fs === undefined) {
+      return ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force });
+    }
+    const existing = await this.fs.isFile(input.thumbnailPath);
+    if (existing.ok && existing.value && !input.force) {
+      return ok({ path: input.thumbnailPath, generated: false, skipped: true });
+    }
+    const written = await this.fs.writeTextFile(input.thumbnailPath, 'thumbnail');
+    if (!written.ok) return written;
+    return ok({ path: input.thumbnailPath, generated: true, skipped: false });
   }
 
   async thumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>> {
