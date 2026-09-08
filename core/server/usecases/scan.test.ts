@@ -103,7 +103,7 @@ describe('scanFolder', () => {
 
   it('scans supported videos, matches catalog rows, and loads completed artifacts', async () => {
     const fs = new InMemoryFileSystem('/videos');
-    fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
+    fs.addFile('/videos/renamed.mp4', { size: 2048, hash: 'hash-1' });
     fs.addFile('/videos/notes.txt', { size: 10 });
     fs.addDirectory('/videos/frames/renamed');
     fs.addFile('/videos/frames/renamed/frame-001.jpg', { size: 100 });
@@ -120,7 +120,7 @@ describe('scanFolder', () => {
     });
     fs.addFile('/videos/.ai-video-cataloger/thumbnails/renamed.jpg', { mtimeMs: 42 });
     const media = new InMemoryMedia();
-    media.durations.set('/videos/clip.mp4', 65);
+    media.durations.set('/videos/renamed.mp4', 65);
     const catalogs = new InMemoryCatalogs([
       {
         folder: '/videos',
@@ -145,7 +145,7 @@ describe('scanFolder', () => {
         databasePath: '/videos/.ai-video-cataloger/catalog.db',
         videos: [
           {
-            filename: 'clip.mp4',
+            filename: 'renamed.mp4',
             sizeFormatted: '2.0 KB',
             durationFormatted: '1:05',
             status: 'completed',

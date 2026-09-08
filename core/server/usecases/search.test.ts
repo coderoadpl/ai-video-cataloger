@@ -213,7 +213,7 @@ describe('search', () => {
 
   it('resolves an existing thumbnail path for an online result and null when absent', async () => {
     const fs = new InMemoryFileSystem('/media');
-    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/renamed.mp4');
     fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
     const store = new InMemoryGlobalCatalogStore();
     await store.upsertFolder(folderA);
@@ -273,7 +273,7 @@ describe('search', () => {
 
   it('resolves an existing grid thumbnail path and null when absent', async () => {
     const fs = new InMemoryFileSystem('/media');
-    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/renamed.mp4');
     fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.grid.jpg');
     const store = new InMemoryGlobalCatalogStore();
     await store.upsertFolder(folderA);
@@ -523,7 +523,7 @@ describe('search', () => {
 
   it('an "existing" thumbnails mode still returns an on-disk thumbnail without regenerating it', async () => {
     const fs = new InMemoryFileSystem('/media');
-    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/renamed.mp4');
     fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
     const media = new InMemoryMedia();
     const store = new InMemoryGlobalCatalogStore();
@@ -542,6 +542,60 @@ describe('search', () => {
 
     expect(result.ok && result.value.results[0]?.thumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
     expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('resolves the on-disk cover of a file whose analysis carries a final name that was never applied', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone-a.mp4');
+    fs.addFile('/media/online/.ai-video-cataloger/thumbnails/drone-a.jpg');
+    const media = new InMemoryMedia(fs);
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-stale-final-name', folderA.folderId, 'drone-a.mp4'));
+    await store.upsertAnalysis(analysis('fp-stale-final-name', { finalName: 'renamed.mp4', transcript: 'drone' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, {
+      query: 'drone',
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.ok && result.value.results[0]?.thumbnailPath)
+      .toBe('/media/online/.ai-video-cataloger/thumbnails/drone-a.jpg');
+    expect(media.thumbnailInputs.map((input) => input.thumbnailPath))
+      .not.toContain('/media/online/.ai-video-cataloger/thumbnails/drone-a.jpg');
+  });
+
+  it('leaves a single cover artifact behind when a stale final name is searched twice', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone-a.mp4');
+    const media = new InMemoryMedia(fs);
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-stale-twice', folderA.folderId, 'drone-a.mp4'));
+    await store.upsertAnalysis(analysis('fp-stale-twice', { finalName: 'renamed.mp4', description: 'drone flight' }));
+    const query = {
+      query: 'drone',
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'ensure' as const,
+      limit: 10,
+      offset: 0,
+    };
+
+    const first = await search({ globalCatalog: store, fs, media }, query);
+    const second = await search({ globalCatalog: store, fs, media }, query);
+
+    expect(first.ok && first.value.results[0]?.thumbnailPath)
+      .toBe('/media/online/.ai-video-cataloger/thumbnails/drone-a.jpg');
+    expect(second.ok && second.value.results[0]?.thumbnailPath)
+      .toBe('/media/online/.ai-video-cataloger/thumbnails/drone-a.jpg');
+    const covers = await fs.listDirectory('/media/online/.ai-video-cataloger/thumbnails');
+    expect(covers.ok && covers.value.map((entry) => entry.name).sort())
+      .toEqual(['drone-a.grid.jpg', 'drone-a.jpg']);
   });
 
   it('reports no grid thumbnail when every candidate source is below the grid floor', async () => {
