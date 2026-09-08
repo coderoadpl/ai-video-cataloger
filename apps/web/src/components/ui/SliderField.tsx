@@ -41,6 +41,7 @@ export const SliderField = ({
     </Box>
     <Slider
       size="small"
+      sx={valueLabelFormat === undefined ? undefined : { mt: 4 }}
       aria-label={label}
       data-testid={testId}
       min={min}

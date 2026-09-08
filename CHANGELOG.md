@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- The People view no longer shows controls that cannot act: while local face grouping is off the header renders only the heading, the subtitle and the settings call to action; the minimum-occurrences slider's value bubble now clears the label above it instead of covering the heading text; and the Polish folder counter in the catalog tree agrees with its count ("1 oczekuje", "3 oczekują", "5 oczekuje", "0 gotowych").
+
 ## [0.6.37] - 2026-09-08
 
 ### Fixed

@@ -199,6 +199,14 @@ describe('dictionary', () => {
     }
   });
 
+  it('agrees the Polish verb and adjective in the catalog folder counter', () => {
+    expect(pl.catalog.folderCounts(1, 1)).toBe('1 oczekuje · 1 gotowy');
+    expect(pl.catalog.folderCounts(2, 2)).toBe('2 oczekują · 2 gotowe');
+    expect(pl.catalog.folderCounts(5, 5)).toBe('5 oczekuje · 5 gotowych');
+    expect(pl.catalog.folderCounts(22, 22)).toBe('22 oczekują · 22 gotowe');
+    expect(pl.catalog.folderCountsWithDuplicates(3, 0, 2)).toBe('3 oczekują · 0 gotowych · 2 duplikaty');
+  });
+
   it('selects the English singular for a one-file collection header', () => {
     expect(en.library.countHeader(0, 0)).toBe('0 files');
     expect(en.library.countHeader(1, 1)).toBe('1 file');
