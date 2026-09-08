@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -127,6 +127,7 @@ const stubReview = (input: {
   };
   const answered: Candidate[] = [];
   server.use(
+    http.get('/api/jobs', () => HttpResponse.json({ ok: true, data: { jobs: [] } })),
     http.get('/api/config', () => HttpResponse.json({ ok: true, data: configPayload(input.facesEnabled ?? true) })),
     http.get('/api/models/faces', () => HttpResponse.json({ ok: true, data: { artifacts: [], ready: true } })),
     http.get('/api/faces/status', () => HttpResponse.json({
@@ -253,8 +254,40 @@ const openReview = async (user: ReturnType<typeof userEvent.setup>) => {
   await screen.findByTestId('people-pair-review');
 };
 
+const waitForIdle = async () => {
+  await waitFor(() => expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull());
+  await waitFor(() => expect(screen.getByTestId('people-pair-review-skip').getAttribute('disabled')).toBeNull());
+};
+
 describe('Osoby pair review entry point', () => {
   beforeEach(() => window.localStorage.clear());
+
+  it('exposes pending until the pair response explicitly supplies zero', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.get('/api/faces/pairs', async () => {
+      await pending;
+      return HttpResponse.json({ ok: true, data: { scope: 'standard', askLow: 0.44, clusterCut: 0.5, candidates: [], pending: 0, truncated: false } });
+    }));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-fetch-status')).toBe('fetching'));
+    expect(state.getAttribute('data-query-status')).toBe('pending');
+    expect(state.hasAttribute('data-pending')).toBe(false);
+    release();
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('success'));
+    expect(state.getAttribute('data-pending')).toBe('0');
+  });
+
+  it('exposes a pair endpoint failure without presenting an empty queue', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    server.use(http.get('/api/faces/pairs', () => HttpResponse.json({ ok: false, error: { code: 'internal', message: 'pair query failed' } }, { status: 500 })));
+    renderPeople();
+    const state = await screen.findByTestId('people-pairs-query');
+    await waitFor(() => expect(state.getAttribute('data-query-status')).toBe('error'));
+    expect(state.hasAttribute('data-pending')).toBe(false);
+  });
 
   it('stays out of the DOM when nothing is pending', async () => {
     stubReview({ candidates: [], pending: 0 });
@@ -280,7 +313,7 @@ describe('Osoby pair review entry point', () => {
     });
     renderPeople();
 
-    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('To review: 437');
+    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('Review look-alikes (437)');
   });
 
   it('is rendered but disabled with the catalog lock reason as its title', async () => {
@@ -387,8 +420,39 @@ describe('Osoby pair review card', () => {
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('3 of 3'));
 
     await user.click(screen.getByTestId('people-pair-review-different'));
-    await screen.findByTestId('people-pair-review-empty');
+    await screen.findByTestId('people-pair-review-done');
     expect(screen.queryByTestId('people-pair-review-position')).toBeNull();
+  });
+
+  it('acknowledges an emptied queue with the answer count and a way back', async () => {
+    const user = userEvent.setup();
+    stubReview({
+      candidates: [
+        candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 })),
+        candidate(pairPerson({ personId: 'c', fallbackIndex: 2 }), pairPerson({ personId: 'd', fallbackIndex: 3 })),
+      ],
+    });
+    renderPeople();
+    await openReview(user);
+
+    await user.click(screen.getByTestId('people-pair-review-different'));
+    await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 2'));
+    await user.click(screen.getByTestId('people-pair-review-different'));
+
+    const done = await screen.findByTestId('people-pair-review-done');
+    expect(done.textContent).toContain('You answered 2 questions.');
+    expect(screen.queryByTestId('people-pair-review-empty')).toBeNull();
+
+    await user.click(screen.getByTestId('people-pair-review-done-back'));
+    await screen.findByTestId('people-grid');
+  });
+
+  it('keeps the never-had-candidates empty state when the session answered nothing', async () => {
+    stubReview({ candidates: [], pending: 0 });
+    renderPeople();
+
+    await screen.findByTestId('people-grid');
+    expect(screen.queryByTestId('people-pair-review-done')).toBeNull();
   });
 
   it('resets the session counter when the surface is reopened', async () => {
@@ -429,16 +493,19 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(queue.decisions).toHaveLength(1));
+    await waitForIdle();
     await user.keyboard('2');
     await waitFor(() => expect(queue.decisions).toHaveLength(2));
+    await waitForIdle();
     await user.keyboard('3');
     await waitFor(() => expect(queue.decisions).toHaveLength(3));
 
     expect(queue.decisions.map((entry) => entry.decision)).toEqual(['same', 'different', 'skip']);
   });
 
-  it('applies a named/unnamed "yes" immediately and asks which name wins on a named/named pair', async () => {
+  it('confirms a named/unnamed "yes" and asks which name wins on a named/named pair', async () => {
     const user = userEvent.setup();
     const queue = stubReview({
       candidates: [
@@ -457,9 +524,10 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(queue.decisions).toHaveLength(1));
-    expect(queue.decisions[0]?.survivorPersonId).toBeUndefined();
-    expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull();
+    expect(queue.decisions[0]?.survivorPersonId).toBe('a');
+    await waitFor(() => expect(screen.queryByTestId('people-pair-review-confirm')).toBeNull());
 
     await waitFor(() =>
       expect(screen.getByTestId('people-pair-review-person-a').getAttribute('data-person-id')).toBe('c'));
@@ -534,10 +602,12 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('1 of 3'));
     expect(screen.getByTestId('people-pair-review-person-a').getAttribute('data-person-id')).toBe('a');
     expect(queue.undoCalls).toBe(1);
-    expect(screen.getByTestId('people-pair-review-open').textContent).toBe('To review: 3');
+
+    await user.click(screen.getByTestId('people-back-main'));
+    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('Review look-alikes (3)');
   });
 
-  it('refuses to undo a merge and locks the undo control until the next reversible answer', async () => {
+  it('disables undo after a merge until the next reversible answer', async () => {
     const user = userEvent.setup();
     stubReview({
       candidates: [
@@ -550,15 +620,71 @@ describe('Osoby pair review keyboard, confirmation and undo', () => {
     await openReview(user);
 
     await user.keyboard('1');
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 3'));
 
     await user.keyboard('{Backspace}');
-    await screen.findByTestId('people-pair-review-not-undoable');
+    expect(screen.queryByTestId('people-pair-review-not-undoable')).toBeNull();
     expect(screen.getByTestId('people-pair-review-position').textContent).toBe('2 of 3');
     expect(screen.getByTestId('people-pair-review-undo').getAttribute('disabled')).not.toBeNull();
+    await waitForIdle();
 
     await user.keyboard('3');
     await waitFor(() => expect(screen.getByTestId('people-pair-review-position').textContent).toBe('3 of 3'));
     expect(screen.getByTestId('people-pair-review-undo').getAttribute('disabled')).toBeNull();
+  });
+});
+
+describe('Osoby pair review focus and hints', () => {
+  beforeEach(() => window.localStorage.clear());
+
+  const openWithOneSelected = async (user: ReturnType<typeof userEvent.setup>) => {
+    fireEvent.click(await screen.findByLabelText('Select Grid person'));
+    await screen.findByTestId('people-selection-bar');
+    await openReview(user);
+  };
+
+  it('drops the grid controls and the selection bar while the review is open', async () => {
+    const user = userEvent.setup();
+    stubReview({
+      candidates: [candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 }))],
+    });
+    renderPeople();
+    await openWithOneSelected(user);
+
+    expect(screen.queryByTestId('people-threshold-slider')).toBeNull();
+    expect(screen.queryByTestId('people-sort')).toBeNull();
+    expect(screen.queryByTestId('people-merge-selected')).toBeNull();
+    expect(screen.queryByTestId('people-pair-review-open')).toBeNull();
+    expect(screen.queryByTestId('people-selection-bar')).toBeNull();
+    expect(screen.getByTestId('people-scope').textContent).toBe('Reviewing look-alikes');
+
+    await user.click(screen.getByTestId('people-back-main'));
+    await screen.findByTestId('people-grid');
+    expect(screen.getByTestId('people-sort')).toBeDefined();
+    expect(screen.getByTestId('people-selection-bar')).toBeDefined();
+  });
+
+  it('describes each answer by its key hint and announces the position', async () => {
+    const user = userEvent.setup();
+    stubReview({
+      candidates: [candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 }))],
+    });
+    renderPeople();
+    await openReview(user);
+
+    const position = screen.getByTestId('people-pair-review-position');
+    expect(position.getAttribute('role')).toBe('status');
+    expect(position.getAttribute('aria-live')).toBe('polite');
+
+    expect(screen.getByTestId('people-pair-review-same').getAttribute('aria-describedby'))
+      .toBe('people-pair-review-same-hint');
+    expect(screen.getByTestId('people-pair-review-different').getAttribute('aria-describedby'))
+      .toBe('people-pair-review-different-hint people-pair-review-different-caption');
+    expect(screen.getByTestId('people-pair-review-skip').getAttribute('aria-describedby'))
+      .toBe('people-pair-review-skip-hint people-pair-review-skip-caption');
+    expect(document.getElementById('people-pair-review-skip-caption')?.textContent)
+      .toBe('We will ask again in 30 days');
+    expect(document.getElementById('people-pair-review-same-hint')?.textContent).toBe('Key 1');
   });
 });

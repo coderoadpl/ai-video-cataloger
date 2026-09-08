@@ -766,7 +766,7 @@ describe('settings modal', () => {
   it('keeps the pair review scope a draft until the modal is saved', async () => {
     const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
     const bodies: { folder?: string | undefined; key: string; value: string }[] = [];
-    stubEndpoints(emptyConfig);
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true' });
     server.use(
       http.post('/api/config', async ({ request }) => {
         const body = configSetBody.parse(await request.json());
@@ -792,7 +792,7 @@ describe('settings modal', () => {
 
   it('writes nothing when a picked pair review scope is cancelled', async () => {
     const bodies: unknown[] = [];
-    stubEndpoints(emptyConfig);
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true' });
     server.use(
       http.post('/api/config', async ({ request }) => {
         bodies.push(await request.json());
@@ -808,12 +808,28 @@ describe('settings modal', () => {
   });
 
   it('reflects the persisted pair review scope on mount', async () => {
-    stubEndpoints({ ...emptyConfig, faces_pair_scope: 'careful' });
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true', faces_pair_scope: 'careful' });
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     const careful = await screen.findByTestId('settings-faces-pair-scope-careful');
     expect(careful.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('settings-faces-pair-scope-standard').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('labels the pair review scope group and locks it while face grouping is off', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const group = await screen.findByTestId('settings-faces-pair-scope');
+    const labelId = group.getAttribute('aria-labelledby');
+    expect(labelId).not.toBeNull();
+    expect(document.getElementById(labelId ?? '')?.textContent).toBe(en.settingsModal.facesPairScopeLabel);
+    expect(screen.getByTestId('settings-faces-pair-scope-wide').getAttribute('disabled')).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('faces-enabled-switch'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-faces-pair-scope-wide').getAttribute('disabled')).toBeNull());
   });
 
   it('saves the UI language globally so the switch applies and persists', async () => {

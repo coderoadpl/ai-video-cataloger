@@ -14,8 +14,34 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
+- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
+- Pair review prevents additional answers and undo actions until the queue refresh completes.
+- Pair review disables undo after an irreversible merge.
+- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower.
+- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable.
+- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person.
+- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision.
+- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities.
+- Smoke and GUI gates reject declared dependency versions or Electron runtime versions that differ from the lockfile, provide a reinstall instruction, and record the Electron version exercised by GUI runs.
+- Prerelease reports must contain executed tests for every expected project; empty or missing-project reports fail the gate.
+- Prerelease invocations use unique report directories outside Playwright output and a checkout lock to prevent concurrent report and build interference.
+- E2E failures receive one diagnostic retry with tracing; recovered failures remain red and are counted separately as flaky.
+- Walkthrough steps fail on screenshot rejection or missing evidence, capture CSS-pixel PNGs, and measure work-area capping from outer window bounds with a bounded settle wait.
+- Strict walkthrough skips require explicit fixture reasons; viewer, player, and Analysis navigation failures after selecting a video fail the run.
+- Pair-review gates accept an empty queue only after a successful completed query, including after relaunch, and fail on query errors or timeouts.
+- GUI fixtures retain their files when shutdown fails and wait for process termination before marking the driver closed.
+- E2E preflight requires a canonical isolated HOME and an explicit scratch directory; every desktop launch overrides inherited profile paths and keeps pair-review windows inactive.
+
 ### Changed
 
+- The "Ta sama osoba?" review is now one task on screen: while it is open the People header drops the minimum-occurrences slider, the sort toggle, "Scal wybrane" and the selection bar and names the scope instead, the three answers carry distinct weights (Tak contained, Nie outlined, Pomiń text) in one equal-width row with their key hints and captions on a single line below, "Pomiń" says the pair comes back in 30 days, each answer is announced with its shortcut and consequence, the position counter is a live region, a person without example crops gets a square tile in the same grid as the crops, and an emptied queue acknowledges how many questions were answered and offers the way back.
+- The entry point to the pair review reads "Sprawdź podobne osoby (N)" / "Review look-alikes (N)" and is the single call to action in the People header row; the Ustawienia scope control says the questions appear on the People tab, carries a real label for assistive technology and is inactive while local face grouping is off.
+- Polish copy no longer stutters on an auto-generated person: "Twarz: Osoba 3", "Pliki: Osoba 3", "Wybierz: Osoba 3"; a merge asks "Którą nazwę zachować?", matching the "Nazwa wyświetlana" field it refers to.
+- The Collection grid no longer jumps sideways when loading finishes, a tile shows its file name on hover, and a catalog tree row no longer repeats that name through its thumbnail for a screen reader.
+- "Analizuj wszystko (N)" now says in words that files which ended in an error are not re-attempted by the batch and points at the per-file "Analizuj ponownie", so the count over a longer list of rows no longer reads as arithmetic gone wrong.
 - `process` and `process-drive` reject `--timeout` outside the config schema's 30..600-second range as a CLI usage error.
 - API debug logs redact request, response and transport-error bodies for credential, backup-secret and OAuth routes.
 - Map pin popovers use geographic screen positions, keeping their anchors available when zooming or panning changes the rendered pins.

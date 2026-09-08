@@ -29,7 +29,7 @@ async function launch(workdir: string): Promise<Session> {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userDataDir}`],
     cwd: REPO_ROOT,
-    env: desktopLaunchEnv({
+    env: desktopLaunchEnv(userDataDir, {
       DB_DRIVER: 'memory',
       AVC_RENDERER_HTML: RENDERER_HTML,
       AVC_HOME_DIRECTORY: isolatedHome(workdir),

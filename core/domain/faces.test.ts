@@ -182,10 +182,17 @@ describe('planIdentityAssignments', () => {
     expect(planIdentityAssignments(pool, [person], [['obs-00', 'old-1']])).toEqual([]);
   });
 
+  it('FPR-004 exhausts compatible founding supporters before discarding an anchor', () => {
+    const pool = [0, 20, -50].map((angle, i) => ({ obsId: `obs-${i}`, embedding: unitAtAngleDeg(angle), quality: 0.9 }));
+    for (const ordered of [pool, [...pool].reverse()]) {
+      expect(membership(planIdentityAssignments(ordered, [], [['obs-0', 'obs-1']]))).toEqual(['obs-0 obs-2']);
+    }
+  });
+
   it('never founds a person on a pair the owner marked as two people', () => {
     expect(planIdentityAssignments(poolOf([0, 5]), [], [['obs-00', 'obs-01']])).toEqual([]);
     const steps = planIdentityAssignments(poolOf([0, 5, 10]), [], [['obs-00', 'obs-01']]);
-    expect(membership(steps)).toEqual(['obs-00 obs-02']);
+    expect(membership(steps)).toEqual(['obs-01 obs-02']);
   });
 });
 
@@ -723,6 +730,22 @@ describe('W99 A5 constrained clustering', () => {
     expect(result.clusters.some((c) => c.memberObsIds.includes('o0') && c.memberObsIds.includes('o3'))).toBe(false);
     expect(result.constraintsApplied.cannotLink).toBe(1);
   });
+  it('FPR-005 preserves must-link transitivity through a below-floor observation', () => {
+    const observations = [
+      { obsId: 'a', embedding: unitAtAngleDeg(0), quality: 0.9 },
+      { obsId: 'a2', embedding: unitAtAngleDeg(0), quality: 0.9 },
+      { obsId: 'b', embedding: unitAtAngleDeg(45), quality: 0.7 },
+      { obsId: 'c', embedding: unitAtAngleDeg(90), quality: 0.9 },
+      { obsId: 'c2', embedding: unitAtAngleDeg(90), quality: 0.9 },
+    ];
+    const constraints = { mustLink: [['a', 'b'], ['b', 'c']], cannotLink: [] } as const;
+    const result = clusterFaceObservations(observations, { constraints });
+    expect(result.clusters.some((cluster) => cluster.memberObsIds.includes('a') && cluster.memberObsIds.includes('c'))).toBe(true);
+    expect(result.unassignedObsIds).toContain('b');
+    expect(result.constraintsApplied.mustLink).toBe(2);
+    expect(clusterFaceObservations([...observations].reverse(), { constraints })).toEqual(result);
+  });
+
   it('pre-unions must-links, computes the union centroid and stays deterministic', () => {
     const observations = [
       { obsId: 'a', embedding: [1, 0], quality: 0.9 },

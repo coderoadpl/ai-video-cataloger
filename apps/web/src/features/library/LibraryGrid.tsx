@@ -344,6 +344,7 @@ const LibraryTileView = ({
       role="option"
       aria-selected={selected}
       aria-label={name}
+      title={name}
       tabIndex={-1}
       onClick={(event) => {
         if (selectable && (event.metaKey || event.ctrlKey || event.shiftKey)) {

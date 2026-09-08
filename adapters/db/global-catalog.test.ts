@@ -126,6 +126,10 @@ describe('SqlJsGlobalCatalogStore', () => {
 
   it('W99 A1 normalizes upserts, selects the latest user row and deletes either anchor', async () => {
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    for (const [obsId, personId] of [['a', 'pa'], ['b', null], ['c', 'pa'], ['d', null]]) {
+      if (obsId === undefined || obsId === null || personId === undefined) continue;
+      await store.upsertFaceObservation({ obsId, fingerprint: obsId, personId, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding: Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0), quality: 0.9, cropPath: null });
+    }
     const row = { obsAId: 'a', obsBId: 'b', personAId: 'pa', personBId: null, decision: 'different' as const, decidedAt: '2026-01-01T00:00:00.000Z', source: 'user' as const };
     expect((await store.recordPeoplePairDecision(row)).ok).toBe(true);
     expect((await store.recordPeoplePairDecision({ ...row, obsAId: 'b', obsBId: 'a', personAId: null, personBId: 'pa', decision: 'skip' })).ok).toBe(true);
@@ -179,6 +183,9 @@ describe('SqlJsGlobalCatalogStore', () => {
   it('W99 A6 rekeys merges and invalidates only different rows made equal by this merge', async () => {
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
     for (const personId of ['a', 'b', 'c']) await store.upsertPerson({ personId, displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: Array.from({ length: 128 }, () => 0), exemplarCount: 0 });
+    for (const [obsId, personId] of [['o-a', 'a'], ['o-b', 'b'], ['o-c', 'c'], ['old-mixed-a', 'b'], ['old-mixed-b', 'b']] as const) {
+      await store.upsertFaceObservation({ obsId, fingerprint: obsId, personId, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding: Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0), quality: 0.9, cropPath: null });
+    }
     const row = { obsAId: 'o-a', obsBId: 'o-b', personAId: 'a', personBId: 'b', decision: 'different' as const, source: 'user' as const, decidedAt: '2026-01-01T00:00:00.000Z' };
     await store.recordPeoplePairDecision(row);
     await store.recordPeoplePairDecision({ ...row, obsBId: 'o-c', personBId: 'c' });
@@ -188,6 +195,49 @@ describe('SqlJsGlobalCatalogStore', () => {
       { ...row, obsBId: 'o-c', personAId: 'b', personBId: 'c' },
       { ...row, obsAId: 'old-mixed-a', obsBId: 'old-mixed-b', personAId: 'b', personBId: 'b' },
     ]));
+    await store.dispose();
+  });
+
+  it('FPR-003 invalidates merge contradictions through observation ownership despite stale cached IDs', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    const observations = ['a', 'b'].map((id) => ({ obsId: id, fingerprint: id, personId: null, kind: 'face' as const, media: 'video' as const, frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, cropPath: null }));
+    for (const observation of observations) {
+      await store.upsertPerson({ personId: observation.obsId, displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: embedding, exemplarCount: 1 });
+      await store.upsertFaceObservation(observation);
+    }
+    await store.recordPeoplePairDecision({ obsAId: 'a', obsBId: 'b', personAId: null, personBId: null, decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
+    for (const observation of observations) await store.upsertFaceObservation({ ...observation, personId: observation.obsId });
+    expect(await store.listPeoplePairDecisions()).toMatchObject({ value: [{ personAId: null, personBId: null }] });
+    expect(await store.mergePeople({ fromPersonId: 'a', toPersonId: 'b' })).toMatchObject({ value: { decisionsInvalidated: 1 } });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.dispose();
+  });
+
+  it('FPR-003 refreshes both decision endpoints on assignment and invalidates a newly contradictory merge', async () => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    for (const id of ['a', 'b']) {
+      await store.upsertPerson({ personId: id, displayName: null, kind: 'face', createdAt: '2026-01-01T00:00:00.000Z', centroid: embedding, exemplarCount: 1 });
+      await store.upsertFaceObservation({ obsId: id, fingerprint: id, personId: null, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, cropPath: null });
+    }
+    await store.recordPeoplePairDecision({ obsAId: 'a', obsBId: 'b', personAId: null, personBId: null, decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' });
+    await store.assignFaceObservation('a', 'a');
+    await store.assignFaceObservation('b', 'b');
+    expect(await store.listPeoplePairDecisions()).toMatchObject({ value: [{ personAId: 'a', personBId: 'b' }] });
+    expect(await store.mergePeople({ fromPersonId: 'a', toPersonId: 'b' })).toMatchObject({ value: { decisionsInvalidated: 1 } });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
+    await store.dispose();
+  });
+
+  it.each(['missing', 'reassigned'])('FPR-006 rejects a decision whose selected anchor is %s', async (change) => {
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: await tempHome() });
+    const embedding = Array.from({ length: 128 }, (_, i) => i === 0 ? 1 : 0);
+    for (const id of ['a', 'b']) await store.upsertFaceObservation({ obsId: id, fingerprint: id, personId: id, kind: 'face', media: 'video', frameTsS: 0, bbox: { x: 0, y: 0, width: 100, height: 100 }, embedding, quality: 0.9, cropPath: null });
+    if (change === 'missing') await store.deleteFaceObservationsForFile('a');
+    else await store.assignFaceObservation('a', null);
+    expect(await store.recordPeoplePairDecision({ obsAId: 'a', obsBId: 'b', personAId: 'a', personBId: 'b', decision: 'different', source: 'user', decidedAt: '2026-01-01T00:00:00.000Z' })).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(await store.listPeoplePairDecisions()).toEqual(ok([]));
     await store.dispose();
   });
 

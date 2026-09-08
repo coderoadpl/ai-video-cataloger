@@ -129,6 +129,7 @@ export const AppLayoutWorkspace = () => {
       toolbar={
         <ScopeAnalyzeToolbar
           pendingCount={scopedPendingCount}
+          erroredCount={effectiveScope === 'tree' ? 0 : processing.erroredCount}
           isBusy={processing.isBusy}
           progress={activeProgress}
           batchWait={processing.driveBatchWait}

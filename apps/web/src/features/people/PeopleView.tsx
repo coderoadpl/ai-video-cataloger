@@ -389,7 +389,7 @@ export const PeopleView = ({
       </Box>
       {pairs.pending === 0 ? null : (
         <Button
-          variant="outlined"
+          variant="contained"
           size="small"
           disabled={people.isBusy || mutationsBlocked}
           title={lockReason}
@@ -406,21 +406,33 @@ export const PeopleView = ({
     </>
   );
 
+  const headerScope = reviewOpen
+    ? dictionary.people.pairReviewScope
+    : foldedOpen
+      ? dictionary.people.otherPeopleScope
+      : dictionary.people.subtitle;
+
   if (!active) return null;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+    <Box
+      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
+      data-testid="people-pairs-query"
+      data-query-status={pairs.status}
+      data-fetch-status={pairs.fetchStatus}
+      data-pending={pairs.status === 'success' && pairs.fetchStatus === 'idle' ? pairs.pending : undefined}
+    >
       <PageHeader
         testId="people-header"
         title={dictionary.people.title}
         subtitle={(
-          <Box component="span" data-testid={foldedOpen ? 'people-scope' : undefined}>
-            {foldedOpen ? dictionary.people.otherPeopleScope : dictionary.people.subtitle}
+          <Box component="span" data-testid={foldedOpen || reviewOpen ? 'people-scope' : undefined}>
+            {headerScope}
           </Box>
         )}
-        {...(people.facesEnabled !== true ? {} : { actions: headerActions })}
+        {...(people.facesEnabled !== true || reviewOpen ? {} : { actions: headerActions })}
       >
-        {selected.length === 0 ? null : (
+        {selected.length === 0 || reviewOpen ? null : (
           <Box
             data-testid="people-selection-bar"
             sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
@@ -515,6 +527,7 @@ export const PeopleView = ({
             state={pairs}
             disabled={people.isBusy || mutationsBlocked}
             lockReason={lockReason}
+            onBack={() => setReviewOpen(false)}
           />
         </>
       ) : (
