@@ -35,6 +35,7 @@ import { createInMemoryDeps } from '@server/src/test-support/in-memory-deps.js';
 import packageJson from '../package.json' with { type: 'json' };
 import { REAL_JPEG_BLUE_LARGE, REAL_JPEG_RED_LARGE } from '../test/fixtures/real-jpegs.js';
 import { z } from 'zod';
+import { checkInstalledRuntime } from './installed-runtime.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = join(rootDir, 'apps/cli/src/main.ts');
@@ -194,6 +195,8 @@ const nativeAssetProblem = (asset: NativeAsset): string | null => {
 };
 
 const checkInstalledTree = (): void => {
+  const runtime = checkInstalledRuntime(rootDir);
+  if (!runtime.ok) fail(runtime.error.message);
   const declared = [...Object.keys(packageJson.dependencies), ...Object.keys(packageJson.devDependencies)];
   const unlinked = declared.filter(
     (name) => !existsSync(join(rootDir, 'node_modules', name, 'package.json')),

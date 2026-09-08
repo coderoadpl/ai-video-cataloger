@@ -420,6 +420,8 @@ const PAIR_REVIEW_STATE: PeoplePairsState = {
   isPairAvailable: () => true,
   queueLength: 6,
   answeredThisSession: 0,
+  status: 'success',
+  fetchStatus: 'idle',
   isLoading: false,
   isBusy: false,
   canUndo: false,

@@ -1010,7 +1010,18 @@ Scenarios:
   - Two renamed videos and one untouched corrupt video.
   - Catalog has two completed rows and corrupt not completed.
 
+Release evidence layout:
+
+- Prerelease reports: `.e2e-prerelease/run-<unique>/<leg>.json`, retained outside Playwright output.
+- Checkout serialization: `.e2e-prerelease/lock`; clear an interrupted run's lock only after its processes stop.
+- GUI runtime evidence: Playwright `electron-runtime` attachment; walkthrough `electron-runtime.json` alongside its plan, manifest, and CSS-pixel PNGs.
+- Empty reports, missing expected project executions, flaky tests, and missing screenshots fail release gates.
+
 E2E preflight: `test/e2e/preflight.ts`.
+
+- Requires canonical isolated HOME and explicit scratch outside the checkout and account catalog.
+- Compares declared installed dependency versions and Electron runtime metadata to the lockfile before GUI launch.
+- Each GUI launch overrides inherited profile paths and asserts an inactive window; fixture deletion requires observed driver process termination.
 
 - Requires built CLI.
 - Requires Electron build for GUI project.

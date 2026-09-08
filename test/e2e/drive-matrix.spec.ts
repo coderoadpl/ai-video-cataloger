@@ -93,7 +93,7 @@ test(CELL, { tag: '@gui' }, async () => {
   const app = await electron.launch({
     args: [ELECTRON_MAIN, `--user-data-dir=${userData}`],
     cwd: REPO_ROOT,
-    env: desktopLaunchEnv({ AVC_RENDERER_HTML: RENDERER_HTML }, environment),
+    env: desktopLaunchEnv(userData, { AVC_RENDERER_HTML: RENDERER_HTML }, environment),
   });
   try {
     const page = await app.firstWindow();

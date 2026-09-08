@@ -48,7 +48,7 @@ describe('parseLegReport', () => {
       ],
     });
 
-    expect(report).toMatchObject({ leg: 'people', passed: 2, failed: 1, skippedCount: 1 });
+    expect(report).toMatchObject({ leg: 'people', passed: 1, failed: 1, flaky: 1, skippedCount: 1 });
     expect(report.skipped).toEqual([
       { title: 'd', projectName: 'gui', reason: 'no fixtures' },
     ]);
@@ -141,14 +141,18 @@ describe('unexpectedSkips', () => {
 describe('formatSummaryTable', () => {
   it('prints one row per leg with its counts', () => {
     const reports: readonly LegReport[] = [
-      { leg: 'cli', passed: 6, failed: 0, skippedCount: 2, skipped: [] },
-      { leg: 'map', passed: 1, failed: 0, skippedCount: 0, skipped: [] },
+      { leg: 'cli', passed: 6, failed: 0, flaky: 0, skippedCount: 2, skipped: [] },
+      { leg: 'map', passed: 1, failed: 0, flaky: 0, skippedCount: 0, skipped: [] },
     ];
 
     const table = formatSummaryTable(reports);
 
-    expect(table).toMatch(/leg\s+\|\s+passed\s+\|\s+failed\s+\|\s+skipped/);
-    expect(table).toMatch(/cli\s+\|\s+6\s+\|\s+0\s+\|\s+2/);
-    expect(table).toMatch(/map\s+\|\s+1\s+\|\s+0\s+\|\s+0/);
+    expect(table).toMatch(/leg\s+\|\s+passed\s+\|\s+failed\s+\|\s+flaky\s+\|\s+skipped/);
+    expect(table).toMatch(/cli\s+\|\s+6\s+\|\s+0\s+\|\s+0\s+\|\s+2/);
+    expect(table).toMatch(/map\s+\|\s+1\s+\|\s+0\s+\|\s+0\s+\|\s+0/);
   });
+});
+
+it('rejects reports without test records', () => {
+  expect(() => parseLegReport('cli', { suites: [] })).toThrow(/executed tests/);
 });
