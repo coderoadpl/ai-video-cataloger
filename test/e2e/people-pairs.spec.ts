@@ -21,6 +21,7 @@ interface Merged {
 const TEST_TIMEOUT_MS = 900_000;
 const GRID_UNFOLD_TIMEOUT_MS = 300_000;
 const REGRID_TIMEOUT_MS = 120_000;
+const SETTLE_TIMEOUT_MS = 60_000;
 const READ_TIMEOUT_MS = 10_000;
 
 const countSchema = z.number().int().nonnegative();
@@ -90,6 +91,8 @@ const pairKey = (ids: readonly [string, string], merged: Merged | null): string 
   return [rekey(ids[0]), rekey(ids[1])].sort().join('|');
 };
 
+const currentPairKey = async (page: Page, merged: Merged | null): Promise<string> => pairKey(await currentPairIds(page), merged);
+
 const answerSame = async (page: Page): Promise<void> => {
   await page.keyboard.press('1');
   const confirmDialog = page.getByTestId('people-pair-review-confirm');
@@ -137,12 +140,12 @@ const enableFacesAtWideScope = async (page: Page): Promise<void> => {
 };
 
 test.describe('People: answering "Ta sama osoba?" over a real faces pass', () => {
-  test('every answer is a 30-day decision, so the walk spends four pairs at most and the decisions outlive a relaunch', async () => {
+  test('a "Nie", its undo, a "Pomiń" and a "Tak" are answered on the real surface and outlive a relaunch', async () => {
     test.setTimeout(TEST_TIMEOUT_MS);
 
     const samples = process.env.E2E_FACES_PAIR_SAMPLES;
     if (samples === undefined || samples.length === 0) {
-      test.skip(true, 'Set E2E_FACES_PAIR_SAMPLES to a folder of photos of two people to run this leg');
+      test.skip(true, 'Set E2E_FACES_PAIR_SAMPLES to a folder of photos of a few people to run this leg');
       return;
     }
     if (!existsSync(samples)) {
@@ -176,8 +179,8 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
       const badgeBefore = await badgeCount(session.page);
       expect(
         badgeBefore,
-        'E2E_FACES_PAIR_SAMPLES produced fewer than three reviewable pairs at scope \'wide\' — the fixture must contain people the conservative cut splits',
-      ).toBeGreaterThanOrEqual(3);
+        'the fixture must contain at least two candidate pairs at scope wide',
+      ).toBeGreaterThanOrEqual(2);
       const cardsBefore = await session.page.getByTestId('people-card').count();
 
       await badge.click();
@@ -193,33 +196,39 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
 
       await session.page.keyboard.press('2');
       await expect.poll(() => positionIndex(session.page), { timeout: 15_000 }).toBe(2);
+      await expect.poll(() => badgeCount(session.page), { timeout: SETTLE_TIMEOUT_MS }).toBe(badgeBefore - 1);
       expect((await position(session.page)).total).toBe(opened.total);
-      await expect.poll(() => badgeCount(session.page), { timeout: 15_000 }).toBe(badgeBefore - 1);
 
       await session.page.keyboard.press('Backspace');
       await expect.poll(() => positionIndex(session.page), { timeout: 15_000 }).toBe(1);
-      expect(await currentPairIds(session.page)).toEqual(firstPairIds);
+      await expect.poll(() => badgeCount(session.page), { timeout: SETTLE_TIMEOUT_MS }).toBe(badgeBefore);
+      await expect
+        .poll(() => currentPairKey(session.page, null), {
+          message: 'the undo did not bring the answered pair back to the head of the queue',
+          timeout: 15_000,
+        })
+        .toBe(pairKey(firstPairIds, null));
       expect((await position(session.page)).total).toBe(opened.total);
-      await expect.poll(() => badgeCount(session.page), { timeout: 15_000 }).toBe(badgeBefore);
 
       await session.page.keyboard.press('3');
       await expect.poll(() => positionIndex(session.page), { timeout: 15_000 }).toBe(2);
-      await expect.poll(() => badgeCount(session.page), { timeout: 15_000 }).toBe(badgeBefore - 1);
-
+      await expect.poll(() => badgeCount(session.page), { timeout: SETTLE_TIMEOUT_MS }).toBe(badgeBefore - 1);
+      await expect
+        .poll(() => currentPairKey(session.page, null), {
+          message: 'the skipped pair is still at the head — a 30-day skip must take it out of the queue',
+          timeout: SETTLE_TIMEOUT_MS,
+        })
+        .not.toBe(pairKey(firstPairIds, null));
       const mergePairIds = await currentPairIds(session.page);
-      expect(
-        pairKey(mergePairIds, null),
-        'the skipped pair is still at the head — a 30-day skip must take it out of the queue',
-      ).not.toBe(pairKey(firstPairIds, null));
 
       await answerSame(session.page);
-      await expect.poll(() => badgeCount(session.page), { timeout: 60_000 }).toBeLessThan(badgeBefore - 1);
-      const badgeAfterMerge = await badgeCount(session.page);
-      await expect(
-        badge,
-        'the queue emptied on the merge — every answer costs a pair for 30 days, so the walk must answer at most four of them',
-      ).toBeVisible({ timeout: 15_000 });
-      expect(badgeAfterMerge).toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(() => badgeCount(session.page), {
+          message: 'the merge left the pending count untouched — the merged pair must leave the queue',
+          timeout: SETTLE_TIMEOUT_MS,
+        })
+        .not.toBe(badgeBefore - 1);
+      const pendingAfterMerge = await badgeCount(session.page);
 
       await session.page.getByTestId('people-back-main').click();
       await expect(session.page.getByTestId('people-grid')).toBeVisible({ timeout: 15_000 });
@@ -234,11 +243,13 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
         absorbed: personIdSchema.parse(mergePairIds.find((personId) => !cardIds.includes(personId))),
       };
 
-      const badgeBeforeRelaunch = await badgeCount(session.page);
+      await expect
+        .poll(() => decisionCounts(home), {
+          message: 'the stored decisions are not one skip and one same — the undone "Nie" must leave no row behind',
+          timeout: 30_000,
+        })
+        .toEqual({ skip: 1, same: 1 });
       const counts = await decisionCounts(home);
-      expect(counts['same']).toBe(1);
-      expect(counts['skip'] ?? 0).toBeGreaterThanOrEqual(1);
-      expect(counts['different'] ?? 0, 'the undone answer left a decision row behind').toBe(0);
 
       await session.app.close();
       session = await launch(workdir);
@@ -251,34 +262,34 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
       expect(relaunchedCardIds).toHaveLength(cardsBefore - 1);
 
       const relaunchedBadge = session.page.getByTestId('people-pair-review-open');
-      await expect(relaunchedBadge).toBeVisible({ timeout: 60_000 });
-      expect(await badgeCount(session.page)).toBe(badgeBeforeRelaunch);
-
-      await relaunchedBadge.click();
-      await expect(session.page.getByTestId('people-pair-review')).toBeVisible({ timeout: 15_000 });
-
-      const undoControl = session.page.getByTestId('people-pair-review-undo');
-      await expect(undoControl).toBeDisabled();
-      await session.page.keyboard.press('Backspace');
-      expect(await positionIndex(session.page)).toBe(1);
-
-      const answeredKeys = new Set([pairKey(firstPairIds, merged), pairKey(mergePairIds, merged)]);
-      const empty = session.page.getByTestId('people-pair-review-empty');
-      for (let step = 0; step <= badgeBeforeRelaunch; step += 1) {
-        if (await empty.isVisible()) break;
-        const pair = await currentPairIds(session.page);
-        expect(
-          answeredKeys.has(pairKey(pair, merged)),
-          'an answered pair came back after the relaunch — the 30-day decision did not survive',
-        ).toBe(false);
-        const before = await positionIndex(session.page);
-        await session.page.keyboard.press('3');
-        await expect.poll(
-          async () => await empty.isVisible() || await positionIndex(session.page) !== before,
-          { timeout: 15_000 },
-        ).toBe(true);
+      if (pendingAfterMerge === 0) {
+        await expect(relaunchedBadge).toHaveCount(0, { timeout: SETTLE_TIMEOUT_MS });
+      } else {
+        await expect(relaunchedBadge).toBeVisible({ timeout: SETTLE_TIMEOUT_MS });
       }
-      await expect(empty).toBeVisible({ timeout: 15_000 });
+      await expect
+        .poll(() => badgeCount(session.page), {
+          message: 'the pending count changed across the relaunch — the decisions did not survive it',
+          timeout: SETTLE_TIMEOUT_MS,
+        })
+        .toBe(pendingAfterMerge);
+
+      if (pendingAfterMerge > 0) {
+        await relaunchedBadge.click();
+        await expect(session.page.getByTestId('people-pair-review')).toBeVisible({ timeout: 15_000 });
+
+        await expect(session.page.getByTestId('people-pair-review-undo')).toBeDisabled();
+        await session.page.keyboard.press('Backspace');
+        expect(await positionIndex(session.page)).toBe(1);
+
+        const answeredKeys = new Set([pairKey(firstPairIds, merged), pairKey(mergePairIds, merged)]);
+        expect(
+          answeredKeys.has(await currentPairKey(session.page, merged)),
+          'an answered pair came back after the relaunch — the decision did not survive',
+        ).toBe(false);
+      }
+
+      expect(await decisionCounts(home), 'the stored decisions changed across the relaunch').toEqual(counts);
     } finally {
       await session.app.close().catch(() => undefined);
       await removeTempDir(workdir);

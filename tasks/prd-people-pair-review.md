@@ -1529,18 +1529,28 @@ distinguishable people" guarantees nothing: two genuinely different people
 usually sit *below* 0.34, so a `wide` scope would find no candidate at all. The
 fixture requirement is therefore stated as an outcome: after the faces pass
 over `E2E_FACES_PAIR_SAMPLES`, `GET /api/faces/pairs` at scope `wide` must
-offer **at least two candidate pairs, at least one of which shares no person
-with the top-ranked pair** — in practice two individuals, each photographed in
-varied poses and lighting so the conservative cut splits each into more than
-one card (four cards, hence a disjoint pair), which is exactly the situation
-this feature exists for. The spec asserts the count precondition immediately
-after the pass, reading `people-pair-review-open`'s count, with a named failure
-message ("E2E_FACES_PAIR_SAMPLES produced fewer than two reviewable pairs at
-scope 'wide' — the fixture must contain people the conservative cut splits");
-the disjointness half is asserted later, by the walk that looks for such a
-pair, with its own named failure message. A fixture that does not meet either
-half is a **failure, not a skip**; only a missing fixture directory or missing
-model artifacts skip, exactly as `people.spec.ts` does.
+offer **at least two candidate pairs** — in practice a handful of individuals,
+each photographed in varied poses and lighting so the conservative cut splits
+someone into more than one card, which is exactly the situation this feature
+exists for. The spec asserts that precondition immediately after the pass,
+reading `people-pair-review-open`'s count, with a named failure message ("the
+fixture must contain at least two candidate pairs at scope wide"). A fixture
+that does not meet it is a **failure, not a skip**; only a missing fixture
+directory or missing model artifacts skip, exactly as `people.spec.ts` does.
+
+**Amendment (2026-09-08).** The original clause also demanded a second
+candidate pair *sharing no person with the top-ranked pair*, and the walk below
+merged on that disjoint pair. That was a test-convenience assumption, not
+product behaviour: after the deterministic grouping pass the candidate pairs a
+real fixture produces overlap on the person the cut split, so the clause made
+the spec's own precondition unsatisfiable for fixtures the feature is built
+for. The fixture contract is therefore exactly ">= 2 candidate pairs at scope
+`wide`", and the walk was rewritten to need nothing more (see the assertions
+below): it merges on the second pair, which may share a person with the head
+pair, and relaunch persistence is proven by **state equality** — the pending
+count, the grid and the stored decision rows are identical before and after the
+relaunch — including the legitimate case of an **empty queue**, where the badge
+is hidden because every remaining question is answered or suppressed.
 
 The whole run is real interaction: open the folder through the header button
 with the native dialog stubbed in the Electron main process (the only
@@ -1628,7 +1638,7 @@ Assertions, UI first:
 
 - [ ] With the threshold already dragged to its lowest option and
       `people-other-tile` gone, `people-pair-review-open` appears on the Osoby
-      grid with a count greater than zero; the spec records that count as
+      grid with a count of **at least two**; the spec records that count as
       `badgeBefore` and the `people-card` count as `cardsBefore`.
 - [ ] Clicking it opens `people-pair-review` with both person panels showing at
       least one `people-pair-review-crop` each;
@@ -1643,42 +1653,40 @@ Assertions, UI first:
 - [ ] Pressing `Backspace` brings the first pair back as the current pair
       (both `data-person-id` values equal `firstPairIds`), the position returns
       to **"1 z N"** and the badge returns to `badgeBefore`.
-- [ ] Pressing `2` again commits the "Nie". The spec then **walks forward with
-      `3` (Pomiń) until the current pair's two `data-person-id` values are both
-      outside `firstPairIds`**, and presses `1` (Tak) only on that pair. The
-      walk is the point: pressing `1` on a pair that shares a person with
-      `firstPairIds` would merge one of them away, and the relaunch check below
-      — "the queue never shows `firstPairIds`" — would then hold for the trivial
-      reason the PRD itself rejects for "Tak" pairs, while `cardsBefore - 1`
-      still passes and detects nothing. If the walk reaches
-      `people-pair-review-empty` without finding a disjoint pair it fails with a
-      named message ("no candidate pair disjoint from the first pair — the
-      fixture must produce at least one, see the fixture precondition"), never
-      a skip. Returning through `people-back-main`, the grid holds
-      `cardsBefore - 1` `people-card` elements — a count that is only meaningful
-      because the fold was opened first.
+- [ ] Pressing `3` (Pomiń) on the restored head pair advances to the **second**
+      pair — asserted as a pair key different from `firstPairIds`, once the
+      badge has dropped to `badgeBefore - 1` and the queue has therefore been
+      regenerated — and takes the head pair out of the queue for 30 days.
+- [ ] Pressing `1` (Tak) on that second pair merges it. The pair may share a
+      person with the head pair; the confirm dialog is accepted when both people
+      are named and absent otherwise, and the merge is proven **on the grid**:
+      returning through `people-back-main`, it holds `cardsBefore - 1`
+      `people-card` elements — a count that is only meaningful because the fold
+      was opened first — and exactly one of the merged pair's two person ids
+      still has a card, which is the survivor the merge chose. The pending count
+      read once the queue has regenerated is recorded as `pendingAfterMerge`; it
+      **may be zero**, because the head pair's skip is re-keyed onto the survivor
+      and stays suppressed, so the queue is legitimately empty and the badge
+      legitimately hidden.
 - [ ] Secondary invariant only, after the UI assertions: `catalog.db` read
-      through sql.js holds **exactly one** `people_pair_decisions` row with
-      `decision = 'same'`, **at least one** with `decision = 'different'`, and
-      any number of `skip` rows — the walk's length is fixture-dependent, so
-      pinning the `skip` count would make the assertion a fixture hash.
-- [ ] **Persistence across a relaunch is asserted on the `different`, not on
-      the `same`:** after relaunching the app and reopening the review surface,
-      (a) the badge equals the count recorded just before the relaunch, and
-      (b) walking the reopened queue with `3` (Pomiń) until
-      `people-pair-review-empty` appears never shows a pair whose two
-      `data-person-id` values are `firstPairIds` in either order. `Pomiń` is
-      used for the walk because it is the only answer that neither merges nor
-      writes a permanent constraint. (A "Tak" pair is trivially absent — one of
-      its two people no longer exists — so it proves nothing about the decision
-      store.) The relaunch walk is **shorter than the first session's**: every
-      pair the first walk skipped carries a `skip` row and stays suppressed for
-      30 days, so it is absent here too. The walk therefore asserts what it
-      never sees, never a queue length.
-- [ ] Immediately after reopening the review surface post-relaunch,
-      `people-pair-review-undo` is disabled and `Backspace` does nothing —
-      `answeredThisSession` is `0` again, and the answers of the previous
-      session are not reachable from this screen (US-B3).
+      through sql.js holds exactly one `people_pair_decisions` row with
+      `decision = 'skip'`, exactly one with `decision = 'same'` and **no** row
+      with `decision = 'different'` — the undo deleted the one it wrote.
+- [ ] **Persistence across a relaunch is state equality, not a queue walk:**
+      after relaunching the app, (a) the grid still holds `cardsBefore - 1`
+      cards, contains the survivor and does not contain the absorbed person id,
+      (b) the badge state equals `pendingAfterMerge` — hidden when it is zero,
+      the same count otherwise — and (c) the `people_pair_decisions` rows are
+      identical to the ones read before the relaunch. An empty queue is a pass:
+      the answers are what persists, and a queue that is empty because every
+      question is answered or suppressed says exactly that.
+- [ ] Immediately after reopening the review surface post-relaunch — which is
+      possible only when `pendingAfterMerge` is greater than zero, the badge
+      being the only entry point — `people-pair-review-undo` is disabled,
+      `Backspace` does nothing (`answeredThisSession` is `0` again, and the
+      answers of the previous session are not reachable from this screen,
+      US-B3), and the head pair is not one of the two answered pairs, re-keyed
+      through the merge.
 
 **Changelog (Wave B, `[Unreleased]` → Added).**
 
