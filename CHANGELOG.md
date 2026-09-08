@@ -14,10 +14,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.37] - 2026-09-08
+
 ### Fixed
 
-- Face grouping no longer depends on the order the files were indexed in: a scan stores every detected face unassigned and then groups the whole run's unassigned faces in one pass, in a stable order, so the same photos and videos produce the same people whatever order they were copied in or split across runs, and a pair the owner answered "different" is no longer joined by the indexing path.
-- A file whose catalogued analysis carries a suggested final name that was never applied to the file on disk now shows its cover and its stored analysis artifacts again: the analysis view, the Library and search resolve frames, transcript, summary and thumbnails from the name the file actually carries, so the artifacts already on disk are found instead of being addressed under a name nothing ever wrote.
+- Face grouping no longer depends on the order the files were indexed in: a scan stores every detected face unassigned and then groups the whole run's unassigned faces in one pass, in a stable order, so the same photos and videos produce the same people whatever order they were copied in or split across runs, and a pair the owner answered "different" is no longer joined by the indexing path
+  ([`929e35c`](https://github.com/coderoadpl/ai-video-cataloger/commit/929e35cd9b90df977cd060b9b9b8b400a1db51a6)).
+- A file whose catalogued analysis carries a suggested final name that was never applied to the file on disk now shows its cover and its stored analysis artifacts again: the analysis view, the Library and search resolve frames, transcript, summary and thumbnails from the name the file actually carries, so the artifacts already on disk are found instead of being addressed under a name nothing ever wrote
+  ([`d8c8003`](https://github.com/coderoadpl/ai-video-cataloger/commit/d8c8003d7a59201ce59f5de84888e9337e25da30)).
 
 ## [0.6.36] - 2026-09-08
 
