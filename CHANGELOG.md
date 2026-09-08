@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Video rows in expanded sub-folders now show their thumbnail: a freshly generated thumbnail is written into the tree-folder list the row was fetched into instead of only the opened root's scan, and a generation skipped because the artifact already exists surfaces that artifact instead of counting as a failure.
+
 ## [0.6.35] - 2026-09-08
 
 ### Security

@@ -34,6 +34,27 @@ describe('generateThumbnail', () => {
     ]);
   });
 
+  it('reports the artifact path of a skipped generation that found the thumbnail on disk', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4', { size: 100 });
+    fs.addFile('/work/.ai-video-cataloger/thumbnails/clip.jpg');
+
+    const result = await generateThumbnail({ fs, media }, { videoPath: 'clip.mp4', force: false });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        video: 'clip.mp4',
+        path: '/work/clip.mp4',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        generated: false,
+        skipped: true,
+      },
+    });
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
   it('rejects unsupported file extensions', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addFile('/work/readme.txt');

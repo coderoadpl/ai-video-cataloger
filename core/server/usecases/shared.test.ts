@@ -53,6 +53,15 @@ describe('grid thumbnail artifact path', () => {
     const paths = artifactPaths(fs, root, '/videos/folder/clip.mp4', null);
     expect(paths.gridThumbnailPath).toBe(path.join(root.catalogDirectory, 'thumbnails', 'clip.grid.jpg'));
   });
+
+  it('keeps same-named files in different folders on separate artifacts', () => {
+    const nested = folderArtifactRoot(fs, '/videos/folder/sub');
+
+    expect(thumbnailArtifactPath(fs, nested, '/videos/folder/sub/clip.mp4'))
+      .not.toBe(thumbnailArtifactPath(fs, root, '/videos/folder/clip.mp4'));
+    expect(gridThumbnailArtifactPath(fs, nested, '/videos/folder/sub/clip.mp4'))
+      .not.toBe(gridThumbnailArtifactPath(fs, root, '/videos/folder/clip.mp4'));
+  });
 });
 
 describe('classifyOfflineFolder', () => {
