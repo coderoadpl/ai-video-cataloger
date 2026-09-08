@@ -7,11 +7,30 @@ legitimately not applicable is recorded with its reason, never silently
 skipped. Rerunning a red gate until it passes is forbidden
 ([flake doctrine](../../CLAUDE.md)).
 
-## 0. Versioning policy
+## 0. Versioning and release cadence
 
 The patch version is bumped with practically every merged PR (at minimum
 every wave); no two differing builds may ever share a version string
 (owner decision 2026-08-02).
+
+Releases are not rationed: every merged wave that changes user-visible
+behaviour ships as a patch release (owner decision 2026-09-06). There is no
+batching of waves into a bigger release and no waiting for a milestone — a big
+step lands, a release follows.
+
+A release cycle is three stages, in order, and none of them is optional:
+
+1. **Gates** — `pnpm run check` and `pnpm run smoke` green (section 1).
+2. **Pre-release e2e** — `pnpm run test:e2e:prerelease` green, plus the parity
+   and, at a batch end or before a DMG handoff, the real-provider matrix
+   (section 2).
+3. **Package and hand off** — `pnpm run electron:package`,
+   `pnpm run verify:package`, the strict `qa:walkthrough`, the independent
+   screenshot review (section 3), then the version bump, publish and a real
+   install of the published artifact.
+
+The cycle ends at an installed, launched build — a published artifact nobody
+installed is not a finished release.
 
 ## 1. The two gates
 
@@ -33,6 +52,30 @@ scale together.
 | Real-provider matrix | `pnpm run test:e2e:matrix` | every leg green. Run it from a **normal, unsandboxed shell** (`hdiutil` fails under an agent sandbox) and in a low-load window |
 
 Under the flake doctrine, a red suite is a P1 bug, never rerun-to-green.
+
+A **large UI wave runs `pnpm run test:e2e:prerelease` before the merge**, not
+only `check` and `smoke` (owner decision 2026-09-07): the suites that drive the
+real Electron UI are the only ones that see a broad UI change break a real flow,
+and finding that after the merge costs a second wave. The pre-release suite
+fails closed on unexpected skips, so the people legs need both
+`E2E_FACES_SAMPLE_PHOTOS` and `E2E_FACES_PAIR_SAMPLES` set to run at all; an
+unset variable makes the run red, it does not quietly shrink the suite.
+
+### A red gate is a stop
+
+A red gate stops the work; it is never answered with a blind re-run
+(owner decision 2026-09-07).
+
+- A red caused by the change: fix the change (or the gate, if the gate is the
+  wrong one) and run it again.
+- A red caused by the environment — host load, a network or provider outage, a
+  missing fixture — is re-run **only after the cause is removed**, and the cause
+  and its removal are recorded with the run. Waiting for the 1-minute load
+  average to drop before a heavy gate, or exporting
+  `AVC_GATE_TIMEOUT_FACTOR`, is such a removal; re-running the same command on
+  the same loaded host is not.
+- A run the Playwright retry turned green is flaky-flagged and needs a filed P1
+  before the merge.
 
 The matrix's photo legs are `photos-real-decode` (scan → real `sips` proxy and
 thumb decode → status → search; never skippable on darwin),
