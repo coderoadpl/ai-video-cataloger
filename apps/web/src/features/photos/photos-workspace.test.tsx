@@ -319,7 +319,7 @@ describe('PhotosWorkspace', () => {
       })}
     />);
 
-    expect(getComputedStyle(screen.getByText('Owner path:')).minWidth).toBe('112px');
+    expect(getComputedStyle(screen.getByText('Location:')).minWidth).toBe('112px');
     expect(getComputedStyle(screen.getByText('Also at: 1 path')).minWidth).toBe('112px');
   });
 

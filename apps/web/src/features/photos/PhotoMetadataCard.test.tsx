@@ -64,6 +64,7 @@ describe('PhotoMetadataCard sightings', () => {
     renderWithProviders(<PhotoMetadataCard detail={detailWith([OWNER_PATH])} />);
 
     expect(screen.getByTestId('photo-metadata-row-owner-path').textContent).toContain(OWNER_PATH);
+    expect(screen.getByTestId('photo-metadata-row-owner-path').textContent).toContain('Location:');
     expect(screen.queryAllByTestId('photo-metadata-row-also-at')).toEqual([]);
   });
 

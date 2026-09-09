@@ -14,6 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The extracted-frames gallery caps its enlarged frame, so the thumbnail strip stays visible beside it on a wide details pane.
+- Photo details label the owning folder "Lokalizacja" / "Location", the same wording the video pane uses for that path.
+
+### Fixed
+
+- The "Index faces" button explains itself with a tooltip pointing at Settings while face grouping is switched off.
+
 ## [0.6.39] - 2026-09-09
 
 ### Fixed

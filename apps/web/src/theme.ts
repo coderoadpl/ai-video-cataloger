@@ -193,6 +193,7 @@ export const LIBRARY_TILE_GAP = 8;
 export const LIBRARY_SECTION_HEADER_HEIGHT = 36;
 export const PHOTO_ROW_THUMB_BOX = 56;
 export const PHOTO_ROW_HEIGHT = 96;
+export const DETAIL_FRAME_STAGE_MAX_WIDTH = 560;
 
 export const createAppTheme = (mode: ThemeMode): Theme => {
   const c = mode === 'dark' ? DARK : LIGHT;
