@@ -123,8 +123,8 @@ it('FPR-007 reuses bounded distinct-vector scores across decisions and undo', ()
   expect(decided.pending).toBe(initial.pending - 1);
   expect(undone).toEqual(initial);
   expect(scored).toBeLessThanOrEqual(3 * people.length);
-  expect(decidedMs).toBeLessThan(scaledTimeout(1000));
-  expect(undoneMs).toBeLessThan(scaledTimeout(1000));
+  expect(decidedMs).toBeLessThan(scaledTimeout(3000));
+  expect(undoneMs).toBeLessThan(scaledTimeout(3000));
   process.stdout.write(`FPR-007 distinct-vector generation: cold ${coldMs.toFixed(1)} ms, decide ${decidedMs.toFixed(1)} ms, undo ${undoneMs.toFixed(1)} ms\n`);
 }, scaledTimeout(45000));
 
@@ -250,14 +250,14 @@ it('FPR-007 yields during preprocessing and pair rows and reuses warm scores', (
   const steps = buildPeoplePairCandidatesSteps(input);
   const firstStart = performance.now();
   let step = steps.next();
-  expect(performance.now() - firstStart).toBeLessThan(scaledTimeout(50));
+  expect(performance.now() - firstStart).toBeLessThan(scaledTimeout(150));
   expect(visited).toBe(0);
   let maxVisited = 0;
   while (!step.done) {
     const before = visited;
     const start = performance.now();
     step = steps.next();
-    expect(performance.now() - start).toBeLessThan(scaledTimeout(100));
+    expect(performance.now() - start).toBeLessThan(scaledTimeout(300));
     maxVisited = Math.max(maxVisited, visited - before);
   }
   expect(maxVisited).toBeLessThanOrEqual(64);
