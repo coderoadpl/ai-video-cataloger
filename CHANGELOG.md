@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The release walkthrough waits for the photo scan to finish before capturing the photos sidebar and picks the analysed row by name instead of a proxy-failure badge.
+
 ### Fixed
 
 - Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.

@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -118,6 +118,7 @@ const BACKUP_TIMEOUT_MS = 180_000;
 const TREE_THUMBNAIL_TIMEOUT_MS = 60_000;
 const CONTROL_POLL_MS = 250;
 const FACES_TIMEOUT_MS = 600_000;
+const PHOTO_SCAN_POLL_MS = 500;
 const ANALYZER_FLAG_PATTERN = /^local:(.+)$/;
 
 const optionsSchema = z.object({
@@ -276,6 +277,62 @@ export const prepareScratchFixtures = (fixturesDir, facesSamplesDir = null) => {
   return scratchDir;
 };
 
+const rootPhotoNames = (scratchDir) =>
+  readdirSync(scratchDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && PHOTO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+
+// photos.db keys a photo by the hash of its bytes, so the fixtures' intentional byte-identical
+// duplicate pair collapses into a single sidebar row: counting files would over-count the rows the
+// folder scope can ever show.
+export const scratchPhotoExpectation = (scratchDir) => {
+  const names = rootPhotoNames(scratchDir);
+  const fingerprints = new Set(
+    names.map((name) => createHash('sha256').update(readFileSync(path.join(scratchDir, name))).digest('hex')),
+  );
+  return {
+    expectedRows: fingerprints.size,
+    realPhotoNames: names.filter((name) => name !== BROKEN_PHOTO_NAME),
+  };
+};
+
+export const photosScanDecision = ({ rows, scanning, expected }) => {
+  if (scanning) return 'wait';
+  if (rows === 0) return 'skip';
+  return rows >= expected ? 'ready' : 'wait';
+};
+
+// The auto-scan owns three consecutive surfaces (the sidebar's loading spinner, its unscanned
+// panel, and the toolbar's running-job label), and a row can already be catalogued while the rest
+// of the folder is still being walked.
+const PHOTO_SCAN_BUSY_TEST_IDS = ['photos-sidebar-loading', 'photos-sidebar-unscanned', 'photos-analyze-status-label'];
+
+const photosScanInFlight = async (page) => {
+  for (const testId of PHOTO_SCAN_BUSY_TEST_IDS) {
+    if (await page.getByTestId(testId).first().isVisible()) return true;
+  }
+  return false;
+};
+
+const waitForPhotoScan = async (page, expected) => {
+  const rowLocator = page.getByTestId('photos-sidebar-row');
+  const startedAt = Date.now();
+  let previous = null;
+  let rows = 0;
+  while (Date.now() - startedAt < FOLDER_TIMEOUT_MS) {
+    const scanning = await photosScanInFlight(page);
+    rows = await rowLocator.count();
+    const decision = photosScanDecision({ rows, scanning, expected });
+    if (decision !== 'wait' && previous !== null && previous.decision === decision && previous.rows === rows) {
+      return { outcome: decision, rows, waitedMs: Date.now() - startedAt };
+    }
+    previous = { decision, rows };
+    await delay(PHOTO_SCAN_POLL_MS);
+  }
+  return { outcome: 'timeout', rows, waitedMs: Date.now() - startedAt };
+};
+
 const buildPlan = async (options) => {
   const appPath = requireDirectory(options.app, '--app');
   const sourceFixturesDir = requireDirectory(options.fixtures, '--fixtures');
@@ -289,6 +346,7 @@ const buildPlan = async (options) => {
   const windowSize = parseWindowSize(options.windowSize);
   const analyzer = options.analyzer === undefined ? null : parseAnalyzerFlag(options.analyzer);
   if (analyzer !== null) await checkOllamaAnalyzer(analyzer.model);
+  const photoExpectation = scratchPhotoExpectation(fixturesDir);
   return {
     appPath,
     executablePath: executableInside(appPath),
@@ -307,6 +365,8 @@ const buildPlan = async (options) => {
     analyzer,
     facesSamplesDir,
     faceModelsDir: faceModelsCacheDirectory(process.env),
+    expectedPhotoRows: photoExpectation.expectedRows,
+    realPhotoNames: photoExpectation.realPhotoNames,
   };
 };
 
@@ -998,18 +1058,27 @@ const drive = async (plan) => {
     const mediaPhotos = page.getByTestId('analysis-media-photos');
     if (!(await appeared(mediaPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Analysis media toggle in this build');
     await mediaPhotos.click();
-    if (!(await appeared(page.getByTestId('photos-sidebar-row'), FOLDER_TIMEOUT_MS))) {
-      return skipped('no photos catalogued in this home');
+    const scan = await waitForPhotoScan(page, plan.expectedPhotoRows);
+    const waitedSeconds = (scan.waitedMs / 1000).toFixed(1);
+    if (scan.outcome === 'skip') return skipped('no photos catalogued in this home');
+    if (scan.outcome === 'timeout') {
+      return failed(`the photo scan never settled: ${String(scan.rows)} of ${String(plan.expectedPhotoRows)} expected rows after ${waitedSeconds}s`);
     }
-    return done('Analysis Photos sidebar rendered');
+    return done(`Analysis Photos sidebar rendered ${String(scan.rows)} catalogued row(s); the scan settled after ${waitedSeconds}s`);
   });
 
   await record('analysis-photos', async () => {
     const rows = page.getByTestId('photos-sidebar-row');
     if (!(await appeared(rows.first(), SETTLE_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
-    const usableRow = rows.filter({ hasNot: page.getByTestId('photos-sidebar-badge-proxyFailed') }).first();
+    // Never by the proxyFailed badge: it only renders once the proxy pass has failed, so mid-scan the
+    // planted unloadable photo passes that filter and the step analyses the one file that cannot work.
+    const usableRow = page.locator(`[data-testid="photos-sidebar-row"]:not([title$="${BROKEN_PHOTO_NAME}"])`).first();
     if (!(await appeared(usableRow, SETTLE_TIMEOUT_MS))) {
-      return skipped('every catalogued photo has a failed proxy (analyze strip needs proxyState=done)');
+      return skipped(`only ${BROKEN_PHOTO_NAME} is catalogued in this home (the analyze strip needs a loadable photo)`);
+    }
+    const usableRowName = path.basename((await usableRow.getAttribute('title')) ?? '');
+    if (!plan.realPhotoNames.includes(usableRowName)) {
+      return failed(`the photos sidebar offered "${usableRowName}", which is none of the planted fixture photos`);
     }
     await usableRow.click();
     if (!(await appeared(page.getByTestId('photos-analysis-detail'), VISIBLE_TIMEOUT_MS))) {
@@ -1021,7 +1090,7 @@ const drive = async (plan) => {
     if (await appeared(page.getByTestId('video-item'), SETTLE_TIMEOUT_MS)) {
       return failed('video list visible in the photos sidebar');
     }
-    return done('Analysis Photos workspace shows the detail and analyze affordance');
+    return done(`Analysis Photos workspace shows the detail and analyze affordance for ${usableRowName}`);
   });
 
   await record('photos-tree', async () => {
