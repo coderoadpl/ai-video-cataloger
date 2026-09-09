@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Trash and photo processing complete without deadlocking when processing reaches its chained face pass.
+- Pair review bounds retained score buffers to 8 MiB on large catalogs and yields between people during generation.
 - Backups stage database snapshots and artifact copies under the same exclusion resource used by synchronous catalog mutations, so a concurrent forget cannot remove a crop from the captured backup.
 - Search and Library previews prefer the recorded filename and verify fingerprints before recovering a renamed path, preventing a colliding suggestion from showing another video's media.
 - Selecting analysis variants keeps the selected projection under the video's physical filename, including when variants suggest different names.

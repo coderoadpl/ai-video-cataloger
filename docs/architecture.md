@@ -1321,6 +1321,16 @@ requested while the claim is held is refused with `conflict`, not queued
 (`enqueue` fails closed on a busy `resourceKey`; only `acquireResource`
 waits), and it runs from the watcher's single post-settle refresh.
 
+The shared resource order is `catalog-write`, then resolved roots in lexical
+order (each root, `photo-scan:<root>`, `photo-process:<root>`), then resolved
+file paths in lexical order, then `faces-write`. A use case takes the subset it
+needs in that order, including resources held by its enclosing job, and must
+never wait for a root or processing resource while holding `faces-write`.
+Trash follows the full order. Photo processing and drive processing hold their
+processing/root resource before the chained face pass claims `faces-write`.
+Backup snapshots claim only `catalog-write`; standalone face jobs, face
+mutations and catalog forget claim only `faces-write`.
+
 A hidden file must survive rescans, and structurally rather than by convention:
 every rescan and analysis path reaches the row through `upsertFile` /
 `upsertPhoto`, whose conflict `set` clause **omits** `hiddenAt`, so an UPDATE
@@ -1938,6 +1948,17 @@ and serialize unrelated operations; explicit flushes wait for the batch to settl
 Forget and purge transactionally retain pending crop cleanup in schema V19 until
 filesystem deletion succeeds. Failures after application report `applied: true`
 and a durability or cleanup phase so clients can reconcile and retry.
+
+Pair review scores eligible pairs one person at a time and retains at most the
+requested output cap of top scores per person. The per-person allowance shrinks
+with catalog size to keep all retained numeric score buffers within 8 MiB per
+store. Exclusions and the centroid prefilter precede exemplar scoring; uncached
+scores are recomputed so the global ranking and pending count remain exact.
+The cache key fingerprints the complete loaded people, observation and embedding
+snapshot, with scope thresholds and output limit, and changes after a people
+mutation. Each generation captures its version's rows so overlapping requests
+cannot write scores into another version. The pairs use case yields to the event
+loop between people; generation remains on the main thread.
 
 Reclustering advances deterministic domain generators in bounded work chunks,
 yielding to the event loop and checking cancellation between chunks. Similarity,

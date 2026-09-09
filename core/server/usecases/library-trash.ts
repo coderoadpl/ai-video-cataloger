@@ -479,9 +479,9 @@ const acquireLibraryTrashResources = async (
   if (progress !== undefined && !progress.ok) return progress;
   const keys = [...new Set([
     'catalog-write',
-    'faces-write',
     ...roots.flatMap((root) => [root, `photo-scan:${root}`, `photo-process:${root}`]),
     ...paths,
+    'faces-write',
   ])];
   for (const key of keys) {
     const acquired = await deps.jobs.acquireResource(key, context?.signal);
