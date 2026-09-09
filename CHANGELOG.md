@@ -14,56 +14,95 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
-### Changed
-
-- The release walkthrough waits for the photo scan to finish before capturing the photos sidebar and picks the analysed row by name instead of a proxy-failure badge.
+## [0.6.39] - 2026-09-09
 
 ### Fixed
 
-- Trash and photo processing complete without deadlocking when processing reaches its chained face pass.
-- Pair review bounds retained score buffers to 8 MiB on large catalogs and yields between people during generation.
-- Backups stage database snapshots and artifact copies under the same exclusion resource used by synchronous catalog mutations, so a concurrent forget cannot remove a crop from the captured backup.
-- Search and Library previews prefer the recorded filename and verify fingerprints before recovering a renamed path, preventing a colliding suggestion from showing another video's media.
-- Selecting analysis variants keeps the selected projection under the video's physical filename, including when variants suggest different names.
-- Thumbnail backfill maps staged frames by recorded filenames and hashes unmatched files, preventing colliding suggestions from supplying another video's frames.
-- Retrying partially completed photo trash resumes from the remaining sightings while retaining analyses until all copies are moved.
-- Materializing a rename carries cover and grid thumbnails with grid provenance and removes owned obsolete name-based artifacts after durable catalog relocation.
-- Duplicate scan links use the verified reachable canonical video path when a suggested rename was skipped.
-- The first write to a legacy read-only artifact mirror merges it into the canonical mirror, preserving canonical files on collisions and retaining legacy-only artifacts.
-- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
-- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
-- Pair review prevents additional answers and undo actions until the queue refresh completes.
-- Pair review disables undo after an irreversible merge.
-- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower.
-- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable.
-- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person.
-- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision.
-- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities.
-- Smoke and GUI gates reject declared dependency versions or Electron runtime versions that differ from the lockfile, provide a reinstall instruction, and record the Electron version exercised by GUI runs.
-- Prerelease reports must contain executed tests for every expected project; empty or missing-project reports fail the gate.
-- Prerelease invocations use unique report directories outside Playwright output and a checkout lock to prevent concurrent report and build interference.
-- E2E failures receive one diagnostic retry with tracing; recovered failures remain red and are counted separately as flaky.
-- Walkthrough steps fail on screenshot rejection or missing evidence, capture CSS-pixel PNGs, and measure work-area capping from outer window bounds with a bounded settle wait.
-- Strict walkthrough skips require explicit fixture reasons; viewer, player, and Analysis navigation failures after selecting a video fail the run.
-- Pair-review gates accept an empty queue only after a successful completed query, including after relaunch, and fail on query errors or timeouts.
-- GUI fixtures retain their files when shutdown fails and wait for process termination before marking the driver closed.
-- E2E preflight requires a canonical isolated HOME and an explicit scratch directory; every desktop launch overrides inherited profile paths and keeps pair-review windows inactive.
+- Trash and photo processing complete without deadlocking when processing reaches its chained face pass
+  ([`57018cd`](https://github.com/coderoadpl/ai-video-cataloger/commit/57018cddd61f12ebb745e411720a50d3483a8251)).
+- Pair review bounds retained score buffers to 8 MiB on large catalogs and yields between people during generation
+  ([`57018cd`](https://github.com/coderoadpl/ai-video-cataloger/commit/57018cddd61f12ebb745e411720a50d3483a8251)).
+- Backups stage database snapshots and artifact copies under the same exclusion resource used by synchronous catalog mutations, so a concurrent forget cannot remove a crop from the captured backup
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Search and Library previews prefer the recorded filename and verify fingerprints before recovering a renamed path, preventing a colliding suggestion from showing another video's media
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Selecting analysis variants keeps the selected projection under the video's physical filename, including when variants suggest different names
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Thumbnail backfill maps staged frames by recorded filenames and hashes unmatched files, preventing colliding suggestions from supplying another video's frames
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Retrying partially completed photo trash resumes from the remaining sightings while retaining analyses until all copies are moved
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Materializing a rename carries cover and grid thumbnails with grid provenance and removes owned obsolete name-based artifacts after durable catalog relocation
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Duplicate scan links use the verified reachable canonical video path when a suggested rename was skipped
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- The first write to a legacy read-only artifact mirror merges it into the canonical mirror, preserving canonical files on collisions and retaining legacy-only artifacts
+  ([`a5737d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/a5737d23d1ce3cde503d0addbde452a78a377f67)).
+- Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Pair review prevents additional answers and undo actions until the queue refresh completes
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Pair review disables undo after an irreversible merge
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Undo immediately restores the answered pair first, even when its refreshed queue rank is lower
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Pair review shows loading and query errors instead of an empty review queue while candidates are unavailable
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Explicit merges remove contradictory decisions using current observation ownership, including after an unassigned anchor gains a person
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Face indexing can found a compatible identity when a higher-similarity supporter is blocked by a different decision
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Pair review reuses unchanged embedding scores across decisions and undo instead of recalculating cross-exemplar similarities
+  ([`3f97a45`](https://github.com/coderoadpl/ai-video-cataloger/commit/3f97a457f4159723176802db9082138ae1a4d417)).
+- Smoke and GUI gates reject declared dependency versions or Electron runtime versions that differ from the lockfile, provide a reinstall instruction, and record the Electron version exercised by GUI runs
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- Prerelease reports must contain executed tests for every expected project; empty or missing-project reports fail the gate
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- Prerelease invocations use unique report directories outside Playwright output and a checkout lock to prevent concurrent report and build interference
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- E2E failures receive one diagnostic retry with tracing; recovered failures remain red and are counted separately as flaky
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- Walkthrough steps fail on screenshot rejection or missing evidence, capture CSS-pixel PNGs, and measure work-area capping from outer window bounds with a bounded settle wait
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- Strict walkthrough skips require explicit fixture reasons; viewer, player, and Analysis navigation failures after selecting a video fail the run
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- Pair-review gates accept an empty queue only after a successful completed query, including after relaunch, and fail on query errors or timeouts
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- GUI fixtures retain their files when shutdown fails and wait for process termination before marking the driver closed
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
+- E2E preflight requires a canonical isolated HOME and an explicit scratch directory; every desktop launch overrides inherited profile paths and keeps pair-review windows inactive
+  ([`51442cc`](https://github.com/coderoadpl/ai-video-cataloger/commit/51442cc4ca9d577683f8744e6b1e0a8d6d72e347)).
 
 ### Changed
 
-- The "Ta sama osoba?" review is now one task on screen: while it is open the People header drops the minimum-occurrences slider, the sort toggle, "Scal wybrane" and the selection bar and names the scope instead, the three answers carry distinct weights (Tak contained, Nie outlined, Pomiń text) in one equal-width row with their key hints and captions on a single line below, "Pomiń" says the pair comes back in 30 days, each answer is announced with its shortcut and consequence, the position counter is a live region, a person without example crops gets a square tile in the same grid as the crops, and an emptied queue acknowledges how many questions were answered and offers the way back.
-- The entry point to the pair review reads "Sprawdź podobne osoby (N)" / "Review look-alikes (N)" and is the single call to action in the People header row; the Ustawienia scope control says the questions appear on the People tab, carries a real label for assistive technology and is inactive while local face grouping is off.
-- Polish copy no longer stutters on an auto-generated person: "Twarz: Osoba 3", "Pliki: Osoba 3", "Wybierz: Osoba 3"; a merge asks "Którą nazwę zachować?", matching the "Nazwa wyświetlana" field it refers to.
-- The Collection grid no longer jumps sideways when loading finishes, a tile shows its file name on hover, and a catalog tree row no longer repeats that name through its thumbnail for a screen reader.
-- "Analizuj wszystko (N)" now says in words that files which ended in an error are not re-attempted by the batch and points at the per-file "Analizuj ponownie", so the count over a longer list of rows no longer reads as arithmetic gone wrong.
-- `process` and `process-drive` reject `--timeout` outside the config schema's 30..600-second range as a CLI usage error.
-- API debug logs redact request, response and transport-error bodies for credential, backup-secret and OAuth routes.
-- Map pin popovers use geographic screen positions, keeping their anchors available when zooming or panning changes the rendered pins.
-- GPS backfill reports failed and precedence-skipped writes in `failures` and re-resolves stored place names when written coordinates change.
-- Video and photo GPS backfill reject invalid numeric options during CLI parsing: tolerance is 0..240 minutes and maximum visit length is 1..720 hours.
-- Drive processing emits `faces_waiting` only for a contended faces-write claim and preserves claim errors instead of reporting every claim failure as cancellation.
-
-- The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded.
+- The "Ta sama osoba?" review is now one task on screen: while it is open the People header drops the minimum-occurrences slider, the sort toggle, "Scal wybrane" and the selection bar and names the scope instead, the three answers carry distinct weights (Tak contained, Nie outlined, Pomiń text) in one equal-width row with their key hints and captions on a single line below, "Pomiń" says the pair comes back in 30 days, each answer is announced with its shortcut and consequence, the position counter is a live region, a person without example crops gets a square tile in the same grid as the crops, and an emptied queue acknowledges how many questions were answered and offers the way back
+  ([`f2a56a8`](https://github.com/coderoadpl/ai-video-cataloger/commit/f2a56a83c1493091cc11db29431dc7ea267f39cc)).
+- The entry point to the pair review reads "Sprawdź podobne osoby (N)" / "Review look-alikes (N)" and is the single call to action in the People header row; the Ustawienia scope control says the questions appear on the People tab, carries a real label for assistive technology and is inactive while local face grouping is off
+  ([`f2a56a8`](https://github.com/coderoadpl/ai-video-cataloger/commit/f2a56a83c1493091cc11db29431dc7ea267f39cc)).
+- Polish copy no longer stutters on an auto-generated person: "Twarz: Osoba 3", "Pliki: Osoba 3", "Wybierz: Osoba 3"; a merge asks "Którą nazwę zachować?", matching the "Nazwa wyświetlana" field it refers to
+  ([`f2a56a8`](https://github.com/coderoadpl/ai-video-cataloger/commit/f2a56a83c1493091cc11db29431dc7ea267f39cc)).
+- The Collection grid no longer jumps sideways when loading finishes, a tile shows its file name on hover, and a catalog tree row no longer repeats that name through its thumbnail for a screen reader
+  ([`f2a56a8`](https://github.com/coderoadpl/ai-video-cataloger/commit/f2a56a83c1493091cc11db29431dc7ea267f39cc)).
+- "Analizuj wszystko (N)" now says in words that files which ended in an error are not re-attempted by the batch and points at the per-file "Analizuj ponownie", so the count over a longer list of rows no longer reads as arithmetic gone wrong
+  ([`f2a56a8`](https://github.com/coderoadpl/ai-video-cataloger/commit/f2a56a83c1493091cc11db29431dc7ea267f39cc)).
+- `process` and `process-drive` reject `--timeout` outside the config schema's 30..600-second range as a CLI usage error
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- API debug logs redact request, response and transport-error bodies for credential, backup-secret and OAuth routes
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- Map pin popovers use geographic screen positions, keeping their anchors available when zooming or panning changes the rendered pins
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- GPS backfill reports failed and precedence-skipped writes in `failures` and re-resolves stored place names when written coordinates change
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- Video and photo GPS backfill reject invalid numeric options during CLI parsing: tolerance is 0..240 minutes and maximum visit length is 1..720 hours
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- Drive processing emits `faces_waiting` only for a contended faces-write claim and preserves claim errors instead of reporting every claim failure as cancellation
+  ([`0e53549`](https://github.com/coderoadpl/ai-video-cataloger/commit/0e535497ff8de5b8efee971e83d849fce6d640b2)).
+- The release walkthrough waits for the photo scan to finish before capturing the photos sidebar and picks the analysed row by name instead of a proxy-failure badge
+  ([`9de1941`](https://github.com/coderoadpl/ai-video-cataloger/commit/9de19417329c7e9f07bfd34d5afe79c6691d7e1e)).
+- The release procedure is documented as a cadence: every merged wave with user-visible behaviour ships as a patch release through a three-stage cycle (gates, pre-release e2e, package with the strict walkthrough and an independent screenshot review, then publish and install), a large UI wave runs `pnpm run test:e2e:prerelease` before merging rather than only `check` and `smoke`, and a red gate stops the work — an environment red is re-run only after its cause is removed and recorded
+  ([`69d9a01`](https://github.com/coderoadpl/ai-video-cataloger/commit/69d9a0155f9ff0f4a5fcfc1e8f06e20298e018b1)).
 
 ## [0.6.38] - 2026-09-08
 
