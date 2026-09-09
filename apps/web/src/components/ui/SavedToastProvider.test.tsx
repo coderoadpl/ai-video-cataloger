@@ -6,12 +6,12 @@ import { SavedToastProvider as Scope, useSavedMessage, useSavedToast } from './S
 const Notification = () => {
   const { message } = useSavedMessage();
   const show = useSavedToast();
-  return <><button onClick={() => show('Saved')}>Save</button><output>{message}</output></>;
+  return <><button onClick={() => show('Stored')}>Save</button><output>{message}</output></>;
 };
 
 it('keeps saved notifications local to their mounted shell', () => {
   render(<><section aria-label="first"><Scope><Notification /></Scope></section><section aria-label="second"><Scope><Notification /></Scope></section></>);
   fireEvent.click(within(screen.getByRole('region', { name: 'first' })).getByText('Save'));
-  expect(within(screen.getByRole('region', { name: 'first' })).getByRole('status').textContent).toBe('Saved');
+  expect(within(screen.getByRole('region', { name: 'first' })).getByRole('status').textContent).toBe('Stored');
   expect(within(screen.getByRole('region', { name: 'second' })).getByRole('status').textContent).toBe('');
 });
