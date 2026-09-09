@@ -1,3 +1,4 @@
+import { actions } from '../../api.js';
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -527,7 +528,7 @@ describe('details panel', () => {
         </ThemeProvider>
       </QueryClientProvider>,
     );
-    await rendered.queryClient.invalidateQueries();
+    await rendered.queryClient.invalidateQueries({ queryKey: actions.variants({ fingerprint: ' ' }).queryKey.slice(0, 1) });
 
     expect(await screen.findByRole('heading', { name: '2026-08-03_renamed.mp4' })).toBeDefined();
     expect(screen.getByText('/videos/2026-08-03_renamed.mp4')).toBeDefined();

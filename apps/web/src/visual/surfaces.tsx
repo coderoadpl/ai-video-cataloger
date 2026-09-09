@@ -43,6 +43,7 @@ const SURFACE_IDS = [
   'photos-sidebar-narrow',
   'photos-sidebar-wide',
   'people-pair-review',
+  'people-pair-review-alerts',
 ] as const;
 
 export type SurfaceId = (typeof SURFACE_IDS)[number];
@@ -52,7 +53,8 @@ type StandaloneSurfaceId =
   | 'catalog-sidebar-wide'
   | 'photos-sidebar-narrow'
   | 'photos-sidebar-wide'
-  | 'people-pair-review';
+  | 'people-pair-review'
+  | 'people-pair-review-alerts';
 type ShellSurfaceId = Exclude<SurfaceId, StandaloneSurfaceId>;
 
 const DEFAULT_SURFACE: SurfaceId = 'shell-default';
@@ -432,9 +434,18 @@ const PAIR_REVIEW_STATE: PeoplePairsState = {
   undo: noop,
 };
 
-const PairReviewFixture = () => (
+const PAIR_REVIEW_ALERTS_STATE: PeoplePairsState = {
+  ...PAIR_REVIEW_STATE,
+  truncated: true,
+  answeredThisSession: 2,
+  canUndo: true,
+  notUndoable: true,
+  error: 'Could not save the answer.',
+};
+
+const PairReviewFixture = ({ state }: { state: PeoplePairsState }) => (
   <Box sx={{ maxWidth: 880, p: 3 }}>
-    <PairReview state={PAIR_REVIEW_STATE} disabled={false} lockReason={undefined} />
+    <PairReview state={state} disabled={false} lockReason={undefined} onBack={noop} />
   </Box>
 );
 
@@ -577,10 +588,10 @@ export const VisualSurface = ({ id }: { id: SurfaceId }) => {
       </Box>
     );
   }
-  if (id === 'people-pair-review') {
+  if (id === 'people-pair-review' || id === 'people-pair-review-alerts') {
     return (
       <Box data-testid={`visual-surface-${id}`} sx={{ minHeight: '100vh' }}>
-        <PairReviewFixture />
+        <PairReviewFixture state={id === 'people-pair-review' ? PAIR_REVIEW_STATE : PAIR_REVIEW_ALERTS_STATE} />
       </Box>
     );
   }

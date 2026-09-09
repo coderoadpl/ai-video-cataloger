@@ -323,6 +323,25 @@ describe('CatalogTree', () => {
     expect(thumb?.getAttribute('data-thumbnail-height')).toBe('56');
   });
 
+  it('leaves the row thumbnail out of the accessible name the row text already carries', () => {
+    const withThumbnail = makeVideo('/drive/top.mp4', {
+      artifacts: {
+        framePaths: null,
+        transcriptContent: null,
+        transcriptPath: null,
+        summary: null,
+        summaryPath: null,
+        thumbnailPath: '/drive/.thumbs/top.jpg',
+        thumbnailMtime: 1,
+        newFilename: null,
+      },
+    });
+    renderTree({ rootVideos: [withThumbnail] });
+
+    expect(screen.getByTestId('media-thumbnail-img').getAttribute('alt')).toBe('');
+    expect(screen.getByText('top.mp4')).toBeDefined();
+  });
+
   it('does not render a transient Skipped badge on catalog rows', () => {
     renderTree();
     expect(screen.queryByTestId('skipped-badge')).toBeNull();

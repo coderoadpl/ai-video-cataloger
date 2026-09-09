@@ -78,6 +78,7 @@ import {
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { RECOVERY_KEY_ENV, resolveRecoveryKey } from './recovery-key.js';
+import { timeoutOption, toleranceMinutesOption, maxVisitHoursOption } from './numeric-option.js';
 import { runProgram } from './run-program.js';
 import {
   executeSetup,
@@ -786,7 +787,7 @@ program
   .option('-f, --frames <number>', 'number of frames', numberOption, 3)
   .option('-s, --skip-rename', 'skip renaming', false)
   .option('-v, --verbose', 'verbose output', false)
-  .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
+  .option('-t, --timeout <seconds>', 'analysis timeout', timeoutOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
   .option('--whisper-language <language>', 'whisper transcription language', whisperLanguageOption, 'auto')
@@ -861,7 +862,7 @@ program
   .option('-f, --frames <number>', 'number of frames', numberOption, 3)
   .option('-s, --skip-rename', 'skip renaming', false)
   .option('-v, --verbose', 'verbose output', false)
-  .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
+  .option('-t, --timeout <seconds>', 'analysis timeout', timeoutOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
   .option('--whisper-language <language>', 'whisper transcription language', whisperLanguageOption, 'auto')
@@ -1021,13 +1022,13 @@ gps
   .description('Fill empty catalog coordinates from a Google Timeline export')
   .option('--root <path>', 'restrict the backfill to files under this folder')
   .option('--dry-run', 'report matches without writing', false)
-  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', '30')
-  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', '36')
+  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', toleranceMinutesOption, 30)
+  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', maxVisitHoursOption, 36)
   .option('--reresolve-places', 're-resolve place names even where one is already stored', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (
     timelinePath: string,
-    options: { root?: string; dryRun?: boolean; toleranceMinutes: string; maxVisitHours: string; reresolvePlaces?: boolean; json?: boolean },
+    options: { root?: string; dryRun?: boolean; toleranceMinutes: number; maxVisitHours: number; reresolvePlaces?: boolean; json?: boolean },
   ) => {
     const json = isJsonMode(options);
     const resolvedTimelinePath = path.resolve(cliWorkingDirectory, timelinePath);
@@ -1035,8 +1036,8 @@ gps
       timelinePath: resolvedTimelinePath,
       root: options.root === undefined ? undefined : path.resolve(cliWorkingDirectory, options.root),
       dryRun: options.dryRun === true,
-      toleranceMinutes: Number.parseInt(options.toleranceMinutes, 10),
-      maxVisitHours: Number.parseInt(options.maxVisitHours, 10),
+      toleranceMinutes: options.toleranceMinutes,
+      maxVisitHours: options.maxVisitHours,
       reresolvePlaces: options.reresolvePlaces === true,
     };
     emitStarted(json, 'gps_backfill', input);
@@ -1956,13 +1957,13 @@ photosGps
   .description('Fill empty photo coordinates from a Google Timeline export')
   .option('--root <path>', 'restrict the backfill to photos under this folder')
   .option('--dry-run', 'report matches without writing', false)
-  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', '30')
-  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', '36')
+  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', toleranceMinutesOption, 30)
+  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', maxVisitHoursOption, 36)
   .option('--reresolve-places', 're-resolve place names even where one is already stored', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (
     timelinePath: string,
-    options: { root?: string; dryRun?: boolean; toleranceMinutes: string; maxVisitHours: string; reresolvePlaces?: boolean; json?: boolean },
+    options: { root?: string; dryRun?: boolean; toleranceMinutes: number; maxVisitHours: number; reresolvePlaces?: boolean; json?: boolean },
   ) => {
     const json = isJsonMode(options);
     const resolvedTimelinePath = path.resolve(cliWorkingDirectory, timelinePath);
@@ -1970,8 +1971,8 @@ photosGps
       timelinePath: resolvedTimelinePath,
       root: options.root === undefined ? undefined : path.resolve(cliWorkingDirectory, options.root),
       dryRun: options.dryRun === true,
-      toleranceMinutes: Number.parseInt(options.toleranceMinutes, 10),
-      maxVisitHours: Number.parseInt(options.maxVisitHours, 10),
+      toleranceMinutes: options.toleranceMinutes,
+      maxVisitHours: options.maxVisitHours,
       reresolvePlaces: options.reresolvePlaces === true,
     };
     emitStarted(json, 'photos_gps_backfill', input);

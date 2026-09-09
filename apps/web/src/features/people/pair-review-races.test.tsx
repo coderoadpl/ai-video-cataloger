@@ -41,7 +41,7 @@ const setup = (initial: FacesPairCandidate[]) => {
   const Host = () => {
     const pairs = usePeoplePairs({ enabled: true });
     useEffect(() => { state = pairs; }, [pairs]);
-    return <ThemeProvider theme={createAppTheme('light')}><PairReview state={pairs} disabled={false} lockReason={undefined} /></ThemeProvider>;
+    return <ThemeProvider theme={createAppTheme('light')}><PairReview state={pairs} disabled={false} lockReason={undefined} onBack={() => {}} /></ThemeProvider>;
   };
   const rendered = renderWithProviders(<Host />);
   return { ...rendered, decisions, getState: () => {

@@ -21,6 +21,17 @@ prove rules, suppression policy), wide events over the `@opentelemetry/api`
 facade, and the two gates (`check` static, `smoke` runtime; static-green is
 not done).
 
+### Renderer shell ownership
+
+Saved notifications belong to a React context provider mounted in the shell;
+feature islands use its stable notification action. The refresh notification
+store is the one retained non-React bridge: QueryCache.onError runs outside
+React, including background refetches, and must report failures after cached
+data has already been displayed. It owns refresh errors only; saved messages
+must not use that bridge. Cache invalidations name the affected bound-action
+query families, retaining unrelated cached data. Routes compose feature wiring;
+feature-local selection and processing presentation live in their own islands.
+
 ## Delta 1 — local-first: the app IS the server
 
 There is no remote backend and no network dependency for core functionality.
@@ -88,7 +99,7 @@ Two scopes remain, with catalog ownership revised by
   is `cfg_` plus the first 12 hex characters of SHA-256 over the normalized,
   key-sorted config descriptor. That closed descriptor includes every
   result-shaping analyzer field, the transcription source, frame count where
-  applicable, `output_language`, `tag_language` when it is pinned, and
+  applicable, `output_language`, `tag_language` when either output or tag language is pinned, and
   `promptVersion`. See
   [ADR-0010](decisions/0010-analysis-variant-identity-artifacts-and-dedup.md).
 - **Per-folder sidecar artifacts** — `{folder}/.ai-video-cataloger/config.json`

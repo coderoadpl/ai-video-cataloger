@@ -9,6 +9,7 @@ export type AnalyzeScope = 'folder' | 'tree';
 
 interface ScopeAnalyzeToolbarProps {
   pendingCount: number;
+  erroredCount?: number;
   isBusy: boolean;
   progress: BatchProgressView | null;
   batchWait?: { requestCount: number } | null | undefined;
@@ -21,6 +22,7 @@ interface ScopeAnalyzeToolbarProps {
 
 export const ScopeAnalyzeToolbar = ({
   pendingCount,
+  erroredCount = 0,
   isBusy,
   progress,
   batchWait,
@@ -82,17 +84,24 @@ export const ScopeAnalyzeToolbar = ({
             {progress.currentFilename}
           </Typography>
         </Box>
-      ) : isBusy || !showAnalyze ? null : (
+      ) : isBusy || (!showAnalyze && erroredCount === 0) ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          <AnalyzeAllButton
-            pendingCount={pendingCount}
-            approximate={approximateCount}
-            disabled={disabledReason !== undefined}
-            onClick={onAnalyze}
-          />
-          {disabledReason === undefined ? null : (
+          {showAnalyze ? (
+            <AnalyzeAllButton
+              pendingCount={pendingCount}
+              approximate={approximateCount}
+              disabled={disabledReason !== undefined}
+              onClick={onAnalyze}
+            />
+          ) : null}
+          {showAnalyze && disabledReason !== undefined ? (
             <Typography variant="caption" color="text.secondary">
               {disabledReason}
+            </Typography>
+          ) : null}
+          {erroredCount === 0 ? null : (
+            <Typography variant="caption" color="text.secondary" data-testid="analyze-errored-hint">
+              {dictionary.batchToolbar.analyzeSkipsErrored(erroredCount)}
             </Typography>
           )}
         </Box>

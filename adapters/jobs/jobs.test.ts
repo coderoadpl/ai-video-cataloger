@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { appError, ok } from '@core/domain/index.js';
 import { JOB_CANCELLED_ERROR_MESSAGE, type JobRecord } from '@core/server/index.js';
@@ -288,6 +288,31 @@ describe('InProcessJobsPort', () => {
   }, scaledTimeout(30_000));
 
   describe('acquireResource', () => {
+    it('reports contention once and releases a claim after the holder settles', async () => {
+      const jobs = new InProcessJobsPort();
+      const report = vi.fn(async () => ok(undefined));
+      const first = await jobs.acquireResource('faces-write', undefined, report);
+      expect(report).not.toHaveBeenCalled();
+      const pending = jobs.acquireResource('faces-write', undefined, report);
+      expect(report).toHaveBeenCalledTimes(1);
+      if (first.ok) first.value();
+      const second = await pending;
+      expect(second.ok).toBe(true);
+      if (second.ok) second.value();
+    });
+
+    it('preserves a failed contention report without retaining a claim', async () => {
+      const jobs = new InProcessJobsPort();
+      const first = await jobs.acquireResource('faces-write');
+      const error = appError('not_found', 'job no longer exists');
+      const second = await jobs.acquireResource('faces-write', undefined, async () => ({ ok: false, error }));
+      expect(second).toEqual({ ok: false, error });
+      if (first.ok) first.value();
+      const next = await jobs.acquireResource('faces-write');
+      expect(next.ok).toBe(true);
+      if (next.ok) next.value();
+    });
+
     it('resolves immediately when no job holds the resource key and enqueue then rejects', async () => {
       const jobs = new InProcessJobsPort();
       const claim = await jobs.acquireResource('faces-write');

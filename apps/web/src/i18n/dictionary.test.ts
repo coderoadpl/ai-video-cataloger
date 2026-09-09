@@ -154,6 +154,51 @@ describe('dictionary', () => {
     expect(pl.people.mergeSelectHint).toBe('Zaznacz co najmniej dwie osoby.');
   });
 
+  it('names an auto-generated person without a genitive stutter', () => {
+    const auto = pl.people.personName(2);
+    expect(auto).toBe('Osoba 3');
+    expect(pl.people.pairReviewCrop(auto)).toBe('Twarz: Osoba 3');
+    expect(pl.people.personSelectionTitle(auto)).toBe('Pliki: Osoba 3');
+    expect(pl.people.selectPerson(auto)).toBe('Wybierz: Osoba 3');
+  });
+
+  it('asks about the display name, not a first name, when a merge keeps one', () => {
+    expect(pl.people.mergeNameChoice).toBe('Którą nazwę zachować?');
+    expect(pl.people.displayName).toBe('Nazwa wyświetlana');
+    expect(en.people.mergeNameChoice).toBe('Which name should be kept?');
+  });
+
+  it('names the pair-review entry point with a verb and a noun', () => {
+    expect(pl.people.pairReviewOpen(3)).toBe('Sprawdź podobne osoby (3)');
+    expect(en.people.pairReviewOpen(3)).toBe('Review look-alikes (3)');
+    expect(pl.settingsModal.facesPairScopeHelper).toContain('Osoby');
+    expect(en.settingsModal.facesPairScopeHelper).toContain('People tab');
+  });
+
+  it('says a skipped pair comes back, so Skip does not read as permanent', () => {
+    expect(pl.people.pairReviewSkipCaption).toBe('Zapytamy ponownie za 30 dni');
+    expect(en.people.pairReviewSkipCaption).toBe('We will ask again in 30 days');
+  });
+
+  it('counts the answered questions on the three-form Polish plural', () => {
+    expect(pl.people.pairReviewDoneBody(1)).toBe('Odpowiedziano na 1 pytanie.');
+    expect(pl.people.pairReviewDoneBody(3)).toBe('Odpowiedziano na 3 pytania.');
+    expect(pl.people.pairReviewDoneBody(5)).toBe('Odpowiedziano na 5 pytań.');
+    expect(en.people.pairReviewDoneBody(1)).toBe('You answered 1 question.');
+    expect(en.people.pairReviewDoneBody(4)).toBe('You answered 4 questions.');
+  });
+
+  it('agrees the Polish verb with the count of errored files a batch will not retry', () => {
+    expect(pl.batchToolbar.analyzeSkipsErrored(1))
+      .toBe('1 nieudany plik nie zostanie ponowiony — otwórz plik i użyj „Analizuj ponownie”.');
+    expect(pl.batchToolbar.analyzeSkipsErrored(3))
+      .toBe('3 nieudane pliki nie zostaną ponowione — otwórz plik i użyj „Analizuj ponownie”.');
+    expect(pl.batchToolbar.analyzeSkipsErrored(5))
+      .toBe('5 nieudanych plików nie zostanie ponowionych — otwórz plik i użyj „Analizuj ponownie”.');
+    expect(en.batchToolbar.analyzeSkipsErrored(1)).toContain('file is');
+    expect(en.batchToolbar.analyzeSkipsErrored(2)).toContain('files are');
+  });
+
   it('describes people grouping as videos and photos in both locales', () => {
     expect(en.people.subtitle).toBe('Local face grouping from analyzed catalog videos and photos.');
     expect(pl.people.subtitle).toBe('Lokalne grupowanie twarzy z przeanalizowanych filmów i zdjęć katalogu.');

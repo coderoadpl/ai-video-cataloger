@@ -60,3 +60,11 @@ describe('GeoNamesPlacesAdapter', () => {
     expect(resolved).toEqual({ ok: false, error: appError('validation', 'Places dataset header is malformed') });
   });
 });
+
+
+it('checks beyond the first non-empty ring for a nearer settlement', async () => {
+  const content = '#avc-places\t1\tring-test\n-0.99\t-0.99\tFarcorner\t\t\t\t0\n2.001\t0.99\tNearnext\t\t\t\t0\n';
+  const adapter = new GeoNamesPlacesAdapter({ fs: fsStub(content), datasetPath: '/places.tsv' });
+  const result = await adapter.resolve({ lat: 0.99, lon: 0.99 });
+  expect(result.ok && result.value?.name).toBe('Nearnext');
+});

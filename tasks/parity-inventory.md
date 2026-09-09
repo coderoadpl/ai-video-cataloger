@@ -1235,3 +1235,14 @@ Sources: `electron/renderer/src/components/main-panel.tsx`, `electron/renderer/s
 - Backlog `6hCrvVvrqp4FQV6m` item 2 is verified already complete: faces index,
   recluster, exemplars and the drive faces pass share `faces-write`; no resource
   key change is part of R5.
+
+## R5 backlog event corrections
+
+The drive progress step `faces_waiting` is emitted only when the `faces-write`
+resource is occupied at acquisition, rather than before every claim. A failed
+claim produces `faces_pass_skipped` with reason `failed` unless its abort signal
+is cancelled; the run summary retains the original error code and message in
+`faces.error`. Existing event names and envelopes remain unchanged.
+GPS backfill summaries now populate `failures` for rejected writes, including
+`skipped_precedence` outcomes reported as `processing_error`. Numeric option
+usage errors exit 1 before job dispatch. No on-disk layout changes are made.

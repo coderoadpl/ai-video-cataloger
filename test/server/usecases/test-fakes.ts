@@ -661,6 +661,7 @@ export class InMemoryConfig implements ConfigStore {
 }
 
 export class InMemoryMedia implements MediaPort {
+  private readonly thumbnails = new Set<string>();
   constructor(private readonly fs?: FileSystemPort) {}
 
   readonly thumbnailInputs: ThumbnailInput[] = [];
@@ -720,7 +721,9 @@ export class InMemoryMedia implements MediaPort {
   async thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
     this.thumbnailInputs.push(input);
     if (this.fs === undefined) {
-      return ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force });
+      const skipped = this.thumbnails.has(input.thumbnailPath) && !input.force;
+      this.thumbnails.add(input.thumbnailPath);
+      return ok({ path: input.thumbnailPath, generated: !skipped, skipped });
     }
     const existing = await this.fs.isFile(input.thumbnailPath);
     if (existing.ok && existing.value && !input.force) {
@@ -1179,13 +1182,18 @@ export class InMemoryJobs implements JobsPort {
     if (terminal) void callback();
   }
 
-  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+  async acquireResource(key: string, signal?: AbortSignal | undefined, onWait?: () => Promise<Result<void, AppError>>): Promise<Result<() => void, AppError>> {
     if (signal?.aborted === true) {
       return Promise.resolve({ ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) });
     }
     if (!this.isResourceBusy(key)) {
       this.heldClaims.add(key);
       return Promise.resolve(ok(this.claimRelease(key)));
+    }
+    if (onWait !== undefined) {
+      const reported = await onWait();
+      if (!reported.ok) return reported;
+      return this.acquireResource(key, signal);
     }
     return new Promise((resolve) => {
       const waiter = (): void => {

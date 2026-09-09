@@ -14,7 +14,7 @@ export const LibraryGridSkeleton = () => {
       data-testid="library-loading"
       role="status"
       aria-label={dictionary.library.loadingLibrary}
-      sx={{ flex: 1, minHeight: 0, overflow: 'hidden', px: 2, pt: 1 }}
+      sx={{ flex: 1, minHeight: 0, overflow: 'hidden', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ height: LIBRARY_SECTION_HEADER_HEIGHT, display: 'flex', alignItems: 'center' }}>
         <Skeleton

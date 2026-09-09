@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -77,7 +78,7 @@ export const useFacesIndex = ({
         if (final.status === 'completed') {
           if (!guard.isMounted()) return;
           log(dictionary.people.indexUpdatedLog, 'success');
-          await queryClient.invalidateQueries();
+          await invalidateAffected(queryClient, 'faces');
         } else if (guard.isMounted()) {
           const failure = formatAnalyzerError(final.error?.message ?? '', dictionary.errors);
           const message = failure.length === 0

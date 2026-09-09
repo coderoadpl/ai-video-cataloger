@@ -218,17 +218,30 @@ describe('process command', () => {
     expect(findEvent(events, 'error')?.code).not.toBe('VALIDATION');
   });
 
-  it('accepts legacy process flag values outside stored-config ranges', async () => {
+  it('accepts a legacy --frames value outside the stored-config range', async () => {
     const videoPath = createFakeVideoFile(testDir, 'test.mp4');
 
-    const result = await runCli(['process', videoPath, '--frames', '12', '--timeout', '20', '--json'], {
+    const result = await runCli(['process', videoPath, '--frames', '12', '--timeout', '30', '--json'], {
       cwd: testDir,
       env: { PATH: '/nonexistent' },
     });
     const started = findEvent(parseJsonEvents(result.stdout), 'started');
 
-    expect(started).toMatchObject({ data: { options: { frames: 12, timeout: 20 } } });
+    expect(started).toMatchObject({ data: { options: { frames: 12, timeout: 30 } } });
     expect(findEvent(parseJsonEvents(result.stdout), 'error')?.code).not.toBe('VALIDATION');
+  });
+
+  it('rejects a --timeout outside the config schema range as a CLI usage error', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '--timeout', '20', '--json'], {
+      cwd: testDir,
+      env: { PATH: '/nonexistent' },
+    });
+
+    expect(result.exitCode).toBeGreaterThan(0);
+    expect(parseJsonEvents(result.stdout)).toEqual([]);
+    expect(result.stderr).toContain('Expected an integer in the range 30..600');
   });
 
   it('defers unpassed --frames to config and lets explicit --frames win', async () => {

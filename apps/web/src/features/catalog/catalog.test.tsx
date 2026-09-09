@@ -1,3 +1,4 @@
+import { actions } from '../../api.js';
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
@@ -243,7 +244,7 @@ describe('catalog', () => {
 
     await screen.findByText('a.mp4');
     await waitFor(() => expect(scanCalls).toBeGreaterThanOrEqual(2));
-    expect(await screen.findByRole('img', { name: 'a.mp4' })).toBeDefined();
+    expect((await screen.findAllByTestId('media-thumbnail-img')).length).toBeGreaterThan(0);
   });
 
   it('retries a thumbnail that had nowhere to write once the analysis completed', async () => {
@@ -288,10 +289,10 @@ describe('catalog', () => {
 
     await screen.findByText('a.mp4');
     await waitFor(() => expect(thumbnailCalls).toBe(1));
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.scan({ folder: FOLDER }).queryKey.slice(0, 1) });
 
     await waitFor(() => expect(thumbnailCalls).toBe(2));
-    expect(await screen.findByRole('img', { name: 'a.mp4' })).toBeDefined();
+    expect((await screen.findAllByTestId('media-thumbnail-img')).length).toBeGreaterThan(0);
   });
 
   it('settles the generating indicator after a scan refetch overlaps the active thumbnail run', async () => {
@@ -337,7 +338,7 @@ describe('catalog', () => {
     const { queryClient } = renderThemed(<Harness folder={FOLDER} />);
 
     expect(await screen.findByText('Generating thumbnails…')).toBeDefined();
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.scan({ folder: FOLDER }).queryKey.slice(0, 1) });
     release?.();
     await waitFor(() => expect(screen.queryByText('Generating thumbnails…')).toBeNull());
   });

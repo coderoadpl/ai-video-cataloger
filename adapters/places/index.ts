@@ -134,12 +134,8 @@ const parsePlacesFile = (content: string): Result<PlacesIndex, AppError> => {
 const MAX_RING_DEGREES = 5;
 
 const nearestRow = (index: PlacesIndex, lat: number, lon: number): PlacesRow | null => {
-  for (let ring = 1; ring <= MAX_RING_DEGREES; ring += 1) {
-    const candidates = candidatesWithinRing(index, lat, lon, ring);
-    if (candidates.length === 0) continue;
-    return bestCandidate(candidates, lat, lon);
-  }
-  return null;
+  const candidates = candidatesWithinRing(index, lat, lon, MAX_RING_DEGREES);
+  return candidates.length === 0 ? null : bestCandidate(candidates, lat, lon);
 };
 
 const candidatesWithinRing = (index: PlacesIndex, lat: number, lon: number, ring: number): PlacesRow[] => {

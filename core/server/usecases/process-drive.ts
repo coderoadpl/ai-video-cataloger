@@ -915,7 +915,7 @@ const runDriveFacesPass = async (
   if (!artifactsReady.value) return skipFacesPass(state, progress, root, 'artifacts_missing', null);
 
   const release = await claimFacesWrite(deps, progress);
-  if (!release.ok) return skipFacesPass(state, progress, root, 'cancelled', null);
+  if (!release.ok) return skipFacesPass(state, progress, root, isProgressAborted(progress) ? 'cancelled' : 'failed', release.error);
 
   try {
     const facesDeps: FacesIndexDeps = {
@@ -955,9 +955,8 @@ const claimFacesWrite = async (
   progress: JobExecutionContext | undefined,
 ): Promise<Result<() => void, AppError>> => {
   if (deps.jobs === undefined) return ok(() => undefined);
-  const waiting = await report(progress, 'faces_waiting', { resource: 'faces-write' });
-  if (!waiting.ok) return waiting;
-  return deps.jobs.acquireResource('faces-write', progress?.signal);
+  return deps.jobs.acquireResource('faces-write', progress?.signal,
+    () => report(progress, 'faces_waiting', { resource: 'faces-write' }));
 };
 
 const aggregateFailureCodes = (failures: readonly { code: AppError['code'] }[]): { code: AppError['code']; count: number }[] => {

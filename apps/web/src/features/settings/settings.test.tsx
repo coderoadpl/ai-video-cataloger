@@ -13,10 +13,10 @@ import type {
 } from '@core/contract/index.js';
 
 import { en } from '../../i18n/dictionary.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
+import { SavedToastProvider } from '../../components/ui/SavedToastProvider.js';
 import { SavedSnackbar } from '../../components/ui/SavedSnackbar.js';
 import { credentialDeletionMessage } from './settings-model.js';
 import { SettingsModal } from './SettingsModal.js';
@@ -24,7 +24,7 @@ import { SLOW_SAVE_HINT_MS } from './use-settings.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
-  renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
+  renderWithProviders(<ThemeProvider theme={theme}><SavedToastProvider>{ui}</SavedToastProvider></ThemeProvider>);
 
 type StoredConfig = z.output<typeof storedConfigSchema>;
 type Requirements = z.output<typeof localAiRequirementsOutputSchema>;
@@ -766,7 +766,7 @@ describe('settings modal', () => {
   it('keeps the pair review scope a draft until the modal is saved', async () => {
     const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
     const bodies: { folder?: string | undefined; key: string; value: string }[] = [];
-    stubEndpoints(emptyConfig);
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true' });
     server.use(
       http.post('/api/config', async ({ request }) => {
         const body = configSetBody.parse(await request.json());
@@ -792,7 +792,7 @@ describe('settings modal', () => {
 
   it('writes nothing when a picked pair review scope is cancelled', async () => {
     const bodies: unknown[] = [];
-    stubEndpoints(emptyConfig);
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true' });
     server.use(
       http.post('/api/config', async ({ request }) => {
         bodies.push(await request.json());
@@ -808,12 +808,28 @@ describe('settings modal', () => {
   });
 
   it('reflects the persisted pair review scope on mount', async () => {
-    stubEndpoints({ ...emptyConfig, faces_pair_scope: 'careful' });
+    stubEndpoints({ ...emptyConfig, faces_enabled: 'true', faces_pair_scope: 'careful' });
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     const careful = await screen.findByTestId('settings-faces-pair-scope-careful');
     expect(careful.getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('settings-faces-pair-scope-standard').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('labels the pair review scope group and locks it while face grouping is off', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const group = await screen.findByTestId('settings-faces-pair-scope');
+    const labelId = group.getAttribute('aria-labelledby');
+    expect(labelId).not.toBeNull();
+    expect(document.getElementById(labelId ?? '')?.textContent).toBe(en.settingsModal.facesPairScopeLabel);
+    expect(screen.getByTestId('settings-faces-pair-scope-wide').getAttribute('disabled')).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('faces-enabled-switch'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-faces-pair-scope-wide').getAttribute('disabled')).toBeNull());
   });
 
   it('saves the UI language globally so the switch applies and persists', async () => {
@@ -896,7 +912,6 @@ describe('settings modal', () => {
   });
 
   it('keeps the credential storage location visible after settings refresh', async () => {
-    savedToastStore.dismiss();
     stubEndpoints(apiProviderConfig);
     server.use(
       http.post('/api/credentials', () => HttpResponse.json({
@@ -920,7 +935,6 @@ describe('settings modal', () => {
 
     expect(await screen.findByText(en.credentials.savedFile)).toBeDefined();
     expect(screen.getByTestId('saved-snackbar').textContent).toContain(en.credentials.savedFile);
-    savedToastStore.dismiss();
   });
 
   it('derives the API credential slot when the endpoint changes', async () => {
