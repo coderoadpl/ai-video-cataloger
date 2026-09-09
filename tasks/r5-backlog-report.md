@@ -5,7 +5,7 @@ Every available finding was checked against that baseline. No remote was pushed.
 The implementation uses Node 22.23.1. Full check, visual, smoke, Playwright and
 Electron were not run, as explicitly excluded from this work session.
 
-## 6hGPrcF4P3VGMCGm — W34 architecture
+## W34 architecture
 
 Main: all three assigned remainder items were open. Unfiltered invalidations
 were present in the catalog, models, people, photos, processing, settings and
@@ -39,7 +39,7 @@ photo workspace hook preserves the original lifecycle and the regression passes.
 Renderer tests adjusted for scoped refreshes: catalog, tree-refresh, details,
 settings and use-dictionary. Retained deviation: refresh-toast only, documented.
 
-## 6hCQhfv2fpFQfG7F — CLI timeout
+## CLI timeout
 
 Main: both process flags used `numberOption`/parseInt; config timeout already
 rejected values outside 30..600. The silent-clamp description was stale.
@@ -53,7 +53,7 @@ option parsing. They now exit 1 and name 30..600. Upper-bound help parsing and
 an actual completed drive invocation with timeout 600 are also checked.
 No waiver.
 
-## 6hCrvVfqQjppJmWm — debug terminal and map
+## debug terminal and map
 
 Main: `api-log.ts` redacted credential request bodies only; responses remained
 logged. The route subscribed to every API-log update. `MapCanvas.tsx` read the
@@ -73,7 +73,7 @@ render counts, reopening catch-up and closing again. The map regression also fai
 popover retained a detached element. It now checks that the anchor remains valid.
 Existing AppLayout regressions pass. No waiver.
 
-## 6hCrvVjmGxgG8QRF — GPS backfill
+## GPS backfill
 
 Main: `gps-backfill.ts` never appended failures, ignored coordinate/capture/place
 write outcomes, and only resolved places when absent or explicitly requested.
@@ -93,7 +93,7 @@ precedence rejection, stale place on rerun and failed place writes. CLI cases
 failed for upper/lower bounds and trailing text. They now pass. CLI boundary
 coverage includes both media types. No waiver.
 
-## 6hCrvW2cMQxJFgFm — honesty pack
+## honesty pack
 
 1. NFC probe: open on main; the lint rule existed but had no violating probe.
    `config-regression/lint-gates.test.ts` now creates a violating NFC fixture
@@ -124,7 +124,7 @@ coverage includes both media types. No waiver.
    pinned output language, consistent with the tag-language change `7fe2947`.
    No new Unreleased entry was added for this pack.
 
-## 6hFM8Xx9827RpXRm — faces-write claims
+## faces-write claims
 
 Main: `claimFacesWrite` emitted waiting before trying the resource and mapped
 all claim failures to cancellation without retaining the error. The existing
@@ -140,7 +140,7 @@ processing_error/not_found claims. All now pass, alongside the existing real
 contention case. `adapters/jobs/jobs.test.ts` also checks callback invocation and
 failed-report cleanup. No waiver.
 
-## 6hFM8c2qVxgHGr8F — W21 notes
+## W21 notes
 
 The assignment contains identifiers but omits the seven observation texts.
 Searches of tracked tasks/docs and available audit history did not recover
