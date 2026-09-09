@@ -20,7 +20,7 @@ import type {
   JobsPort,
 } from '../ports.js';
 import { discoverArtifactRoot, discoverArtifactRootForWrite, type ArtifactRoot } from './artifact-root.js';
-import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
+import { analyzedCanonicalIsReachable, onDiskVideoPath } from './canonical-reachability.js';
 import {
   materializeSelectedVariantProjection,
   selectedVariantProjectionSource,
@@ -422,12 +422,9 @@ const projectionContext = async (
   }
   const root = await discoverArtifactRootForWrite(deps.fs, folder.value.currentPath, folder.value.folderId);
   if (!root.ok) return root;
-  return ok({
-    file: file.value,
-    folder: folder.value,
-    root: root.value,
-    videoPath: deps.fs.join(folder.value.currentPath, file.value.fileName),
-  });
+  const videoPath = await onDiskVideoPath(deps.fs, folder.value.currentPath, file.value.fileName, variant.finalName, variant.fingerprint);
+  if (!videoPath.ok) return videoPath;
+  return ok({ file: file.value, folder: folder.value, root: root.value, videoPath: videoPath.value });
 };
 
 const projectionSource = async (

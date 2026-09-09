@@ -804,16 +804,50 @@ const removeRenamedProjection = async (
     if (records.value.some((record) => record.file.fingerprint !== plan.fingerprint && deps.fs.basenameWithoutExtension(record.file.fileName) === stem)) return ok(undefined);
   }
   const roots = [folderArtifactRoot(deps.fs, folderPath), readOnlyArtifactRootById(deps.fs, plan.file.folderId), readOnlyArtifactRoot(deps.fs, folderPath)];
+  const replacement = artifactPaths(deps.fs, folderArtifactRoot(deps.fs, folderPath), deps.fs.join(folderPath, plan.appliedName), null);
   for (const root of roots) {
     const old = artifactPaths(deps.fs, root, plan.videoPath, null);
-    for (const target of [old.framesDir, old.transcriptPath, old.transcriptJsonPath, old.summaryPath, old.summaryJsonPath, old.debugLogPath, old.thumbnailPath, old.gridThumbnailPath]) {
-      const deleted = await deps.fs.deletePath(target);
+    const keys = ['framesDir', 'transcriptPath', 'transcriptJsonPath', 'summaryPath', 'summaryJsonPath', 'debugLogPath', 'thumbnailPath', 'gridThumbnailPath'] as const;
+    for (const key of keys) {
+      const preserved = await preserveRenamedArtifact(deps.fs, old[key], replacement[key]);
+      if (!preserved.ok) return preserved;
+    }
+    for (const key of keys) {
+      const deleted = await deps.fs.deletePath(old[key]);
       if (!deleted.ok) return deleted;
     }
     const removed = await deps.globalCatalog.deleteGridThumbnail(old.gridThumbnailPath);
     if (!removed.ok) return removed;
   }
   return deps.globalCatalog.flush();
+};
+
+const preserveRenamedArtifact = async (fs: FileSystemPort, source: string, target: string): Promise<Result<void, AppError>> => {
+  const exists = await fs.exists(source);
+  if (!exists.ok) return exists;
+  if (!exists.value) return ok(undefined);
+  const directory = await fs.isDirectory(source);
+  if (!directory.ok) return directory;
+  if (directory.value) {
+    const entries = await fs.listDirectory(source);
+    if (!entries.ok) return entries;
+    for (const entry of entries.value) {
+      const preserved = await preserveRenamedArtifact(fs, entry.path, fs.join(target, entry.name));
+      if (!preserved.ok) return preserved;
+    }
+    return ok(undefined);
+  }
+  const replacement = await fs.isFile(target);
+  if (!replacement.ok) return replacement;
+  if (!replacement.value) {
+    const ensured = await fs.ensureDirectory(fs.dirname(target));
+    if (!ensured.ok) return ensured;
+    const copied = await materializeArtifactFile(fs, source, target);
+    if (!copied.ok) return copied;
+  }
+  const verified = await fs.isFile(target);
+  if (!verified.ok) return verified;
+  return verified.value ? ok(undefined) : { ok: false, error: appError('processing_error', 'Materialization incomplete: replacement artifact is missing') };
 };
 
 const relocatedThumbnailSource = (fs: FileSystemPort, folderPath: string, plan: FilePlan, source: string): string => {

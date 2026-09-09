@@ -13,6 +13,32 @@ interface Session {
   page: Page;
 }
 
+const traces = new Map<ElectronApplication, { path: string; closed: boolean }>();
+
+const closeSession = async (app: ElectronApplication): Promise<void> => {
+  const trace = traces.get(app);
+  if (trace === undefined || trace.closed) return;
+  try {
+    await app.context().tracing.stop({ path: trace.path });
+  } finally {
+    trace.closed = true;
+    await app.close();
+  }
+};
+
+test.afterEach(async ({}, info) => {
+  try {
+    for (const app of traces.keys()) await closeSession(app);
+  } finally {
+    if (info.status !== info.expectedStatus) {
+      for (const trace of traces.values()) {
+        if (existsSync(trace.path)) await info.attach('renderer-trace', { path: trace.path, contentType: 'application/zip' });
+      }
+    }
+    traces.clear();
+  }
+});
+
 interface Merged {
   survivor: string;
   absorbed: string;
@@ -41,6 +67,8 @@ async function launch(workdir: string): Promise<Session> {
       AVC_HOME_DIRECTORY: isolatedHome(workdir),
     }),
   });
+  traces.set(app, { path: test.info().outputPath(`people-pairs-${traces.size}-trace.zip`), closed: false });
+  await app.context().tracing.start({ screenshots: true, snapshots: true, sources: true });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
   await expectInactiveWindow(app);
@@ -250,7 +278,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
         .toEqual({ skip: 1, same: 1 });
       const counts = await decisionCounts(home);
 
-      await session.app.close();
+      await closeSession(session.app);
       session = await launch(workdir);
 
       await openPeople(session.page);
@@ -291,7 +319,7 @@ test.describe('People: answering "Ta sama osoba?" over a real faces pass', () =>
 
       expect(await decisionCounts(home), 'the stored decisions changed across the relaunch').toEqual(counts);
     } finally {
-      await session.app.close();
+      await closeSession(session.app);
       await removeTempDir(workdir);
     }
   });

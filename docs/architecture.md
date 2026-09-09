@@ -1321,8 +1321,8 @@ requested while the claim is held is refused with `conflict`, not queued
 (`enqueue` fails closed on a busy `resourceKey`; only `acquireResource`
 waits), and it runs from the watcher's single post-settle refresh.
 
-The shared resource order is `catalog-write`, then resolved roots in lexical
-order (each root, `photo-scan:<root>`, `photo-process:<root>`), then resolved
+The shared resource order is `catalog-write`, then `photo-process:*all-roots*`,
+then resolved roots in lexical order (each root, `photo-scan:<root>`, `photo-process:<root>`), then resolved
 file paths in lexical order, then `faces-write`. A use case takes the subset it
 needs in that order, including resources held by its enclosing job, and must
 never wait for a root or processing resource while holding `faces-write`.
@@ -1951,14 +1951,19 @@ and a durability or cleanup phase so clients can reconcile and retry.
 
 Pair review scores eligible pairs one person at a time and retains at most the
 requested output cap of top scores per person. The per-person allowance shrinks
-with catalog size to keep all retained numeric score buffers within 8 MiB per
-store. Exclusions and the centroid prefilter precede exemplar scoring; uncached
-scores are recomputed so the global ranking and pending count remain exact.
+with catalog size to keep retained score buffers and a conservative 256-byte
+container allowance per cached row within 8 MiB per store. Very large catalogs
+retain at least one score in a bounded number of rows. Completed rows retain
+an eligible count. Warm generation ranks retained scores first and recomputes
+uncached scores only when a row's retained frontier could change the result or
+an exclusion needs checking. Pending counts and ranking remain exact.
 The cache key fingerprints the complete loaded people, observation and embedding
-snapshot, with scope thresholds and output limit, and changes after a people
-mutation. Each generation captures its version's rows so overlapping requests
-cannot write scores into another version. The pairs use case yields to the event
-loop between people; generation remains on the main thread.
+snapshot with scope thresholds, and changes after a people
+mutation. Changing the requested limit re-trims retained rows without invalidating
+unchanged similarities. Each generation captures its own row map and replaces
+row buffers, so overlapping requests cannot change one another's scores. The pairs use case yields to the event
+loop during preprocessing, revision hashing and within pair rows; generation
+remains on the main thread.
 
 Reclustering advances deterministic domain generators in bounded work chunks,
 yielding to the event loop and checking cancellation between chunks. Similarity,
@@ -1982,17 +1987,23 @@ changed sources. Video backfill reuses indexed fingerprints on ordinary passes.
 
 Selected-variant projections, search previews, thumbnail backfill and duplicate
 navigation use the recorded physical filename. A suggested `finalName` alone
-never establishes ownership of a file or artifact. Search rename recovery may
-use the suggested path only when the recorded path is absent and its content
+never establishes ownership of a file or artifact. Readers and variant projection
+writers share rename recovery and may use the suggested path only when the recorded path is absent and its content
 fingerprint matches. Materialization relocates both thumbnail sizes and grid
 provenance, then removes obsolete projections only after the catalog relocation
-is durable and no other recorded file shares their basename.
+is durable and no other recorded file shares their basename. Each obsolete file
+is removed only after its replacement is verified present. Missing replacements
+are migrated from name-based legacy artifacts; failed migration retains the
+source and reports incomplete materialization.
 
-Backup preparation holds `catalog-write` from database snapshots through copying
-the collected files into job staging. The fingerprint uses source metadata under
-that protection, so staging copy timestamps do not trigger spurious backups.
+Backup preparation holds `catalog-write` from database snapshots through staging
+the collected files with hard links and a copy fallback. Staging checks cancellation
+before each entry and after its transfer; the resource is released after staging.
+The fingerprint uses source metadata under that protection, so staging copy timestamps do not trigger spurious backups.
 Synchronous catalog mutations, including catalog forget, photo forget and face
-forget/purge, participate in that same resource. Archives read only staged files;
+forget/purge, participate in that same resource. HTTP mutations pass the raw
+request abort signal to the queued resource claim, so aborted waiters settle
+without running the mutation. Archives read only staged files;
 archive names and NDJSON steps remain unchanged. Partial photo trash durably removes each successful
 sighting and updates the representative path before moving the next one, keeping
 analysis and shared artifacts until every sighting has been moved.
@@ -2000,7 +2011,9 @@ analysis and shared artifacts until every sighting has been moved.
 Read-only artifact writers heal a pre-canonicalization NFD mirror on first write
 by moving its contents into the canonical path-derived mirror. Existing canonical
 files win collisions; remaining legacy files move across and the legacy tree is
-removed only after successful migration. Readers retain their legacy fallback.
+removed only after successful migration. Concurrent migrations re-discover the
+canonical target after rename reports an already-moved source or an existing
+destination; other failures retain the legacy source. Readers retain their legacy fallback.
 
 R5 verification of backlog `6hGRXF2j5FwXRHcm` finds the single-file path already
 awaits `recordGlobalCatalog` / `upsertProcessedVariant` and flushes the global

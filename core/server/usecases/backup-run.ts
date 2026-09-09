@@ -23,6 +23,7 @@ import {
   type JobsPort,
   type PhotosStore,
 } from '../ports.js';
+import { materializeArtifactFile } from './artifact-store.js';
 import { computeBackupFingerprint } from './backup-fingerprint.js';
 import {
   BACKUP_STAGING_OWNER_SUFFIX,
@@ -304,11 +305,13 @@ const stageBackupScope = async (
   if (!fingerprint.ok) return fingerprint;
   const entries: BackupScopeEntry[] = [];
   for (const entry of scope.value.entries) {
+    if (signal?.aborted === true) return cancelled();
     const sourcePath = deps.fs.join(stagingDirectory, 'files', entry.archivePath);
     const directory = await deps.fs.ensureDirectory(deps.fs.dirname(sourcePath));
     if (!directory.ok) return directory;
-    const copied = await deps.fs.copyFile(entry.sourcePath, sourcePath);
+    const copied = await materializeArtifactFile(deps.fs, entry.sourcePath, sourcePath);
     if (!copied.ok) return copied;
+    if (signal?.aborted) return cancelled();
     entries.push({ ...entry, sourcePath });
   }
   return ok({

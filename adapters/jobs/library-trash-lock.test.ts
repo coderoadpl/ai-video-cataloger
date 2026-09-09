@@ -10,6 +10,7 @@ import {
   InMemoryPhotosStore,
 } from '../../test/server/usecases/test-fakes.js';
 import { InProcessJobsPort } from './index.js';
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 const latch = () => {
   let resolve = () => {};
@@ -18,7 +19,8 @@ const latch = () => {
 };
 
 describe('trash and photo processing lock ordering', () => {
-  it('finishes when trash starts immediately before the real chained face pass', async () => {
+  it.each([false, true])('finishes when trash precedes the chained face pass, all roots: %s', async (allRoots) => {
+    const schedule = vi.spyOn(globalThis, 'setTimeout');
     const fs = new InMemoryFileSystem('/library');
     const root = '/library/photos';
     fs.addDirectory(root);
@@ -50,10 +52,10 @@ describe('trash and photo processing lock ordering', () => {
     const acquire = jobs.acquireResource.bind(jobs);
     vi.spyOn(jobs, 'acquireResource').mockImplementation((key, signal, onWait) => {
       const claim = acquire(key, signal, onWait);
-      if (key === `photo-process:${root}`) trashWaiting.resolve();
+      if (key === (allRoots ? 'photo-process:*all-roots*' : `photo-process:${root}`)) trashWaiting.resolve();
       return claim;
     });
-    const processing = await enqueuePhotoProcess(deps, { root, force: false, batchSize: null });
+    const processing = await enqueuePhotoProcess(deps, { root: allRoots ? null : root, force: false, batchSize: null });
     expect(processing.ok).toBe(true);
     if (!processing.ok) return;
     await approachingFaces.promise;
@@ -61,7 +63,10 @@ describe('trash and photo processing lock ordering', () => {
     const trash = runLibraryTrash(deps, {
       scope: { kind: 'fingerprints', fingerprints: [photoFingerprintFromSha256(sha256Hex('synthetic-photo'))] },
     }, { jobId: 'trash-probe', signal: controller.signal, reportProgress: () => Promise.resolve(ok(undefined)) });
-    await trashWaiting.promise;
+    if (allRoots) {
+      await Promise.race([trashWaiting.promise, trash]);
+      expect(jobs.acquireResource).toHaveBeenCalledWith('photo-process:*all-roots*', controller.signal);
+    } else await trashWaiting.promise;
     expect(moved).toEqual([]);
     resumeFaces.resolve();
     const settled = latch();
@@ -70,9 +75,10 @@ describe('trash and photo processing lock ordering', () => {
     try {
       const outcome = await Promise.race([
         Promise.all([settled.promise, trash]).then(([, result]) => ({ status: 'finished', result })),
-        new Promise<{ status: string }>((resolve) => { timer = setTimeout(() => resolve({ status: 'blocked' }), 250); }),
+        new Promise<{ status: string }>((resolve) => { timer = setTimeout(() => resolve({ status: 'blocked' }), scaledTimeout(250)); }),
       ]);
       expect(outcome).toMatchObject({ status: 'finished', result: { ok: true } });
+      expect(schedule).toHaveBeenCalledWith(expect.any(Function), scaledTimeout(250));
       expect(await jobs.get(processing.value.jobId)).toMatchObject({
         ok: true, value: {
           status: 'completed',

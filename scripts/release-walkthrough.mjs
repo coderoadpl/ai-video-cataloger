@@ -10,6 +10,8 @@ import { parseArgs } from 'node:util';
 import { _electron as electron } from '@playwright/test';
 import { z } from 'zod';
 
+import { isSupportedPhotoExtension } from '../core/domain/photo.ts';
+
 import { FAKE_DRIVE_ID, FOLDER_MIME_TYPE, serviceAccountKeyJson, startFakeDriveServer } from './fake-drive-server.mjs';
 
 // A real JPEG SOI marker, so the scanner accepts the file as a photo, followed
@@ -279,7 +281,7 @@ export const prepareScratchFixtures = (fixturesDir, facesSamplesDir = null) => {
 
 const rootPhotoNames = (scratchDir) =>
   readdirSync(scratchDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && PHOTO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && isSupportedPhotoExtension(entry.name))
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
 

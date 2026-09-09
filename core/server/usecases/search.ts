@@ -1,3 +1,4 @@
+import { onDiskVideoPath } from './canonical-reachability.js';
 import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
@@ -187,27 +188,6 @@ export const search = async (
     total: searchResult.value.total,
     results,
   });
-};
-
-const onDiskVideoPath = async (
-  fs: FileSystemPort,
-  folderPath: string,
-  fileName: string,
-  finalName: string | null,
-  fingerprint: string,
-): Promise<Result<string, AppError>> => {
-  const recorded = fs.join(folderPath, fileName);
-  if (finalName === null || finalName === fileName) return ok(recorded);
-  const originalExists = await fs.isFile(recorded);
-  if (!originalExists.ok) return originalExists;
-  if (originalExists.value) return ok(recorded);
-  const renamed = fs.join(folderPath, finalName);
-  const exists = await fs.isFile(renamed);
-  if (!exists.ok) return exists;
-  if (!exists.value) return ok(recorded);
-  const hash = await fs.partialContentHash(renamed);
-  if (!hash.ok) return hash;
-  return ok(hash.value === fingerprint ? renamed : recorded);
 };
 
 export const resolveOfflineReason = async (

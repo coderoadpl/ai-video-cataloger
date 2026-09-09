@@ -440,6 +440,26 @@ describe('photosScanDecision', () => {
 });
 
 describe('scratchPhotoExpectation', () => {
+  it('excludes dot-prefixed photo files just as the scanner does', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+    writeFileSync(path.join(scratchDir, '._photo.jpg'), 'sidecar');
+    writeFileSync(path.join(scratchDir, '.hidden.JPEG'), 'hidden');
+    expect(scratchPhotoExpectation(scratchDir)).toEqual({
+      expectedRows: 3,
+      realPhotoNames: ['photo-01-duplicate.jpg', 'photo-01.jpg', 'photo-02.jpg'],
+    });
+  });
+
+  it('uses the scanner extension rules for every eligible root photo', () => {
+    const scratchDir = mkdtempSync(path.join(tmpdir(), 'avc-photo-eligibility-'));
+    for (const name of ['photo.JPG', 'photo.jpeg', 'photo.png', 'photo.heic', 'photo.arw', 'photo.dng', 'document.txt', '.hidden.png']) {
+      writeFileSync(path.join(scratchDir, name), name);
+    }
+    const result = scratchPhotoExpectation(scratchDir);
+    expect(result.expectedRows).toBe(6);
+    expect(result.realPhotoNames).toEqual(['photo.arw', 'photo.dng', 'photo.heic', 'photo.jpeg', 'photo.JPG', 'photo.png']);
+  });
+
   it('counts the planted root photos by distinct content, so the duplicate pair is one row', () => {
     const scratchDir = prepareScratchFixtures(sourceWithPhotos());
 
