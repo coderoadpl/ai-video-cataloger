@@ -752,6 +752,8 @@ export interface GlobalCatalogStore {
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listGridThumbnailCandidates(outputPaths: readonly string[], generationVersion: number): Promise<Result<string[], AppError>>;
+  getGridThumbnail(outputPath: string): Promise<Result<GridThumbnailState | null, AppError>>;
+  deleteGridThumbnail(outputPath: string): Promise<Result<void, AppError>>;
   recordGridThumbnail(state: GridThumbnailState): Promise<Result<void, AppError>>;
   listVideoThumbnailFingerprints(folderPath: string): Promise<Result<{ fingerprint: string; fileName: string; finalName: string | null }[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;

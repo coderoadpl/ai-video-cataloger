@@ -19,7 +19,7 @@ import type {
   GlobalCatalogStore,
   JobsPort,
 } from '../ports.js';
-import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import { discoverArtifactRoot, discoverArtifactRootForWrite, type ArtifactRoot } from './artifact-root.js';
 import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import {
   materializeSelectedVariantProjection,
@@ -36,7 +36,7 @@ import {
   resolveProcessOptions,
   type ProcessConfigIdentity,
 } from './process.js';
-import { artifactPaths, variantProvenanceLabel } from './shared.js';
+import { variantProvenanceLabel } from './shared.js';
 
 const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
 const variantInputSchema = z.object({
@@ -217,7 +217,7 @@ const selectVariantDeferred = async (
   const queued = await deps.jobs.enqueue({
     kind: 'variant_projection',
     payload: input,
-    run: () => synchronizeSelectedVariantProjection(deps, input.fingerprint, previous.value),
+    run: () => synchronizeSelectedVariantProjection(deps, input.fingerprint),
   });
   if (!queued.ok) {
     await deps.globalCatalog.setSelectedVariant(input.fingerprint, previousExplicitConfigId.value);
@@ -258,19 +258,9 @@ export const selectVariant = async (
   const selected = await deps.globalCatalog.setSelectedVariant(parsed.data.fingerprint, parsed.data.configId);
   if (!selected.ok) {
     if (previous.value !== null) {
-      const restored = await projectVariant(deps, previous.value);
-      if (restored.ok) await removePreviousProjection(deps.fs, restored.value, variant.value, previous.value);
+      await projectVariant(deps, previous.value);
     }
     return selected;
-  }
-  if (previous.value !== null) {
-    const cleaned = await removePreviousProjection(deps.fs, projected.value, previous.value, variant.value);
-    if (!cleaned.ok) {
-      await deps.globalCatalog.setSelectedVariant(parsed.data.fingerprint, previousExplicitConfigId.value);
-      const restored = await projectVariant(deps, previous.value);
-      if (restored.ok) await removePreviousProjection(deps.fs, restored.value, variant.value, previous.value);
-      return cleaned;
-    }
   }
   return ok({ fingerprint: parsed.data.fingerprint, configId: parsed.data.configId });
 };
@@ -311,11 +301,6 @@ export const setFolderDefaultVariant = async (
       await rollbackFolderSelections(deps, folderId, previousDefault.value, changes);
       return projected;
     }
-    const cleaned = await removePreviousProjection(deps.fs, projected.value, change.before, change.after);
-    if (!cleaned.ok) {
-      await rollbackFolderSelections(deps, folderId, previousDefault.value, changes);
-      return cleaned;
-    }
   }
   return ok({
     folderId,
@@ -352,10 +337,6 @@ export const deleteVariant = async (
   if (selectedConfigId.value === null) {
     return { ok: false, error: appError('internal', 'Deleting a variant left the file without a selected analysis') };
   }
-  if (promoted !== null && projected !== null && projected.ok) {
-    const cleanedProjection = await removePreviousProjection(deps.fs, projected.value, deleted, promoted);
-    if (!cleanedProjection.ok) return cleanedProjection;
-  }
   const cleanedArtifacts = await removeUnreferencedArtifacts(deps, deleted, survivors);
   if (!cleanedArtifacts.ok) return cleanedArtifacts;
   return ok({
@@ -383,9 +364,7 @@ const variantNotFound = <T>(fingerprint: string, configId: string): Result<T, Ap
 const synchronizeSelectedVariantProjection = async (
   deps: VariantSelectionDeps,
   fingerprint: string,
-  initialPrevious: CatalogVariant | null,
 ): Promise<Result<SelectVariantOutput, AppError>> => {
-  let previous = initialPrevious;
   while (true) {
     const selectedConfigId = await deps.globalCatalog.getSelectedConfigId(fingerprint);
     if (!selectedConfigId.ok) return selectedConfigId;
@@ -401,24 +380,11 @@ const synchronizeSelectedVariantProjection = async (
       if (latest.value !== selected.value.configId) continue;
       return projected;
     }
-    if (previous !== null && previous.configId !== selected.value.configId) {
-      const cleaned = await removePreviousProjection(deps.fs, projected.value, previous, selected.value);
-      if (!cleaned.ok) {
-        const latest = await deps.globalCatalog.getSelectedConfigId(fingerprint);
-        if (!latest.ok) return latest;
-        if (latest.value !== selected.value.configId) {
-          previous = selected.value;
-          continue;
-        }
-        return cleaned;
-      }
-    }
     const latest = await deps.globalCatalog.getSelectedConfigId(fingerprint);
     if (!latest.ok) return latest;
     if (latest.value === selected.value.configId) {
       return ok({ fingerprint, configId: selected.value.configId });
     }
-    previous = selected.value;
   }
 };
 
@@ -434,7 +400,7 @@ const projectVariant = async (
     deps.fs,
     context.value.root,
     context.value.videoPath,
-    variant.finalName,
+    null,
     source.value,
   );
   return projected.ok ? ok(context.value) : projected;
@@ -454,7 +420,7 @@ const projectionContext = async (
   if (folder.value === null) {
     return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
   }
-  const root = await discoverArtifactRoot(deps.fs, folder.value.currentPath, folder.value.folderId);
+  const root = await discoverArtifactRootForWrite(deps.fs, folder.value.currentPath, folder.value.folderId);
   if (!root.ok) return root;
   return ok({
     file: file.value,
@@ -517,8 +483,7 @@ const rollbackFolderSelections = async (
 ): Promise<void> => {
   await deps.globalCatalog.setFolderDefaultVariant(folderId, previousDefault);
   for (const change of changes) {
-    const restored = await projectVariant(deps, change.before);
-    if (restored.ok) await removePreviousProjection(deps.fs, restored.value, change.after, change.before);
+    await projectVariant(deps, change.before);
   }
 };
 
@@ -647,29 +612,6 @@ const variantListItem = (
     language: variant.language,
     tags: variant.tags,
   };
-};
-
-const removePreviousProjection = async (
-  fs: FileSystemPort,
-  context: VariantProjectionContext,
-  previous: CatalogVariant,
-  next: CatalogVariant,
-): Promise<Result<void, AppError>> => {
-  const previousPaths = artifactPaths(fs, context.root, context.videoPath, previous.finalName);
-  const nextPaths = artifactPaths(fs, context.root, context.videoPath, next.finalName);
-  if (previousPaths.summaryJsonPath === nextPaths.summaryJsonPath) return ok(undefined);
-  for (const target of [
-    previousPaths.framesDir,
-    previousPaths.transcriptPath,
-    previousPaths.transcriptJsonPath,
-    previousPaths.summaryPath,
-    previousPaths.summaryJsonPath,
-    previousPaths.debugLogPath,
-  ]) {
-    const deleted = await fs.deletePath(target);
-    if (!deleted.ok) return deleted;
-  }
-  return ok(undefined);
 };
 
 const removeUnreferencedArtifacts = async (

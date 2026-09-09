@@ -724,6 +724,21 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async getGridThumbnail(outputPath: string): Promise<Result<GridThumbnailState | null, AppError>> {
+    return this.read((_db, client) => {
+      const row = client.exec('SELECT output_path, generation_version, source_path, source_kind, is_primary FROM grid_thumbnail_state WHERE output_path = ?', [z.string().parse(outputPath)])[0]?.values[0];
+      return row === undefined ? null : gridThumbnailStateSchema.parse({
+        outputPath: row[0], generationVersion: row[1], sourcePath: row[2], sourceKind: row[3], primary: z.union([z.literal(0), z.literal(1)]).parse(row[4]) === 1,
+      });
+    });
+  }
+
+  async deleteGridThumbnail(outputPath: string): Promise<Result<void, AppError>> {
+    return this.write((_db, client) => {
+      client.run('DELETE FROM grid_thumbnail_state WHERE output_path = ?', [z.string().parse(outputPath)]);
+    });
+  }
+
   async recordGridThumbnail(input: GridThumbnailState): Promise<Result<void, AppError>> {
     return this.write((_db, client) => {
       const state = gridThumbnailStateSchema.parse(input);

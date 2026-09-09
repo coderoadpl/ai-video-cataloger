@@ -1957,6 +1957,39 @@ missing records and verify current output files before metadata or media work.
 Fallback records remain repair candidates, and forced passes explicitly recheck
 changed sources. Video backfill reuses indexed fingerprints on ordinary passes.
 
+## Catalog identity audit (R5)
+
+Selected-variant projections, search previews, thumbnail backfill and duplicate
+navigation use the recorded physical filename. A suggested `finalName` alone
+never establishes ownership of a file or artifact. Search rename recovery may
+use the suggested path only when the recorded path is absent and its content
+fingerprint matches. Materialization relocates both thumbnail sizes and grid
+provenance, then removes obsolete projections only after the catalog relocation
+is durable and no other recorded file shares their basename.
+
+Backup preparation holds `catalog-write` from database snapshots through copying
+the collected files into job staging. The fingerprint uses source metadata under
+that protection, so staging copy timestamps do not trigger spurious backups.
+Synchronous catalog mutations, including catalog forget, photo forget and face
+forget/purge, participate in that same resource. Archives read only staged files;
+archive names and NDJSON steps remain unchanged. Partial photo trash durably removes each successful
+sighting and updates the representative path before moving the next one, keeping
+analysis and shared artifacts until every sighting has been moved.
+
+Read-only artifact writers heal a pre-canonicalization NFD mirror on first write
+by moving its contents into the canonical path-derived mirror. Existing canonical
+files win collisions; remaining legacy files move across and the legacy tree is
+removed only after successful migration. Readers retain their legacy fallback.
+
+R5 verification of backlog `6hGRXF2j5FwXRHcm` finds the single-file path already
+awaits `recordGlobalCatalog` / `upsertProcessedVariant` and flushes the global
+catalog before returning outside a batch. Same-process browse, collection, text
+search and HTTP job completion regressions pass without a visibility production
+change; the release walkthrough tolerated skips remain unchanged.
+
+Backlog `6hCrvVvrqp4FQV6m` item 2 is already implemented: standalone faces index,
+recluster and exemplars jobs use `faces-write`, and the drive faces pass acquires
+and releases that same resource. This audit leaves those resource keys unchanged.
 
 ### Release gate evidence and isolation
 

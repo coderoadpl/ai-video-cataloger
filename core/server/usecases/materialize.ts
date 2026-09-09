@@ -4,6 +4,7 @@ import {
   ok,
   type AppError,
   type CatalogVariant,
+  type GridThumbnailState,
   type Result,
 } from '@core/domain/index.js';
 
@@ -29,7 +30,7 @@ import { isReadOnlyWriteError, readFolderMarker } from './folder-identity.js';
 import { finalVideoName, uniqueFilename } from './final-name.js';
 import { discoverCatalogFolders, type DriveRunFailure } from './process-drive.js';
 import { reportStep } from './process-drive-batch.js';
-import { summaryDataSchema } from './shared.js';
+import { artifactPaths, summaryDataSchema } from './shared.js';
 
 const maxConsecutiveFailures = 5;
 
@@ -104,7 +105,7 @@ interface FilePlan {
   needsRelocate: boolean;
   projectionSource: SelectedVariantProjectionSource | null;
   needsProjection: boolean;
-  thumbnailCopy: ArtifactCopyOp | null;
+  thumbnailCopies: Array<ArtifactCopyOp & { provenance: GridThumbnailState | null }>;
 }
 
 type PlanFileResult =
@@ -462,7 +463,7 @@ const planFile = async (
       needsRelocate: file.value.folderId !== folderId || file.value.fileName !== appliedName,
       projectionSource: projection.value.needed ? projection.value.source : null,
       needsProjection: projection.value.needed,
-      thumbnailCopy: thumbnail.value,
+      thumbnailCopies: thumbnail.value,
     },
   });
 };
@@ -657,20 +658,26 @@ const planThumbnail = async (
   videoPath: string,
   appliedName: string,
   folderRoot: ArtifactRoot,
-): Promise<Result<ArtifactCopyOp | null, AppError>> => {
+): Promise<Result<Array<ArtifactCopyOp & { provenance: GridThumbnailState | null }>, AppError>> => {
+  const copies: Array<ArtifactCopyOp & { provenance: GridThumbnailState | null }> = [];
   const sourceRoots = [folderArtifactRoot(deps.fs, folderPath), readOnlyArtifactRootById(deps.fs, fileFolderId), readOnlyArtifactRoot(deps.fs, folderPath)];
-  for (const sourceRoot of sourceRoots) {
-    const source = deps.fs.join(sourceRoot.catalogDirectory, 'thumbnails', `${deps.fs.basenameWithoutExtension(videoPath)}.jpg`);
-    const sourceExists = await deps.fs.isFile(source);
-    if (!sourceExists.ok) return sourceExists;
-    if (!sourceExists.value) continue;
-    const target = deps.fs.join(folderRoot.catalogDirectory, 'thumbnails', `${deps.fs.basenameWithoutExtension(appliedName)}.jpg`);
+  for (const suffix of ['.jpg', '.grid.jpg']) {
+    const target = deps.fs.join(folderRoot.catalogDirectory, 'thumbnails', `${deps.fs.basenameWithoutExtension(appliedName)}${suffix}`);
     const targetExists = await deps.fs.exists(target);
     if (!targetExists.ok) return targetExists;
-    if (targetExists.value) return ok(null);
-    return ok({ source, target });
+    if (targetExists.value) continue;
+    for (const sourceRoot of sourceRoots) {
+      const source = deps.fs.join(sourceRoot.catalogDirectory, 'thumbnails', `${deps.fs.basenameWithoutExtension(videoPath)}${suffix}`);
+      const sourceExists = await deps.fs.isFile(source);
+      if (!sourceExists.ok) return sourceExists;
+      if (!sourceExists.value) continue;
+      const provenance = suffix === '.grid.jpg' ? await deps.globalCatalog.getGridThumbnail(source) : ok(null);
+      if (!provenance.ok) return provenance;
+      copies.push({ source, target, provenance: provenance.value });
+      break;
+    }
   }
-  return ok(null);
+  return ok(copies);
 };
 
 const applyFile = async (
@@ -731,14 +738,27 @@ const applyFile = async (
     }
   }
 
-  if (plan.thumbnailCopy !== null) {
+  if (plan.thumbnailCopies.length > 0) {
     operations.push('copy_thumbnail');
     if (!dryRun) {
-      const ensured = await deps.fs.ensureDirectory(deps.fs.dirname(plan.thumbnailCopy.target));
-      if (!ensured.ok) return ensured;
-      const copied = await materializeArtifactFile(deps.fs, plan.thumbnailCopy.source, plan.thumbnailCopy.target);
-      if (!copied.ok) return copied;
+      for (const copy of plan.thumbnailCopies) {
+        const ensured = await deps.fs.ensureDirectory(deps.fs.dirname(copy.target));
+        if (!ensured.ok) return ensured;
+        const copied = await materializeArtifactFile(deps.fs, copy.source, copy.target);
+        if (!copied.ok) return copied;
+        if (copy.provenance !== null) {
+          const sourcePath = relocatedThumbnailSource(deps.fs, folderPath, plan, copy.provenance.sourcePath);
+          const recorded = await deps.globalCatalog.recordGridThumbnail({ ...copy.provenance, outputPath: copy.target, sourcePath });
+          if (!recorded.ok) return recorded;
+        }
+      }
     }
+  }
+  if (!dryRun && plan.needsRename) {
+    const flushed = await deps.globalCatalog.flush();
+    if (!flushed.ok) return flushed;
+    const cleaned = await removeRenamedProjection(deps, folderPath, plan);
+    if (!cleaned.ok) return cleaned;
   }
 
   return ok({ operations });
@@ -766,4 +786,44 @@ const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppE
     return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
   }
   return ok(undefined);
+};
+
+const removeRenamedProjection = async (
+  deps: MaterializeDeps,
+  folderPath: string,
+  plan: FilePlan,
+): Promise<Result<void, AppError>> => {
+  const stem = deps.fs.basenameWithoutExtension(plan.videoPath);
+  if (stem === deps.fs.basenameWithoutExtension(plan.appliedName)) return ok(undefined);
+  const files = await deps.fs.listDirectory(folderPath);
+  if (!files.ok) return files;
+  if (files.value.some((entry) => entry.kind === 'file' && deps.fs.basenameWithoutExtension(entry.name) === stem)) return ok(undefined);
+  for (const folderId of new Set([plan.file.folderId, plan.folderId])) {
+    const records = await deps.globalCatalog.listFolderRecords(folderId);
+    if (!records.ok) return records;
+    if (records.value.some((record) => record.file.fingerprint !== plan.fingerprint && deps.fs.basenameWithoutExtension(record.file.fileName) === stem)) return ok(undefined);
+  }
+  const roots = [folderArtifactRoot(deps.fs, folderPath), readOnlyArtifactRootById(deps.fs, plan.file.folderId), readOnlyArtifactRoot(deps.fs, folderPath)];
+  for (const root of roots) {
+    const old = artifactPaths(deps.fs, root, plan.videoPath, null);
+    for (const target of [old.framesDir, old.transcriptPath, old.transcriptJsonPath, old.summaryPath, old.summaryJsonPath, old.debugLogPath, old.thumbnailPath, old.gridThumbnailPath]) {
+      const deleted = await deps.fs.deletePath(target);
+      if (!deleted.ok) return deleted;
+    }
+    const removed = await deps.globalCatalog.deleteGridThumbnail(old.gridThumbnailPath);
+    if (!removed.ok) return removed;
+  }
+  return deps.globalCatalog.flush();
+};
+
+const relocatedThumbnailSource = (fs: FileSystemPort, folderPath: string, plan: FilePlan, source: string): string => {
+  if (source === plan.videoPath) return fs.join(folderPath, plan.appliedName);
+  const storedCopy = plan.artifactOps.find((op) => op.source === source);
+  if (storedCopy !== undefined) return storedCopy.target;
+  const target = artifactPaths(fs, folderArtifactRoot(fs, folderPath), fs.join(folderPath, plan.appliedName), null);
+  for (const root of [folderArtifactRoot(fs, folderPath), readOnlyArtifactRootById(fs, plan.file.folderId), readOnlyArtifactRoot(fs, folderPath)]) {
+    const previous = artifactPaths(fs, root, plan.videoPath, null);
+    if (source.startsWith(`${previous.framesDir}/`)) return `${target.framesDir}${source.slice(previous.framesDir.length)}`;
+  }
+  return source;
 };

@@ -3,7 +3,7 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 import type { FileSystemPort, GlobalCatalogStore, MediaPort, ThumbnailGeneration } from '../ports.js';
 import { FRAME_FILE_NAME_PATTERN } from './artifact-store.js';
 import { isSupportedVideoExtension, artifactPaths, thumbnailArtifactPath, GRID_THUMBNAIL_EDGE } from './shared.js';
-import { discoverArtifactRoot } from './artifact-root.js';
+import { discoverArtifactRootForWrite } from './artifact-root.js';
 
 export const GRID_THUMBNAIL_GENERATION_VERSION = 1;
 
@@ -57,7 +57,7 @@ export const generateThumbnail = async (
     return { ok: false, error: appError('invalid_file_type', `Unsupported video file type: ${videoPath}`) };
   }
 
-  const root = await discoverArtifactRoot(deps.fs, deps.fs.dirname(videoPath));
+  const root = await discoverArtifactRootForWrite(deps.fs, deps.fs.dirname(videoPath));
   if (!root.ok) return root;
   const thumbnailPath = thumbnailArtifactPath(deps.fs, root.value, videoPath);
 
