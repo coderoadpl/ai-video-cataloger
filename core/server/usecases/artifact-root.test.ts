@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { discoverArtifactRoot, folderArtifactRoot, readOnlyArtifactRoot, readOnlyArtifactRootById } from './artifact-root.js';
+import { discoverArtifactRoot, discoverArtifactRootForWrite, folderArtifactRoot, readOnlyArtifactRoot, readOnlyArtifactRootById } from './artifact-root.js';
+import { generateThumbnail } from './thumbnail.js';
 import { folderMarkerPath } from './folder-identity.js';
-import { InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
+import { InMemoryFileSystem, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
 
 const legacyDerivedFolderId = (folder: string): string => {
   let hash = 2_166_136_261;
@@ -13,6 +14,36 @@ const legacyDerivedFolderId = (folder: string): string => {
 };
 
 describe('discoverArtifactRoot', () => {
+  it('6hCrvVvrqp4FQV6m retains legacy-only artifacts when a merge write fails and resumes without loss', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const folder = '/work/Å-ring';
+    const legacy = readOnlyArtifactRootById(fs, legacyDerivedFolderId(folder.normalize('NFD')));
+    const canonical = readOnlyArtifactRoot(fs, folder);
+    fs.addFile(`${legacy.path}/one.json`, { content: 'one' });
+    fs.addFile(`${legacy.path}/two.json`, { content: 'two' });
+    fs.addDirectory(canonical.path);
+    const rename = vi.spyOn(fs, 'renamePath').mockResolvedValueOnce({ ok: false, error: { code: 'internal', message: 'Write failed' } });
+    expect(await discoverArtifactRootForWrite(fs, folder)).toMatchObject({ ok: false });
+    expect(await fs.readTextFile(`${legacy.path}/one.json`)).toMatchObject({ ok: true, value: 'one' });
+    expect(await fs.readTextFile(`${legacy.path}/two.json`)).toMatchObject({ ok: true, value: 'two' });
+    rename.mockRestore();
+    expect(await discoverArtifactRootForWrite(fs, folder)).toEqual({ ok: true, value: canonical });
+    expect(await fs.exists(legacy.path)).toEqual({ ok: true, value: false });
+    expect(await fs.readTextFile(`${canonical.path}/two.json`)).toMatchObject({ ok: true, value: 'two' });
+  });
+
+  it('6hCrvVvrqp4FQV6m heals the mirror when the first writer only generates a thumbnail', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const folder = '/work/Å-ring';
+    const legacy = readOnlyArtifactRootById(fs, legacyDerivedFolderId(folder.normalize('NFD')));
+    const canonical = readOnlyArtifactRoot(fs, folder);
+    fs.addFile(`${folder}/clip.mp4`);
+    fs.addFile(`${legacy.path}/summaries/clip.json`, { content: 'retained' });
+    expect(await generateThumbnail({ fs, media: new InMemoryMedia(fs) }, { videoPath: `${folder}/clip.mp4`, force: true })).toMatchObject({ ok: true, value: { thumbnailPath: `${canonical.path}/thumbnails/clip.jpg` } });
+    expect(await fs.exists(legacy.path)).toEqual({ ok: true, value: false });
+    expect(await fs.readTextFile(`${canonical.path}/summaries/clip.json`)).toEqual({ ok: true, value: 'retained' });
+  });
+
   it('returns the writable folder root when a folder marker is present', async () => {
     const fs = new InMemoryFileSystem('/work');
     const folder = '/work/videos';

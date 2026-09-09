@@ -64,3 +64,58 @@ export const discoverArtifactRoot = async (
   if (!legacyMirrored.ok) return legacyMirrored;
   return ok(legacyMirrored.value ? legacyMirror : folderArtifactRoot(fs, folder));
 };
+
+export const prepareArtifactRootForWrite = async (
+  fs: FileSystemPort,
+  folder: string,
+  root: ArtifactRoot,
+): Promise<Result<ArtifactRoot, AppError>> => {
+  const canonical = readOnlyArtifactRoot(fs, folder);
+  const legacy = legacyReadOnlyArtifactRoot(fs, folder);
+  if (canonical.path === legacy.path || (root.path !== canonical.path && root.path !== legacy.path)) return ok(root);
+  const exists = await fs.isDirectory(legacy.path);
+  if (!exists.ok) return exists;
+  if (!exists.value) return ok(canonical);
+  const migrated = await mergeLegacyMirror(fs, legacy.path, canonical.path);
+  return migrated.ok ? ok(canonical) : migrated;
+};
+
+export const discoverArtifactRootForWrite = async (
+  fs: FileSystemPort,
+  folder: string,
+  knownFolderId?: string,
+): Promise<Result<ArtifactRoot, AppError>> => {
+  const root = await discoverArtifactRoot(fs, folder, knownFolderId);
+  return root.ok ? prepareArtifactRootForWrite(fs, folder, root.value) : root;
+};
+
+const mergeLegacyMirror = async (
+  fs: FileSystemPort,
+  legacy: string,
+  canonical: string,
+): Promise<Result<void, AppError>> => {
+  const exists = await fs.exists(canonical);
+  if (!exists.ok) return exists;
+  if (!exists.value) return fs.renamePath(legacy, canonical);
+  const directory = await fs.isDirectory(canonical);
+  if (!directory.ok) return directory;
+  if (directory.value) {
+    const listed = await fs.listDirectory(legacy);
+    if (!listed.ok) return listed;
+    for (const entry of listed.value) {
+      const target = fs.join(canonical, entry.name);
+      if (entry.kind === 'directory') {
+        const merged = await mergeLegacyMirror(fs, entry.path, target);
+        if (!merged.ok) return merged;
+      } else {
+        const targetExists = await fs.exists(target);
+        if (!targetExists.ok) return targetExists;
+        if (!targetExists.value) {
+          const moved = await fs.renamePath(entry.path, target);
+          if (!moved.ok) return moved;
+        }
+      }
+    }
+  }
+  return fs.deletePath(legacy);
+};

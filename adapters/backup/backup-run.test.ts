@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import initSqlJs from 'sql.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
@@ -10,6 +11,7 @@ import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js
 import {
   BACKUP_ENCRYPTION_KEY_ACCOUNT,
   appError,
+  catalogFileSchema,
   ok,
   type AppError,
   type BackupManifest,
@@ -29,9 +31,65 @@ import {
 import { MemoryBackupDestination } from './memory-destination.js';
 import { BackupStateFile } from './state-store.js';
 import { extractTarZstd, writeTarZstd } from './tar.js';
+import { collectBackupScope } from '@core/server/usecases/backup-scope.js';
+import { computeBackupFingerprint } from '@core/server/usecases/backup-fingerprint.js';
+import { prepareBackupScope } from '@core/server/usecases/backup-run.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 describe('backup run pipeline', () => {
+  it('CAT-05 stages crops before releasing catalog-write and survives live deletion', async () => {
+    const fixture = await createFixture();
+    const crop = path.join(fixture.home, '.ai-video-cataloger', 'faces', 'obs', 'fp', 'crop.jpg');
+    mkdirSync(path.dirname(crop), { recursive: true });
+    writeFileSync(crop, 'captured-crop');
+    await fixture.deps.globalCatalog.upsertFile(catalogFileSchema.parse({ fingerprint: 'fp', folderId: '22222222-2222-4222-8222-222222222222', fileName: 'clip.mp4', size: 10, durationS: null, processedAt: '2026-09-02T12:00:00.000Z', analyzer: null, model: null }));
+    await fixture.deps.globalCatalog.upsertFaceObservation({ obsId: 'obs', fingerprint: 'fp', kind: 'face', media: 'video', frameTsS: 1, bbox: { x: 0, y: 0, width: 10, height: 10 }, embedding: [0.1], quality: 1, personId: null, cropPath: crop });
+    const staging = path.join(fixture.home, 'staged');
+    const prepared = await prepareBackupScope(fixture.deps, 'critical', staging, undefined, {
+      acquireResource: (key) => {
+        expect(key).toBe('catalog-write');
+        return Promise.resolve(ok(() => unlinkSync(crop)));
+      },
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    const entry = prepared.value.entries.find((item) => item.archivePath === 'faces/obs/fp/crop.jpg');
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    expect(entry.sourcePath.startsWith(staging)).toBe(true);
+    expect(readFileSync(entry.sourcePath, 'utf8')).toBe('captured-crop');
+    expect(existsSync(crop)).toBe(false);
+    const catalog = prepared.value.entries.find((item) => item.archivePath === 'catalog.db');
+    if (catalog === undefined) throw new Error('Missing snapshot');
+    const sql = await initSqlJs();
+    const snapshot = new sql.Database(readFileSync(catalog.sourcePath));
+    try {
+      expect(snapshot.exec('SELECT crop_path FROM face_observations')[0]?.values).toEqual([[crop]]);
+    } finally {
+      snapshot.close();
+    }
+  });
+
+  it('CAT-05 keeps the fingerprint tied to captured source metadata rather than staging copy times', async () => {
+    const fixture = await createFixture();
+    const copy = fixture.fs.copyFile.bind(fixture.fs);
+    vi.spyOn(fixture.fs, 'copyFile').mockImplementation(async (from, to) => {
+      const copied = await copy(from, to);
+      if (copied.ok) utimesSync(to, 100, 100);
+      return copied;
+    });
+    const staging = path.join(fixture.home, 'metadata-stage');
+    const prepared = await prepareBackupScope(fixture.deps, 'critical', staging);
+    if (!prepared.ok) throw new Error(prepared.error.message);
+    const source = await collectBackupScope(fixture.fs, {
+      tier: 'critical', homeDirectory: fixture.home,
+      globalCatalogSnapshot: path.join(staging, 'catalog.db'), photosSnapshot: path.join(staging, 'photos.db'),
+      folders: prepared.value.folders,
+    });
+    if (!source.ok) throw new Error(source.error.message);
+    expect(await computeBackupFingerprint(fixture.fs, source.value.entries)).toEqual(ok(prepared.value.fingerprint));
+  });
+
   it.each(['critical', 'optional'] as const)('runs a %s backup and removes staging', async (tier) => {
     const fixture = await createFixture();
     const events: JobProgress[] = [];

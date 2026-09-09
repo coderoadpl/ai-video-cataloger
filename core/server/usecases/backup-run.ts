@@ -271,7 +271,23 @@ export const prepareBackupScope = async (
   signal?: AbortSignal | undefined,
   resources?: Pick<JobsPort, 'acquireResource'> | undefined,
 ): Promise<Result<PreparedBackupScope, AppError>> => {
-  const snapshots = await takeSnapshotsWithResource(deps, tier, stagingDirectory, signal, resources);
+  if (resources === undefined) return stageBackupScope(deps, tier, stagingDirectory, signal);
+  const acquired = await resources.acquireResource('catalog-write', signal);
+  if (!acquired.ok) return acquired;
+  try {
+    return await stageBackupScope(deps, tier, stagingDirectory, signal);
+  } finally {
+    acquired.value();
+  }
+};
+
+const stageBackupScope = async (
+  deps: BackupPreparationDeps,
+  tier: BackupTier,
+  stagingDirectory: string,
+  signal?: AbortSignal | undefined,
+): Promise<Result<PreparedBackupScope, AppError>> => {
+  const snapshots = await takeSnapshots(deps, tier, stagingDirectory, signal);
   if (!snapshots.ok) return snapshots;
   const folders = await deps.globalCatalog.listFolders();
   if (!folders.ok) return folders;
@@ -286,29 +302,21 @@ export const prepareBackupScope = async (
   if (!scope.ok) return scope;
   const fingerprint = await computeBackupFingerprint(deps.fs, scope.value.entries);
   if (!fingerprint.ok) return fingerprint;
+  const entries: BackupScopeEntry[] = [];
+  for (const entry of scope.value.entries) {
+    const sourcePath = deps.fs.join(stagingDirectory, 'files', entry.archivePath);
+    const directory = await deps.fs.ensureDirectory(deps.fs.dirname(sourcePath));
+    if (!directory.ok) return directory;
+    const copied = await deps.fs.copyFile(entry.sourcePath, sourcePath);
+    if (!copied.ok) return copied;
+    entries.push({ ...entry, sourcePath });
+  }
   return ok({
-    entries: scope.value.entries,
+    entries,
     folders: scope.value.folders,
     fingerprint: fingerprint.value,
     snapshots: { globalSchema: snapshots.value.globalSchema, photosSchema: snapshots.value.photosSchema },
   });
-};
-
-const takeSnapshotsWithResource = async (
-  deps: BackupPreparationDeps,
-  tier: BackupTier,
-  stagingDirectory: string,
-  signal?: AbortSignal | undefined,
-  resources?: Pick<JobsPort, 'acquireResource'> | undefined,
-): Promise<Result<{ globalCatalog: string; photos: string | null; globalSchema: number; photosSchema: number }, AppError>> => {
-  if (resources === undefined) return takeSnapshots(deps, tier, stagingDirectory, signal);
-  const acquired = await resources.acquireResource('catalog-write', signal);
-  if (!acquired.ok) return acquired;
-  try {
-    return await takeSnapshots(deps, tier, stagingDirectory, signal);
-  } finally {
-    acquired.value();
-  }
 };
 
 const takeSnapshots = async (

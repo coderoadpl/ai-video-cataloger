@@ -382,6 +382,22 @@ describe('variant selection', () => {
     });
   });
 
+  it('CAT-01 selects differently named variants under the physical filename and preserves unowned suggestions', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const first = { ...variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z'), finalName: 'clip.mp4' };
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'other', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    fs.addFile('/work/other.mp4');
+    fs.addFile('/work/summaries/other.json', { content: 'other-video' });
+    expect(await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId })).toMatchObject({ ok: true });
+    expect(await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: second.configId })).toMatchObject({ ok: true });
+    expect(await fs.readTextFile('/work/summaries/clip.json')).toEqual(ok(JSON.stringify({ description: second.description })));
+    expect(await fs.readTextFile('/work/summaries/other.json')).toEqual(ok('other-video'));
+  });
+
   it('validates existence, refreshes the name projection, and changes the selected search document', async () => {
     const fs = new InMemoryFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();
@@ -398,7 +414,7 @@ describe('variant selection', () => {
 
     const selected = await store.getAnalysis(fingerprint);
     expect(selected.ok && selected.value?.description).toBe(second.description);
-    const projection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', second.finalName);
+    const projection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', null);
     expect(await fs.readTextFile(projection.summaryJsonPath)).toEqual({
       ok: true,
       value: JSON.stringify({ description: second.description }),
@@ -433,9 +449,9 @@ describe('variant selection', () => {
       payload: { fingerprint, configId: second.configId },
     }]);
     const firstProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', first.finalName);
-    const secondProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', second.finalName);
-    expect(await fs.exists(firstProjection.summaryJsonPath)).toEqual({ ok: true, value: true });
-    expect(await fs.exists(secondProjection.summaryJsonPath)).toEqual({ ok: true, value: false });
+    const secondProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', null);
+    expect(await fs.exists(firstProjection.summaryJsonPath)).toEqual({ ok: true, value: false });
+    expect(await fs.readTextFile(secondProjection.summaryJsonPath)).toEqual(ok(JSON.stringify({ description: first.description })));
 
     expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: second.configId } });
     expect(await fs.exists(firstProjection.summaryJsonPath)).toEqual({ ok: true, value: false });
@@ -487,7 +503,7 @@ describe('variant selection', () => {
     );
 
     expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: third.configId } });
-    const thirdProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', third.finalName);
+    const thirdProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', null);
     expect(await fs.readTextFile(thirdProjection.summaryJsonPath)).toEqual({
       ok: true,
       value: JSON.stringify({ description: third.description }),
@@ -776,7 +792,7 @@ describe('variant selection', () => {
     expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: third.configId });
   });
 
-  it('returns a projection cleanup failure when the selection remains current', async () => {
+  it('CAT-01 does not delete unverified historical projections when selection changes', async () => {
     const fs = new FailingDeleteFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();
     const jobs = new ManualJobs();
@@ -797,13 +813,10 @@ describe('variant selection', () => {
       first.finalName,
     ).framesDir;
 
-    expect(await jobs.run(0)).toEqual({
-      ok: false,
-      error: appError('internal', 'Projection cleanup failed'),
-    });
+    expect(await jobs.run(0)).toEqual(ok({ fingerprint, configId: second.configId }));
   });
 
-  it('returns a latest-selection lookup failure after projection cleanup fails', async () => {
+  it('returns a latest-selection lookup failure after replacing the physical projection', async () => {
     const fs = new FailingDeleteFileSystem(folderPath);
     const store = new ScriptedCatalogStore();
     const jobs = new ManualJobs();
@@ -834,7 +847,7 @@ describe('variant selection', () => {
     });
   });
 
-  it('retries cleanup against the latest selection when selection changes during cleanup', async () => {
+  it('reprojects the physical path when selection changes during projection', async () => {
     const fs = new FailingDeleteFileSystem(folderPath);
     const store = new ScriptedCatalogStore();
     const jobs = new ManualJobs();

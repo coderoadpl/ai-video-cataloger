@@ -138,14 +138,20 @@ const withCatalogWriteLock = async <T>(
   deps: AppDeps,
   run: () => Promise<Result<T, AppError>>,
 ): Promise<Result<T, AppError>> => {
-  const lock = await requireCatalogWriteLock(deps);
-  if (!lock.ok) return lock;
-  const result = await run();
-  const releasedCatalog = await deps.globalCatalog.flush();
-  const releasedPhotos = await deps.photos.flush();
-  if (result.ok && !releasedCatalog.ok) return releasedCatalog;
-  if (result.ok && !releasedPhotos.ok) return releasedPhotos;
-  return result;
+  const acquired = await deps.jobs.acquireResource('catalog-write');
+  if (!acquired.ok) return acquired;
+  try {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return lock;
+    const result = await run();
+    const releasedCatalog = await deps.globalCatalog.flush();
+    const releasedPhotos = await deps.photos.flush();
+    if (result.ok && !releasedCatalog.ok) return releasedCatalog;
+    if (result.ok && !releasedPhotos.ok) return releasedPhotos;
+    return result;
+  } finally {
+    acquired.value();
+  }
 };
 
 const withCatalogWriteLockForJob = async (

@@ -2,7 +2,7 @@ import { appError, ok, type AppError, type CatalogPlace, type Result } from '@co
 
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
 import { artifactPaths, classifyOfflineFolder, formatDuration, formatSize, readRichSegments, variantProvenanceLabel, type OfflineReason } from './shared.js';
-import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import { discoverArtifactRoot, prepareArtifactRootForWrite, type ArtifactRoot } from './artifact-root.js';
 import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { filterTranscript } from './transcript-hallucinations.js';
 
@@ -189,20 +189,25 @@ export const search = async (
   });
 };
 
-// The catalog records `finalName` before the rename and `fileName` after it, so the final name is
-// authoritative only while it still names a file: once it does not, it is a rename that was skipped
-// or never applied, and the artifacts sit under the name the file actually carries.
 const onDiskVideoPath = async (
   fs: FileSystemPort,
   folderPath: string,
   fileName: string,
   finalName: string | null,
+  fingerprint: string,
 ): Promise<Result<string, AppError>> => {
-  if (finalName === null || finalName === fileName) return ok(fs.join(folderPath, fileName));
+  const recorded = fs.join(folderPath, fileName);
+  if (finalName === null || finalName === fileName) return ok(recorded);
+  const originalExists = await fs.isFile(recorded);
+  if (!originalExists.ok) return originalExists;
+  if (originalExists.value) return ok(recorded);
   const renamed = fs.join(folderPath, finalName);
   const exists = await fs.isFile(renamed);
   if (!exists.ok) return exists;
-  return ok(exists.value ? renamed : fs.join(folderPath, fileName));
+  if (!exists.value) return ok(recorded);
+  const hash = await fs.partialContentHash(renamed);
+  if (!hash.ok) return hash;
+  return ok(hash.value === fingerprint ? renamed : recorded);
 };
 
 export const resolveOfflineReason = async (
@@ -222,11 +227,15 @@ export const resolveThumbnailPath = async (
   knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
-  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName);
+  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName, row.fingerprint);
   if (!videoPath.ok) return videoPath;
-  const root = knownRoot === undefined
+  const discovered = knownRoot === undefined
     ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
     : ok(knownRoot);
+  if (!discovered.ok) return discovered;
+  const root = thumbnails === 'ensure'
+    ? await prepareArtifactRootForWrite(deps.fs, row.folder.currentPath, discovered.value)
+    : discovered;
   if (!root.ok) return root;
   const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath.value, null);
   const exists = await deps.fs.exists(thumbnailPath);
@@ -249,11 +258,15 @@ export const resolveGridThumbnailPath = async (
   knownRoot?: ArtifactRoot | undefined,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
-  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName);
+  const videoPath = await onDiskVideoPath(deps.fs, row.folder.currentPath, row.fileName, row.finalName, row.fingerprint);
   if (!videoPath.ok) return videoPath;
-  const root = knownRoot === undefined
+  const discovered = knownRoot === undefined
     ? await discoverArtifactRoot(deps.fs, row.folder.currentPath, row.folder.folderId)
     : ok(knownRoot);
+  if (!discovered.ok) return discovered;
+  const root = thumbnails === 'ensure'
+    ? await prepareArtifactRootForWrite(deps.fs, row.folder.currentPath, discovered.value)
+    : discovered;
   if (!root.ok) return root;
   const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath.value, null);
   const exists = await deps.fs.exists(gridThumbnailPath);
@@ -324,18 +337,19 @@ export const libraryPreviewDetail = async (
 
   const online = await deps.fs.exists(folder.value.currentPath);
   if (!online.ok) return online;
+  const resolved = await onDiskVideoPath(deps.fs, folder.value.currentPath, file.value.fileName, analysis.value?.finalName ?? null, input.fingerprint);
+  if (!resolved.ok) return resolved;
   const player = online.value
     ? await loadPreviewPlayerDetail(deps, {
       folderId: folder.value.folderId,
       folderPath: folder.value.currentPath,
-      fileName: file.value.fileName,
-      finalName: analysis.value?.finalName ?? null,
+      videoPath: resolved.value,
     })
     : { transcriptSegments: null, width: null, height: null, rotation: null };
 
   return ok({
     fingerprint: input.fingerprint,
-    path: deps.fs.join(folder.value.currentPath, file.value.fileName),
+    path: resolved.value,
     fileName: file.value.fileName,
     size: file.value.size,
     sizeFormatted: formatSize(file.value.size),
@@ -377,10 +391,9 @@ interface PreviewPlayerDetail {
 // — the two players stay in sync without a schema migration.
 const loadPreviewPlayerDetail = async (
   deps: SearchDeps,
-  input: { folderId: string; folderPath: string; fileName: string; finalName: string | null },
+  input: { folderId: string; folderPath: string; videoPath: string },
 ): Promise<PreviewPlayerDetail> => {
-  const resolved = await onDiskVideoPath(deps.fs, input.folderPath, input.fileName, input.finalName);
-  const videoPath = resolved.ok ? resolved.value : deps.fs.join(input.folderPath, input.fileName);
+  const videoPath = input.videoPath;
   const root = await discoverArtifactRoot(deps.fs, input.folderPath, input.folderId);
   const transcriptSegments = root.ok
     ? await loadPreviewTranscriptSegments(deps.fs, root.value, videoPath)

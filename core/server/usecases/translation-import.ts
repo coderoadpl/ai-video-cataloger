@@ -13,7 +13,7 @@ import {
 } from '@core/domain/index.js';
 
 import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
-import { discoverArtifactRoot } from './artifact-root.js';
+import { discoverArtifactRootForWrite } from './artifact-root.js';
 import {
   materializeTranslatedVariantArtifacts,
   variantArtifactPaths,
@@ -263,7 +263,7 @@ const copyTranslationArtifacts = async (
   if (folder.value === null) {
     return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
   }
-  const root = await discoverArtifactRoot(deps.fs, folder.value.currentPath, folder.value.folderId);
+  const root = await discoverArtifactRootForWrite(deps.fs, folder.value.currentPath, folder.value.folderId);
   if (!root.ok) return root;
   const source = await variantProjectionSource(deps.fs, root.value, plan.source);
   if (!source.ok) return source;

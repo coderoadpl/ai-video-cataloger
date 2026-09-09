@@ -65,7 +65,7 @@ import {
   summaryDataSchema,
   type SummaryData,
 } from './shared.js';
-import { artifactRootFor, folderArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import { artifactRootFor, folderArtifactRoot, prepareArtifactRootForWrite, type ArtifactRoot } from './artifact-root.js';
 import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import {
   materializeSelectedVariantProjection,
@@ -218,9 +218,11 @@ export const processVideoPipeline = async (
         selectedConfigId: skipped.value.selectedConfigId,
       });
     }
+    const root = await prepareArtifactRootForWrite(deps.fs, folder, artifactRootFor(deps.fs, folder, repository.value.writable()));
+    if (!root.ok) return root;
     const options = pipelineOptions(
       deps.fs,
-      folder,
+      root.value,
       repository.value.writable(),
       resolved.value,
       deps.globalCatalog === undefined ? null : fingerprint.value,
@@ -861,14 +863,13 @@ export const processConfigIdentity = (
 
 const pipelineOptions = (
   fs: FileSystemPort,
-  folder: string,
+  artifactRoot: ArtifactRoot,
   writable: boolean,
   resolved: ResolvedProcessOptions,
   fingerprint: string | null,
   identity: ProcessConfigIdentity,
   force: boolean,
 ): PipelineOptions => {
-  const artifactRoot = artifactRootFor(fs, folder, writable);
   return {
     ...resolved,
     skipRename: resolved.skipRename || !writable,
