@@ -95,7 +95,7 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
       <Row icon={<ClockIcon fontSize="small" />} label={dictionary.photos.detailCaptured} value={capturedValue} />
       <Row
         icon={<FolderIcon fontSize="small" />}
-        label={dictionary.photos.detailOwnerPath}
+        label={dictionary.details.location}
         value={ownerPath}
         testId="photo-metadata-row-owner-path"
         pathLayout

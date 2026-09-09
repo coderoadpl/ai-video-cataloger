@@ -483,6 +483,7 @@ export interface Dictionary {
     mergeSelected: string;
     indexFaces: string;
     indexFacesNoIndexableMedia: string;
+    indexFacesFacesOff: string;
     localFaceGroupingOffTitle: string;
     localFaceGroupingOffBody: string;
     modelsMissingTitle: string;
@@ -907,7 +908,6 @@ export interface Dictionary {
     capturedSourceExifGpsTime: string;
     capturedSourceExifLocalAssumed: string;
     capturedSourceFileMtime: string;
-    detailOwnerPath: string;
     detailAlsoAt: (count: number) => string;
     analyzeAction: string;
     analyzeCompletedLog: string;
@@ -1615,6 +1615,7 @@ export const en: Dictionary = {
     mergeSelected: 'Merge selected',
     indexFaces: 'Index faces',
     indexFacesNoIndexableMedia: 'Analyze at least one video or generate one photo proxy in this folder before indexing faces.',
+    indexFacesFacesOff: 'Turn on face grouping in Settings',
     localFaceGroupingOffTitle: 'Local face grouping is off',
     localFaceGroupingOffBody: 'Turn on local face grouping in Settings to group faces on this Mac.',
     modelsMissingTitle: 'Face grouping models are not installed',
@@ -2089,7 +2090,6 @@ export const en: Dictionary = {
     capturedSourceExifGpsTime: 'EXIF (GPS time)',
     capturedSourceExifLocalAssumed: 'EXIF (local time assumed)',
     capturedSourceFileMtime: 'File modified time',
-    detailOwnerPath: 'Owner path',
     detailAlsoAt: (count) => `Also at: ${count} path${count === 1 ? '' : 's'}`,
     analyzeAction: 'Analyze',
     analyzeCompletedLog: 'Photo analysis complete',
@@ -2818,6 +2818,7 @@ export const pl: Dictionary = {
     mergeSelected: 'Scal wybrane',
     indexFaces: 'Indeksuj twarze',
     indexFacesNoIndexableMedia: 'Przeanalizuj co najmniej jeden film lub wygeneruj jeden plik proxy zdjęcia w tym folderze przed indeksowaniem twarzy.',
+    indexFacesFacesOff: 'Włącz grupowanie twarzy w Ustawieniach',
     localFaceGroupingOffTitle: 'Lokalne grupowanie twarzy jest wyłączone',
     localFaceGroupingOffBody: 'Włącz lokalne grupowanie twarzy w Ustawieniach, aby grupować twarze na tym Macu.',
     modelsMissingTitle: 'Modele grupowania twarzy nie są zainstalowane',
@@ -3293,7 +3294,6 @@ export const pl: Dictionary = {
     capturedSourceExifGpsTime: 'EXIF (czas GPS)',
     capturedSourceExifLocalAssumed: 'EXIF (założony czas lokalny)',
     capturedSourceFileMtime: 'Czas modyfikacji pliku',
-    detailOwnerPath: 'Ścieżka właściciela',
     detailAlsoAt: (count) => `Także w: ${count} ${plPlural(count, 'ścieżce', 'ścieżkach', 'ścieżkach')}`,
     analyzeAction: 'Analizuj',
     analyzeCompletedLog: 'Analiza zdjęć zakończona',

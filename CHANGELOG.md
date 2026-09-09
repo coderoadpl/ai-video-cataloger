@@ -25,6 +25,20 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The release walkthrough excludes hidden photo files and sidecars from its expected scan row count.
 - Pair review accounts for cache row overhead, preserves scores across output-limit changes and yields during preprocessing and row scoring while reusing warm rankings.
 
+## [0.6.40] - 2026-09-09
+
+### Changed
+
+- The extracted-frames gallery caps its enlarged frame, so the thumbnail strip stays visible beside it on a wide details pane
+  ([`49db564`](https://github.com/coderoadpl/ai-video-cataloger/commit/49db564419ee6a5e59169e7bc50ec3b0e5361692)).
+- Photo details label the owning folder "Lokalizacja" / "Location", the same wording the video pane uses for that path
+  ([`49db564`](https://github.com/coderoadpl/ai-video-cataloger/commit/49db564419ee6a5e59169e7bc50ec3b0e5361692)).
+
+### Fixed
+
+- The "Index faces" button explains itself with a tooltip pointing at Settings while face grouping is switched off
+  ([`49db564`](https://github.com/coderoadpl/ai-video-cataloger/commit/49db564419ee6a5e59169e7bc50ec3b0e5361692)).
+
 ## [0.6.39] - 2026-09-09
 
 ### Fixed

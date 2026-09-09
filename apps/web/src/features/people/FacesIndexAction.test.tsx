@@ -181,6 +181,16 @@ describe('FacesIndexAction', () => {
     expect(button.getAttribute('title')).toBe('Analyze at least one video or generate one photo proxy in this folder before indexing faces.');
   });
 
+  it('is disabled with a tooltip pointing at Settings while face grouping is off', async () => {
+    stubFaces({ facesEnabled: false, artifactsReady: true });
+
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasIndexableMedia />);
+
+    const button = screen.getByTestId('people-index');
+    await waitFor(() => expect(button.getAttribute('title')).toBe('Turn on face grouping in Settings'));
+    expect(button.getAttribute('disabled')).not.toBeNull();
+  });
+
   it('surfaces a failed faces index job via a visible alert instead of only the terminal', async () => {
     stubFaces({ facesEnabled: true, artifactsReady: true });
     server.use(
