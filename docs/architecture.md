@@ -1321,6 +1321,16 @@ requested while the claim is held is refused with `conflict`, not queued
 (`enqueue` fails closed on a busy `resourceKey`; only `acquireResource`
 waits), and it runs from the watcher's single post-settle refresh.
 
+The shared resource order is `catalog-write`, then resolved roots in lexical
+order (each root, `photo-scan:<root>`, `photo-process:<root>`), then resolved
+file paths in lexical order, then `faces-write`. A use case takes the subset it
+needs in that order, including resources held by its enclosing job, and must
+never wait for a root or processing resource while holding `faces-write`.
+Trash follows the full order. Photo processing and drive processing hold their
+processing/root resource before the chained face pass claims `faces-write`.
+Backup snapshots claim only `catalog-write`; standalone face jobs, face
+mutations and catalog forget claim only `faces-write`.
+
 A hidden file must survive rescans, and structurally rather than by convention:
 every rescan and analysis path reaches the row through `upsertFile` /
 `upsertPhoto`, whose conflict `set` clause **omits** `hiddenAt`, so an UPDATE
@@ -1939,6 +1949,17 @@ Forget and purge transactionally retain pending crop cleanup in schema V19 until
 filesystem deletion succeeds. Failures after application report `applied: true`
 and a durability or cleanup phase so clients can reconcile and retry.
 
+Pair review scores eligible pairs one person at a time and retains at most the
+requested output cap of top scores per person. The per-person allowance shrinks
+with catalog size to keep all retained numeric score buffers within 8 MiB per
+store. Exclusions and the centroid prefilter precede exemplar scoring; uncached
+scores are recomputed so the global ranking and pending count remain exact.
+The cache key fingerprints the complete loaded people, observation and embedding
+snapshot, with scope thresholds and output limit, and changes after a people
+mutation. Each generation captures its version's rows so overlapping requests
+cannot write scores into another version. The pairs use case yields to the event
+loop between people; generation remains on the main thread.
+
 Reclustering advances deterministic domain generators in bounded work chunks,
 yielding to the event loop and checking cancellation between chunks. Similarity,
 heap construction and merging all yield; replacement remains in the face mutation
@@ -1957,6 +1978,39 @@ missing records and verify current output files before metadata or media work.
 Fallback records remain repair candidates, and forced passes explicitly recheck
 changed sources. Video backfill reuses indexed fingerprints on ordinary passes.
 
+## Catalog identity audit (R5)
+
+Selected-variant projections, search previews, thumbnail backfill and duplicate
+navigation use the recorded physical filename. A suggested `finalName` alone
+never establishes ownership of a file or artifact. Search rename recovery may
+use the suggested path only when the recorded path is absent and its content
+fingerprint matches. Materialization relocates both thumbnail sizes and grid
+provenance, then removes obsolete projections only after the catalog relocation
+is durable and no other recorded file shares their basename.
+
+Backup preparation holds `catalog-write` from database snapshots through copying
+the collected files into job staging. The fingerprint uses source metadata under
+that protection, so staging copy timestamps do not trigger spurious backups.
+Synchronous catalog mutations, including catalog forget, photo forget and face
+forget/purge, participate in that same resource. Archives read only staged files;
+archive names and NDJSON steps remain unchanged. Partial photo trash durably removes each successful
+sighting and updates the representative path before moving the next one, keeping
+analysis and shared artifacts until every sighting has been moved.
+
+Read-only artifact writers heal a pre-canonicalization NFD mirror on first write
+by moving its contents into the canonical path-derived mirror. Existing canonical
+files win collisions; remaining legacy files move across and the legacy tree is
+removed only after successful migration. Readers retain their legacy fallback.
+
+R5 verification of backlog `6hGRXF2j5FwXRHcm` finds the single-file path already
+awaits `recordGlobalCatalog` / `upsertProcessedVariant` and flushes the global
+catalog before returning outside a batch. Same-process browse, collection, text
+search and HTTP job completion regressions pass without a visibility production
+change; the release walkthrough tolerated skips remain unchanged.
+
+Backlog `6hCrvVvrqp4FQV6m` item 2 is already implemented: standalone faces index,
+recluster and exemplars jobs use `faces-write`, and the drive faces pass acquires
+and releases that same resource. This audit leaves those resource keys unchanged.
 
 ### Release gate evidence and isolation
 

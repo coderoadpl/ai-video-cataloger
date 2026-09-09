@@ -98,7 +98,7 @@ it('W99 A3 records the 3000-person route budget with five exemplars each', async
 
 it('W99 A3 caches generation by people revision and invalidates after a visibility change', async () => {
   const domain = await import('@core/domain/index.js');
-  const generate = vi.spyOn(domain, 'buildPeoplePairCandidates');
+  const generate = vi.spyOn(domain, 'buildPeoplePairCandidatesSteps');
   const deps = await pairTestDeps();
   await seedPairPerson(deps, pairTestPerson('a'));
   await seedPairPerson(deps, pairTestPerson('b'));
@@ -313,9 +313,9 @@ it('FPR-006 catalog forget waits without deleting an anchor while faces-write is
 
 it('FPR-007 reuses scores through decide, undo and their following GET requests', async () => {
   const domain = await import('@core/domain/index.js');
-  const build = domain.buildPeoplePairCandidates;
+  const build = domain.buildPeoplePairCandidatesSteps;
   let scored = 0;
-  vi.spyOn(domain, 'buildPeoplePairCandidates').mockImplementation((input) => build({ ...input, onPairScored: () => { scored += 1; } }));
+  vi.spyOn(domain, 'buildPeoplePairCandidatesSteps').mockImplementation((input) => build({ ...input, onPairScored: () => { scored += 1; } }));
   const deps = await pairTestDeps();
   for (const [id, similarity] of [['a', 1], ['b', 0.99], ['c', 0.98]] as const) await seedPairPerson(deps, pairTestPerson(id, similarity), 5);
   const app = buildApp(deps);
@@ -326,4 +326,32 @@ it('FPR-007 reuses scores through decide, undo and their following GET requests'
   await postPair(app, 'undo');
   expect(queueSchema.parse(await (await app.request('/api/faces/pairs')).json()).data.pending).toBe(3);
   expect(scored).toBe(3);
+});
+
+it('FPR-007 lets event-loop callbacks run during cold pair generation', async () => {
+  const deps = await pairTestDeps();
+  for (let i = 0; i < 40; i += 1) await seedPairPerson(deps, pairTestPerson(`responsive-${i}`));
+  let ticks = 0;
+  let active = true;
+  const tick = () => { ticks += 1; if (active) setImmediate(tick); };
+  setImmediate(tick);
+  try {
+    const response = await buildApp(deps).request('/api/faces/pairs');
+    expect(response.status).toBe(200);
+    expect(ticks).toBeGreaterThan(1);
+  } finally {
+    active = false;
+  }
+});
+
+it('returns a Result when pair generation fails', async () => {
+  const domain = await import('@core/domain/index.js');
+  vi.spyOn(domain, 'buildPeoplePairCandidatesSteps').mockImplementation(() => { throw new Error('Synthetic generation failure'); });
+  const { facesPairs } = await import('@core/server/usecases/faces-pairs.js');
+  await expect(facesPairs(await pairTestDeps(), { limit: 200 })).resolves.toMatchObject({ ok: false, error: { code: 'internal' } });
+});
+
+it('validates the pair generation limit at the use-case boundary', async () => {
+  const { facesPairs } = await import('@core/server/usecases/faces-pairs.js');
+  await expect(facesPairs(await pairTestDeps(), { limit: 0 })).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
 });

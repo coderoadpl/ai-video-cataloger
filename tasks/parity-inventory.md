@@ -1216,6 +1216,26 @@ Sources: `electron/renderer/src/components/main-panel.tsx`, `electron/renderer/s
 - `config.ts` currently contains a duplicated `const keyDef = CONFIG_KEYS[key];` inside `displayConfigKey`; this is source behavior to be aware of during rewrite parity review.
 
 
+### Post-parity note — catalog identity audit (R5)
+
+- Name-based projections and thumbnails use the physical filename, never an
+  unapplied suggested name. A materialized rename moves both cover and grid
+  thumbnails with grid provenance and removes owned obsolete projections after a
+  durable catalog relocation; artifacts sharing another file's basename remain.
+- Backup archive layout and NDJSON events stay unchanged. Database snapshots and
+  copies of collected artifacts are captured under `catalog-write`; archiving
+  reads immutable job staging. Synchronous catalog mutations share the exclusion resource, including catalog,
+  photo and face forget/purge.
+- Partial photo trash records each moved sighting durably before the next move,
+  retaining analyses until all sightings are handled.
+- Legacy NFD read-only mirrors heal on write into the canonical path-derived
+  mirror. Existing canonical files win collisions; legacy-only files are moved
+  and the legacy tree is removed after success. The read fallback remains.
+
+- Backlog `6hCrvVvrqp4FQV6m` item 2 is verified already complete: faces index,
+  recluster, exemplars and the drive faces pass share `faces-write`; no resource
+  key change is part of R5.
+
 ## R5 backlog event corrections
 
 The drive progress step `faces_waiting` is emitted only when the `faces-write`

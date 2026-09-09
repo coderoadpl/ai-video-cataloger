@@ -8,7 +8,7 @@ import {
   type JobsPort,
   type MediaPort,
 } from '../ports.js';
-import { discoverArtifactRoot } from './artifact-root.js';
+import { discoverArtifactRootForWrite } from './artifact-root.js';
 import { discoverCatalogFolders, type DriveRunFailure } from './process-drive.js';
 import { ensureGridThumbnail, hasCurrentGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { artifactPaths, gridThumbnailArtifactPath, thumbnailArtifactPath } from './shared.js';
@@ -94,7 +94,7 @@ export const runThumbnailsPass = async (
     const cancellation = cancelled(progress);
     if (!cancellation.ok) return cancellation;
     output.foldersScanned += 1;
-    const root = await discoverArtifactRoot(deps.fs, folder.path);
+    const root = await discoverArtifactRootForWrite(deps.fs, folder.path);
     if (!root.ok) return root;
     const stored = deps.globalCatalog === undefined ? ok([])
       : await deps.globalCatalog.listVideoThumbnailFingerprints(folder.path);
@@ -102,7 +102,6 @@ export const runThumbnailsPass = async (
     const storedFingerprints = new Map<string, string>();
     for (const file of stored.value) {
       storedFingerprints.set(file.fileName, file.fingerprint);
-      if (file.finalName !== null) storedFingerprints.set(file.finalName, file.fingerprint);
     }
     for (const videoPath of folder.videoPaths) {
       const cancelledFile = cancelled(progress);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { API_ROUTES, libraryTrashSummarySchema, looseEnvelopeSchema } from '@core/contract/index.js';
 
@@ -31,6 +31,30 @@ const waitForCompletedJob = async (
 };
 
 describe('POST /api/library/trash', () => {
+  it.each([
+    { path: API_ROUTES.indexForget.path, input: { fingerprint: 'missing' } },
+    { path: API_ROUTES.facesPurge.path, input: { force: true } },
+    { path: API_ROUTES.facesForget.path, input: { personId: 'missing', force: true } },
+    { path: API_ROUTES.photosForget.path, input: { root: '/media/videos' } },
+  ])('CAT-05 synchronous mutation $path participates in backup catalog-write exclusion', async ({ path, input }) => {
+    const deps = createInMemoryDeps({ version: '4.5.6', workingDirectory: '/media/videos', files: [] });
+    const acquire = vi.spyOn(deps.jobs, 'acquireResource');
+    const app = createApp(
+      { dbDriver: 'memory', workingDirectory: '/media/videos', homeDirectory: '/media/home', processName: 'gui' },
+      () => deps,
+    );
+    try {
+      const response = await app.honoApp.request(path, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      expect(response.status).not.toBe(500);
+      expect(acquire).toHaveBeenCalledWith('catalog-write');
+    } finally {
+      await app.dispose();
+    }
+  });
+
   it('returns a trash plan for dry-run requests through the app contract', async () => {
     const deps = createInMemoryDeps({
       version: '4.5.6',

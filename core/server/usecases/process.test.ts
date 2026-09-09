@@ -10,7 +10,7 @@ import {
   type VideoStatus,
 } from '@core/domain/index.js';
 
-import { readOnlyArtifactRoot } from './artifact-root.js';
+import { legacyReadOnlyArtifactRoot, readOnlyArtifactRoot } from './artifact-root.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 import { normalizeKebabSlug } from './final-name.js';
 import { enqueueProcess } from './jobs.js';
@@ -749,6 +749,27 @@ describe('process pipeline global catalog idempotency', () => {
     expect(healedSummary).toEqual(variantSummary);
     const healedFrames = await deps.fs.isDirectory('/work/frames/Clip One');
     expect(healedFrames).toMatchObject({ ok: true, value: true });
+  });
+
+  it.each([false, true])('6hCrvVvrqp4FQV6m heals a legacy mirror on analysis write, canonical already exists: %s', async (split) => {
+    const deps = makeDeps();
+    const folder = '/work/Å-ring';
+    const path = `${folder}/clip.mp4`;
+    deps.fs.addFile(path, { hash: 'legacy-video', size: 1000 });
+    deps.fs.markReadOnly(folder);
+    deps.catalogs.repo(folder).markReadOnly();
+    const legacy = legacyReadOnlyArtifactRoot(deps.fs, folder);
+    const canonical = readOnlyArtifactRoot(deps.fs, folder);
+    deps.fs.addFile(`${legacy.path}/summaries/previous.json`, { content: 'legacy-analysis' });
+    deps.fs.addFile(`${legacy.path}/config.json`, { content: 'legacy-config' });
+    if (split) deps.fs.addFile(`${canonical.path}/config.json`, { content: 'canonical-config' });
+    const result = await processVideoPipeline({ ...deps, globalCatalog: new InMemoryGlobalCatalogStore() }, { ...baseInput, videoPath: path });
+    expect(result).toMatchObject({ ok: true });
+    expect(await deps.fs.exists(legacy.path)).toEqual({ ok: true, value: false });
+    expect(await deps.fs.readTextFile(`${canonical.path}/summaries/previous.json`)).toEqual({ ok: true, value: 'legacy-analysis' });
+    expect(await deps.fs.readTextFile(`${canonical.path}/config.json`)).toEqual({ ok: true, value: split ? 'canonical-config' : 'legacy-config' });
+    const mirrors = await deps.fs.listDirectory(deps.fs.dirname(canonical.path));
+    expect(mirrors.ok && mirrors.value.map((entry) => entry.name)).toEqual([deps.fs.basename(canonical.path)]);
   });
 
   it('keeps the source folder artifact-free in index-only mode', async () => {

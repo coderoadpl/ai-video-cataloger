@@ -930,6 +930,15 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     })));
   }
 
+  getGridThumbnail(outputPath: string): Promise<Result<GridThumbnailState | null, AppError>> {
+    return Promise.resolve(ok(this.gridThumbnailStates.get(outputPath) ?? null));
+  }
+
+  deleteGridThumbnail(outputPath: string): Promise<Result<void, AppError>> {
+    this.gridThumbnailStates.delete(outputPath);
+    return Promise.resolve(ok(undefined));
+  }
+
   recordGridThumbnail(state: GridThumbnailState): Promise<Result<void, AppError>> {
     this.gridThumbnailStates.set(state.outputPath, state);
     return Promise.resolve(ok(undefined));
@@ -938,7 +947,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   listVideoThumbnailFingerprints(folderPath: string): Promise<Result<{ fingerprint: string; fileName: string; finalName: string | null }[], AppError>> {
     const folder = [...this.folders.values()].find((folder) => folder.currentPath === folderPath);
     return Promise.resolve(ok([...this.files.values()].filter((file) => file.folderId === folder?.folderId)
-      .map((file) => ({ fingerprint: file.fingerprint, fileName: file.fileName, finalName: null }))));
+      .map((file) => ({ fingerprint: file.fingerprint, fileName: file.fileName, finalName: this.analyses.get(file.fingerprint)?.finalName ?? null }))));
   }
 
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
