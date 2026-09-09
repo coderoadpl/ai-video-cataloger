@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -108,4 +108,16 @@ it('accepts all mandatory legs only when every expected project records an execu
     return 0;
   })).toBe(0);
   expect(legs).toHaveLength(13);
+});
+
+it('G10 captures renderer traces around manually launched pair-review sessions', () => {
+  const source = readFileSync(new URL('../test/e2e/people-pairs.spec.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('await app.context().tracing.start(');
+  expect(start).toBeGreaterThan(-1);
+  expect(start).toBeLessThan(source.indexOf('await app.firstWindow()'));
+  expect(source).toContain('await app.context().tracing.stop({ path: trace.path })');
+  expect(source).toContain('test.afterEach(');
+  expect(source).toContain('info.status !== info.expectedStatus');
+  expect(source).toContain("await info.attach('renderer-trace'");
+  expect(source.match(/await closeSession\(session.app\)/g)).toHaveLength(2);
 });

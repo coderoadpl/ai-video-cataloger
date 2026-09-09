@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -37,6 +37,41 @@ import { prepareBackupScope } from '@core/server/usecases/backup-run.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 describe('backup run pipeline', () => {
+  it.each([false, true])('stages hard links with copy fallback: %s', async (fallback) => {
+    const fixture = await createFixture();
+    const link = vi.spyOn(fixture.fs, 'linkFile');
+    const copy = vi.spyOn(fixture.fs, 'copyFile');
+    if (fallback) link.mockResolvedValue({ ok: false, error: appError('internal', 'Cross-device link unavailable') });
+    const prepared = await prepareBackupScope(fixture.deps, 'optional', path.join(fixture.home, 'linked-stage'));
+    if (!prepared.ok) throw new Error(prepared.error.message);
+    expect(link).toHaveBeenCalledTimes(prepared.value.entries.length);
+    expect(copy).toHaveBeenCalledTimes(fallback ? prepared.value.entries.length : 0);
+    for (const entry of prepared.value.entries) {
+      const source = path.join(fixture.home, '.ai-video-cataloger', entry.archivePath);
+      expect(readFileSync(entry.sourcePath)).toEqual(readFileSync(source));
+      expect(statSync(entry.sourcePath).ino === statSync(source).ino).toBe(!fallback);
+    }
+  });
+
+  it.each([false, true])('stops staging after cancellation during a transfer: %s', async (fallback) => {
+    const fixture = await createFixture();
+    const controller = new AbortController();
+    const transfer = (fallback ? fixture.fs.copyFile : fixture.fs.linkFile).bind(fixture.fs);
+    if (fallback) vi.spyOn(fixture.fs, 'linkFile').mockResolvedValue({ ok: false, error: appError('internal', 'Link unavailable') });
+    const staged = vi.spyOn(fixture.fs, fallback ? 'copyFile' : 'linkFile').mockImplementation(async (from, to) => {
+      const result = await transfer(from, to);
+      controller.abort();
+      return result;
+    });
+    const release = vi.fn();
+    const prepared = await prepareBackupScope(fixture.deps, 'critical', path.join(fixture.home, 'cancel-stage'), controller.signal, {
+      acquireResource: () => Promise.resolve(ok(release)),
+    });
+    expect(prepared).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
+    expect(staged).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('CAT-05 stages crops before releasing catalog-write and survives live deletion', async () => {
     const fixture = await createFixture();
     const crop = path.join(fixture.home, '.ai-video-cataloger', 'faces', 'obs', 'fp', 'crop.jpg');
@@ -72,6 +107,7 @@ describe('backup run pipeline', () => {
 
   it('CAT-05 keeps the fingerprint tied to captured source metadata rather than staging copy times', async () => {
     const fixture = await createFixture();
+    vi.spyOn(fixture.fs, 'linkFile').mockResolvedValue({ ok: false, error: appError('internal', 'Link unavailable') });
     const copy = fixture.fs.copyFile.bind(fixture.fs);
     vi.spyOn(fixture.fs, 'copyFile').mockImplementation(async (from, to) => {
       const copied = await copy(from, to);

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
-import { orderObservationPair, pairDecisionIsActive, peoplePairDecisionSchema } from './people-pairs.js';
+import { orderObservationPair, pairReviewScoreCacheLimits, pairDecisionIsActive, peoplePairDecisionSchema } from './people-pairs.js';
 
 describe('W99 A1 decision domain', () => {
   it('orders unordered ids canonically', () => {
@@ -122,8 +122,9 @@ it('FPR-007 reuses bounded distinct-vector scores across decisions and undo', ()
   const undoneMs = performance.now() - undoStart;
   expect(decided.pending).toBe(initial.pending - 1);
   expect(undone).toEqual(initial);
-  expect(scored).toBeGreaterThan(0);
-  expect(scored).toBeLessThan(2 * 600 * 599 / 2);
+  expect(scored).toBeLessThanOrEqual(3 * people.length);
+  expect(decidedMs).toBeLessThan(scaledTimeout(1000));
+  expect(undoneMs).toBeLessThan(scaledTimeout(1000));
   process.stdout.write(`FPR-007 distinct-vector generation: cold ${coldMs.toFixed(1)} ms, decide ${decidedMs.toFixed(1)} ms, undo ${undoneMs.toFixed(1)} ms\n`);
 }, scaledTimeout(45000));
 
@@ -139,7 +140,7 @@ it('FPR-007 invalidates cached scores when an embedding changes', () => {
   expect(scored).toBe(2);
 });
 
-it('R5-REG-002 allocates at most 8 MiB of score buffers for 3000 people', () => {
+it('R5B-06 bounds score buffers and row containers to 8 MiB for 3000 people', () => {
   const lengths: number[] = [];
   const OriginalFloat64Array = Float64Array;
   class MeasuredFloat64Array extends OriginalFloat64Array {
@@ -157,7 +158,7 @@ it('R5-REG-002 allocates at most 8 MiB of score buffers for 3000 people', () => 
     expect(result.candidates).toHaveLength(200);
     const allocatedBytes = lengths.reduce((sum, length) => sum + length * 8, 0);
     const retainedBytes = [...scoreCache.rows?.values() ?? []].reduce((sum, row) => sum + row.length * 8, 0);
-    expect(allocatedBytes).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(allocatedBytes + Math.max(scoreCache.rows?.size ?? 0, scoreCache.pending?.size ?? 0) * 256).toBeLessThanOrEqual(8 * 1024 * 1024);
     expect(retainedBytes).toBe(allocatedBytes);
     process.stdout.write(`R5-REG-002 score buffers: allocated ${allocatedBytes} bytes, retained ${retainedBytes} bytes\n`);
   } finally {
@@ -219,4 +220,87 @@ it('retains only top scores per person and lazily skips excluded and prefiltered
   expect(scored).toBe(2);
   expect([...scoreCache.rows?.values() ?? []].every((row) => row.length <= 4)).toBe(true);
   expect(scoreCache.rows?.get(0)?.[0]).toBe(2);
+});
+
+it('R5B-07 preserves similarities when the output limit changes', () => {
+  const people = [pairPerson('a', 0), pairPerson('b', 0.1), pairPerson('c', 0.2)];
+  const scoreCache: PeoplePairScoreCache = {};
+  let scored = 0;
+  const input = { ...pairInput(people), scoreCache, onPairScored: () => { scored += 1; } };
+  buildPeoplePairCandidates({ ...input, limit: 3 });
+  const revision = scoreCache.revision;
+  scored = 0;
+  const narrowed = buildPeoplePairCandidates({ ...input, limit: 1 });
+  expect(scoreCache.revision).toBe(revision);
+  expect(scored).toBe(0);
+  expect(narrowed).toEqual(buildPeoplePairCandidates({ ...input, scoreCache: {}, limit: 1 }));
+  expect([...scoreCache.rows?.values() ?? []].every((row) => row.length <= 4)).toBe(true);
+});
+
+it('FPR-007 yields during preprocessing and pair rows and reuses warm scores', () => {
+  const people = Array.from({ length: 1000 }, (_, i) => ({
+    ...pairPerson(`chunk-${String(i).padStart(4, '0')}`, 0, 5),
+    centroid: Array.from({ length: 128 }, (_, axis) => axis === 0 ? 1 : Math.sin(i * 131 + axis) * 0.01),
+  }));
+  const observations = people.flatMap((p) => Array.from({ length: 5 }, (_, i) => pairObs(`${p.personId}-${i}`, p.personId)));
+  const exemplarEmbeddings = new Map(observations.map((o, i) => [o.obsId, Float32Array.from({ length: 128 }, (_, axis) => axis === 0 ? 1 : Math.sin(i * 137 + axis) * 0.02)]));
+  let scored = 0;
+  let visited = 0;
+  const input = { ...pairInput(people), visibleObservations: observations, exemplarEmbeddings, scoreCache: {}, onPairScored: () => { scored += 1; }, onPairVisited: () => { visited += 1; } };
+  const steps = buildPeoplePairCandidatesSteps(input);
+  const firstStart = performance.now();
+  let step = steps.next();
+  expect(performance.now() - firstStart).toBeLessThan(scaledTimeout(50));
+  expect(visited).toBe(0);
+  let maxVisited = 0;
+  while (!step.done) {
+    const before = visited;
+    const start = performance.now();
+    step = steps.next();
+    expect(performance.now() - start).toBeLessThan(scaledTimeout(100));
+    maxVisited = Math.max(maxVisited, visited - before);
+  }
+  expect(maxVisited).toBeLessThanOrEqual(64);
+  expect(visited).toBe(people.length * (people.length - 1) / 2);
+  scored = 0;
+  expect(buildPeoplePairCandidates(input)).toEqual(step.value);
+  expect(scored).toBeLessThanOrEqual(3 * people.length);
+}, scaledTimeout(45000));
+
+it('keeps warm ranking and pending counts exact across limits and exclusions', () => {
+  const people = Array.from({ length: 24 }, (_, i) => pairPerson(`exact-${String(i).padStart(2, '0')}`, i * 0.07, 1 + i % 7));
+  const scoreCache: PeoplePairScoreCache = {};
+  const base = pairInput(people);
+  const decision = peoplePairDecisionSchema.parse({ obsAId: 'exact-03', obsBId: 'exact-05', personAId: 'exact-03', personBId: 'exact-05', decision: 'different', source: 'user', decidedAt: base.nowIso });
+  for (const limit of [1, 7, 2, 20, 1]) {
+    for (const decisions of [[], [decision], []]) {
+      const input = { ...base, limit, decisions };
+      expect(buildPeoplePairCandidates({ ...input, scoreCache })).toEqual(buildPeoplePairCandidates(input));
+    }
+  }
+});
+
+it('isolates interleaved warm generations with different limits', () => {
+  const people = Array.from({ length: 80 }, (_, i) => pairPerson(`overlap-${String(i).padStart(2, '0')}`, i * 0.007, 1 + i % 7));
+  const scoreCache: PeoplePairScoreCache = {};
+  const base = { ...pairInput(people), scoreCache, peopleVersion: 'unchanged' };
+  buildPeoplePairCandidates({ ...base, limit: 2 });
+  const first = buildPeoplePairCandidatesSteps({ ...base, limit: 1 });
+  const second = buildPeoplePairCandidatesSteps({ ...base, limit: 20 });
+  let a = first.next();
+  let b = second.next();
+  while (!a.done || !b.done) {
+    if (!a.done) a = first.next();
+    if (!b.done) b = second.next();
+  }
+  expect(a.value).toEqual(buildPeoplePairCandidates({ ...pairInput(people), limit: 1 }));
+  expect(b.value).toEqual(buildPeoplePairCandidates({ ...pairInput(people), limit: 20 }));
+});
+
+it.each([3000, 30000, 100000, 300000])('bounds retained row storage without disabling the cache for %i people', (peopleCount) => {
+  const { rowCount, rowLimit } = pairReviewScoreCacheLimits(peopleCount, 200);
+  expect(rowLimit).toBeGreaterThan(0);
+  expect(rowCount).toBeGreaterThan(0);
+  expect(rowCount).toBeLessThanOrEqual(peopleCount);
+  expect(rowCount * (rowLimit * 4 * Float64Array.BYTES_PER_ELEMENT + 256)).toBeLessThanOrEqual(8 * 1024 * 1024);
 });

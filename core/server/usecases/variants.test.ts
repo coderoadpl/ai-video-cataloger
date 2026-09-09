@@ -382,6 +382,32 @@ describe('variant selection', () => {
     });
   });
 
+  it.each(['select', 'default', 'delete'] as const)('projects a fingerprint-verified rename for %s', async (operation) => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const catalogFolder = folder();
+    const first = variant(buildConfigDescriptor({}, 1), 'renamed', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'renamed', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, catalogFolder, [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    fs.addFile('/work/renamed.mp4', { hash: fingerprint });
+    fs.addFile(folderMarkerPath(fs, folderPath), { content: JSON.stringify({ folderId: catalogFolder.folderId, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION, createdAt: catalogFolder.firstSeenAt }) });
+    await store.setFolderDefaultVariant(catalogFolder.folderId, first.configId);
+    await store.setSelectedVariant(fingerprint, operation === 'default' ? null : first.configId);
+    const deps = { globalCatalog: store, fs, config: new InMemoryConfig(), analyzer: new InMemoryAnalyzer() };
+    const result = operation === 'select'
+      ? await selectVariant(deps, { fingerprint, configId: second.configId })
+      : operation === 'default'
+        ? await setFolderDefaultVariant(deps, { folderPath, configId: second.configId })
+        : await deleteVariant(deps, { fingerprint, configId: first.configId });
+    expect(result).toMatchObject({ ok: true });
+    expect(await fs.readTextFile('/work/summaries/renamed.json')).toEqual(ok(JSON.stringify({ description: second.description })));
+    expect(await fs.readTextFile('/work/transcripts/renamed.txt')).toEqual(ok(second.transcript));
+    expect(await fs.readTextFile('/work/frames/renamed/frame-001.jpg')).toEqual(ok('frame'));
+    expect(await fs.exists('/work/summaries/clip.json')).toEqual(ok(false));
+  });
+
   it('CAT-01 selects differently named variants under the physical filename and preserves unowned suggestions', async () => {
     const fs = new InMemoryFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();

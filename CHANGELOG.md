@@ -14,6 +14,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Materializing renamed legacy videos migrates name-based artifacts and retains originals when replacement verification fails.
+- Backups stage artifacts with hard links and a copy fallback, and observe cancellation between staged entries.
+- Variant changes write summaries, transcripts and frames under the fingerprint-verified filename used by previews.
+- Library trash waits for all-roots photo processing before removing photo records and artifacts.
+- Aborted HTTP catalog mutations leave the resource queue without waiting for an active backup or trash job.
+- Concurrent searches recover from legacy mirror rename races by re-discovering the migrated destination.
+- The release walkthrough excludes hidden photo files and sidecars from its expected scan row count.
+- Pair review accounts for cache row overhead, preserves scores across output-limit changes and yields during preprocessing and row scoring while reusing warm rankings.
+
 ## [0.6.39] - 2026-09-09
 
 ### Fixed

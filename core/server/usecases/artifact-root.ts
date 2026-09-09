@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { derivedFolderId, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort } from '../ports.js';
@@ -96,25 +98,31 @@ const mergeLegacyMirror = async (
 ): Promise<Result<void, AppError>> => {
   const exists = await fs.exists(canonical);
   if (!exists.ok) return exists;
-  if (!exists.value) return fs.renamePath(legacy, canonical);
+  if (!exists.value) {
+    const renamed = await fs.renamePath(legacy, canonical);
+    if (renamed.ok) return renamed;
+    const race = z.object({ code: z.enum(['ENOENT', 'EEXIST', 'ENOTEMPTY']) }).safeParse(renamed.error.details);
+    if (!race.success) return renamed;
+    const rediscovered = await fs.exists(canonical);
+    if (!rediscovered.ok) return rediscovered;
+    if (!rediscovered.value) return renamed;
+  }
+  const remaining = await fs.exists(legacy);
+  if (!remaining.ok) return remaining;
+  if (!remaining.value) return ok(undefined);
   const directory = await fs.isDirectory(canonical);
   if (!directory.ok) return directory;
   if (directory.value) {
     const listed = await fs.listDirectory(legacy);
-    if (!listed.ok) return listed;
+    if (!listed.ok) {
+      const remaining = await fs.exists(legacy);
+      if (!remaining.ok) return remaining;
+      return remaining.value ? listed : ok(undefined);
+    }
     for (const entry of listed.value) {
       const target = fs.join(canonical, entry.name);
-      if (entry.kind === 'directory') {
-        const merged = await mergeLegacyMirror(fs, entry.path, target);
-        if (!merged.ok) return merged;
-      } else {
-        const targetExists = await fs.exists(target);
-        if (!targetExists.ok) return targetExists;
-        if (!targetExists.value) {
-          const moved = await fs.renamePath(entry.path, target);
-          if (!moved.ok) return moved;
-        }
-      }
+      const merged = await mergeLegacyMirror(fs, entry.path, target);
+      if (!merged.ok) return merged;
     }
   }
   return fs.deletePath(legacy);

@@ -180,6 +180,27 @@ const events = (progress: JobProgress[]): JobExecutionContext => ({
 });
 
 describe('materializeCatalog', () => {
+  it.each(['complete', 'failed', 'missing'] as const)('preserves legacy rename artifacts during migration: %s', async (migration) => {
+    const failMigration = migration !== 'complete';
+    const { fs, globalCatalog } = await seedFixture({ withSummaryArtifact: false, finalName: 'suggested.mp4' });
+    const selected = await globalCatalog.getVariant(fingerprint, cfgId);
+    if (!selected.ok || selected.value === null) throw new Error('Missing fixture variant');
+    await globalCatalog.upsertVariant({ ...selected.value, configId: 'legacy', descriptor: null });
+    await globalCatalog.setSelectedVariant(fingerprint, 'legacy');
+    const artifacts = ['summaries/clip.json', 'transcripts/clip.txt', 'frames/clip/frame-001.jpg'];
+    for (const relative of artifacts) fs.addFile(`${folder}/${relative}`, { content: relative });
+    if (failMigration) {
+      vi.spyOn(fs, 'linkFile').mockResolvedValue({ ok: false, error: appError('internal', 'Link unavailable') });
+      vi.spyOn(fs, 'copyFile').mockResolvedValue(migration === 'missing' ? { ok: true, value: undefined } : { ok: false, error: appError('internal', 'Copy unavailable') });
+    }
+    const result = await materializeCatalog({ fs, globalCatalog }, { root: folder, dryRun: false });
+    expect(result).toMatchObject({ ok: true, value: { filesFailed: failMigration ? 1 : 0 } });
+    for (const relative of artifacts) {
+      const retained = failMigration ? relative : relative.replace('clip', 'suggested');
+      expect(await fs.readTextFile(`${folder}/${retained}`)).toEqual({ ok: true, value: relative });
+    }
+  });
+
   it.each([
     { shared: false, frame: false },
     { shared: false, frame: true },

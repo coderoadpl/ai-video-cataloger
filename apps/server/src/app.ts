@@ -1,4 +1,4 @@
-import { Hono, type ErrorHandler } from 'hono';
+import { Hono, type Context, type ErrorHandler } from 'hono';
 import { trace } from '@opentelemetry/api';
 import { z } from 'zod';
 
@@ -123,9 +123,9 @@ const readBody = async (context: BodyReader): Promise<Result<unknown, AppError>>
   }
 };
 
-const withFaceCatalogWriteLock = async <T>(deps: AppDeps, run: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
+const withFaceCatalogWriteLock = async <T>(deps: AppDeps, context: Context, run: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> => {
   let applied = false;
-  const result = await withCatalogWriteLock(deps, async () => {
+  const result = await withCatalogWriteLock(deps, context, async () => {
     const mutation = await run();
     applied = mutation.ok;
     return mutation;
@@ -136,9 +136,10 @@ const withFaceCatalogWriteLock = async <T>(deps: AppDeps, run: () => Promise<Res
 
 const withCatalogWriteLock = async <T>(
   deps: AppDeps,
+  context: Context,
   run: () => Promise<Result<T, AppError>>,
 ): Promise<Result<T, AppError>> => {
-  const acquired = await deps.jobs.acquireResource('catalog-write');
+  const acquired = await deps.jobs.acquireResource('catalog-write', context.req.raw.signal);
   if (!acquired.ok) return acquired;
   try {
     const lock = await requireCatalogWriteLock(deps);
@@ -348,7 +349,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.resetAll.output);
     const input = parseInput(API_ROUTES.resetAll.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.resetAll.output);
-    return respond(await withCatalogWriteLock(deps, () => resetAll(deps, input.value)), API_ROUTES.resetAll.output);
+    return respond(await withCatalogWriteLock(deps, context, () => resetAll(deps, input.value)), API_ROUTES.resetAll.output);
   });
 
   app.post(API_ROUTES.resetSingle.path, async (context) => {
@@ -356,7 +357,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.resetSingle.output);
     const input = parseInput(API_ROUTES.resetSingle.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.resetSingle.output);
-    return respond(await withCatalogWriteLock(deps, () => resetSingle(deps, input.value)), API_ROUTES.resetSingle.output);
+    return respond(await withCatalogWriteLock(deps, context, () => resetSingle(deps, input.value)), API_ROUTES.resetSingle.output);
   });
 
   app.get(API_ROUTES.configGet.path, async (context) => {
@@ -606,8 +607,8 @@ export const buildApp = (deps: AppDeps): Hono => {
     respond(await indexStatus(deps), API_ROUTES.indexStatus.output),
   );
 
-  app.post(API_ROUTES.indexRebuild.path, async () => {
-    return respond(await withCatalogWriteLock(deps, () => indexRebuild(deps)), API_ROUTES.indexRebuild.output);
+  app.post(API_ROUTES.indexRebuild.path, async (context) => {
+    return respond(await withCatalogWriteLock(deps, context, () => indexRebuild(deps)), API_ROUTES.indexRebuild.output);
   });
 
   app.post(API_ROUTES.indexForget.path, async (context) => {
@@ -615,7 +616,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.indexForget.output);
     const input = parseInput(API_ROUTES.indexForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.indexForget.output);
-    return respond(await withCatalogWriteLock(deps, () => forgetCatalogEntry(deps, input.value)), API_ROUTES.indexForget.output);
+    return respond(await withCatalogWriteLock(deps, context, () => forgetCatalogEntry(deps, input.value)), API_ROUTES.indexForget.output);
   });
 
   app.get(API_ROUTES.tagsList.path, async () =>
@@ -627,7 +628,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.tagsAlias.output);
     const input = parseInput(API_ROUTES.tagsAlias.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.tagsAlias.output);
-    return respond(await withCatalogWriteLock(deps, () => aliasTag(deps, input.value)), API_ROUTES.tagsAlias.output);
+    return respond(await withCatalogWriteLock(deps, context, () => aliasTag(deps, input.value)), API_ROUTES.tagsAlias.output);
   });
 
   app.get(API_ROUTES.tagsSuggestAliases.path, async () =>
@@ -675,7 +676,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.libraryHide.output);
     const input = parseInput(API_ROUTES.libraryHide.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.libraryHide.output);
-    return respond(await withCatalogWriteLock(deps, () => libraryHide(deps, input.value)), API_ROUTES.libraryHide.output);
+    return respond(await withCatalogWriteLock(deps, context, () => libraryHide(deps, input.value)), API_ROUTES.libraryHide.output);
   });
 
   app.post(API_ROUTES.libraryUnhide.path, async (context) => {
@@ -683,7 +684,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.libraryUnhide.output);
     const input = parseInput(API_ROUTES.libraryUnhide.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.libraryUnhide.output);
-    return respond(await withCatalogWriteLock(deps, () => libraryUnhide(deps, input.value)), API_ROUTES.libraryUnhide.output);
+    return respond(await withCatalogWriteLock(deps, context, () => libraryUnhide(deps, input.value)), API_ROUTES.libraryUnhide.output);
   });
 
   app.post(API_ROUTES.libraryTrash.path, async (context) => {
@@ -743,7 +744,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.variantsSelect.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.variantsSelect.output);
     return respond(
-      await withCatalogWriteLock(deps, () => selectVariantByLocator(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => selectVariantByLocator(deps, input.value)),
       API_ROUTES.variantsSelect.output,
     );
   });
@@ -754,7 +755,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.variantsDelete.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.variantsDelete.output);
     return respond(
-      await withCatalogWriteLock(deps, () => deleteVariantByLocator(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => deleteVariantByLocator(deps, input.value)),
       API_ROUTES.variantsDelete.output,
     );
   });
@@ -765,7 +766,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.variantsFolderDefault.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.variantsFolderDefault.output);
     return respond(
-      await withCatalogWriteLock(deps, () => setFolderDefaultVariant(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => setFolderDefaultVariant(deps, input.value)),
       API_ROUTES.variantsFolderDefault.output,
     );
   });
@@ -776,7 +777,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.variantsImportTranslation.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.variantsImportTranslation.output);
     return respond(
-      await withCatalogWriteLock(deps, () => importTranslationVariants(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => importTranslationVariants(deps, input.value)),
       API_ROUTES.variantsImportTranslation.output,
     );
   });
@@ -806,7 +807,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesPairsDecide.output);
     const input = parseInput(API_ROUTES.facesPairsDecide.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesPairsDecide.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsDecide(deps, input.value)), API_ROUTES.facesPairsDecide.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesPairsDecide(deps, input.value)), API_ROUTES.facesPairsDecide.output);
   });
 
   app.post(API_ROUTES.facesPairsUndo.path, async (context) => {
@@ -814,7 +815,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesPairsUndo.output);
     const input = parseInput(API_ROUTES.facesPairsUndo.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesPairsUndo.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsUndo(deps)), API_ROUTES.facesPairsUndo.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesPairsUndo(deps)), API_ROUTES.facesPairsUndo.output);
   });
 
   app.post(API_ROUTES.facesPairsImport.path, async (context) => {
@@ -822,7 +823,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesPairsImport.output);
     const input = parseInput(API_ROUTES.facesPairsImport.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesPairsImport.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesPairsImport(deps, input.value)), API_ROUTES.facesPairsImport.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesPairsImport(deps, input.value)), API_ROUTES.facesPairsImport.output);
   });
 
   app.get(API_ROUTES.facesPairs.path, async (context) => {
@@ -840,7 +841,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesName.output);
     const input = parseInput(API_ROUTES.facesName.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesName.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesName(deps, input.value)), API_ROUTES.facesName.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesName(deps, input.value)), API_ROUTES.facesName.output);
   });
 
   app.post(API_ROUTES.facesMerge.path, async (context) => {
@@ -848,7 +849,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesMerge.output);
     const input = parseInput(API_ROUTES.facesMerge.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesMerge.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesMerge(deps, input.value)), API_ROUTES.facesMerge.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesMerge(deps, input.value)), API_ROUTES.facesMerge.output);
   });
 
   app.post(API_ROUTES.facesForget.path, async (context) => {
@@ -856,7 +857,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesForget.output);
     const input = parseInput(API_ROUTES.facesForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesForget.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesForget(deps, input.value)), API_ROUTES.facesForget.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesForget(deps, input.value)), API_ROUTES.facesForget.output);
   });
 
   app.post(API_ROUTES.facesPurge.path, async (context) => {
@@ -864,7 +865,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.facesPurge.output);
     const input = parseInput(API_ROUTES.facesPurge.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesPurge.output);
-    return respond(await withFaceCatalogWriteLock(deps, () => facesPurge(deps, input.value)), API_ROUTES.facesPurge.output);
+    return respond(await withFaceCatalogWriteLock(deps, context, () => facesPurge(deps, input.value)), API_ROUTES.facesPurge.output);
   });
 
   app.get(API_ROUTES.facesStatus.path, async () =>
@@ -906,7 +907,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.photosForget.output);
     const input = parseInput(API_ROUTES.photosForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosForget.output);
-    return respond(await withCatalogWriteLock(deps, () => photosForget(deps, input.value)), API_ROUTES.photosForget.output);
+    return respond(await withCatalogWriteLock(deps, context, () => photosForget(deps, input.value)), API_ROUTES.photosForget.output);
   });
 
   app.post(API_ROUTES.photosProxies.path, async (context) => {
@@ -1023,7 +1024,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosVariantsSelect.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosVariantsSelect.output);
     return respond(
-      await withCatalogWriteLock(deps, () => photosVariantsSelect(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => photosVariantsSelect(deps, input.value)),
       API_ROUTES.photosVariantsSelect.output,
     );
   });
@@ -1034,7 +1035,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosVariantsDelete.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosVariantsDelete.output);
     return respond(
-      await withCatalogWriteLock(deps, () => photosVariantsDelete(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => photosVariantsDelete(deps, input.value)),
       API_ROUTES.photosVariantsDelete.output,
     );
   });
@@ -1045,7 +1046,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosVariantsFolderDefault.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosVariantsFolderDefault.output);
     return respond(
-      await withCatalogWriteLock(deps, () => photosVariantsFolderDefault(deps, input.value)),
+      await withCatalogWriteLock(deps, context, () => photosVariantsFolderDefault(deps, input.value)),
       API_ROUTES.photosVariantsFolderDefault.output,
     );
   });

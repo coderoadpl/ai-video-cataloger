@@ -49,8 +49,50 @@ describe('POST /api/library/trash', () => {
         body: JSON.stringify(input),
       });
       expect(response.status).not.toBe(500);
-      expect(acquire).toHaveBeenCalledWith('catalog-write');
+      expect(acquire).toHaveBeenCalledWith('catalog-write', expect.any(AbortSignal));
     } finally {
+      await app.dispose();
+    }
+  });
+
+  it.each([API_ROUTES.indexForget.path, API_ROUTES.facesPurge.path])('cancels a queued catalog mutation at %s without waiting for the holder', async (route) => {
+    const deps = createInMemoryDeps({ version: '4.5.6', workingDirectory: '/media/videos', files: [] });
+    const app = createApp(
+      { dbDriver: 'memory', workingDirectory: '/media/videos', homeDirectory: '/media/home', processName: 'gui' },
+      () => deps,
+    );
+    const held = await deps.jobs.acquireResource('catalog-write');
+    if (!held.ok) throw new Error(held.error.message);
+    const controller = new AbortController();
+    let entered = () => {};
+    const queued = new Promise<void>((resolve) => { entered = resolve; });
+    const acquire = deps.jobs.acquireResource.bind(deps.jobs);
+    vi.spyOn(deps.jobs, 'acquireResource').mockImplementation((key, signal) => {
+      const result = acquire(key, signal);
+      entered();
+      return result;
+    });
+    const mutate = vi.spyOn(deps.globalCatalog, 'flush');
+    const request = app.honoApp.request(route, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fingerprint: 'missing', force: true }), signal: controller.signal,
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await queued;
+      controller.abort();
+      const response = await Promise.race([
+        request,
+        new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), scaledTimeout(250)); }),
+      ]);
+      expect(response).not.toBeNull();
+      if (response === null) return;
+      expect(looseEnvelopeSchema.parse(await response.json())).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
+      expect(mutate).not.toHaveBeenCalled();
+    } finally {
+      clearTimeout(timer);
+      held.value();
+      await request;
       await app.dispose();
     }
   });

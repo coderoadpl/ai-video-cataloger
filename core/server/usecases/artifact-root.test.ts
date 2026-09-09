@@ -14,6 +14,24 @@ const legacyDerivedFolderId = (folder: string): string => {
 };
 
 describe('discoverArtifactRoot', () => {
+  it.each(['ENOENT', 'EEXIST'] as const)('re-discovers a mirror migrated by a concurrent writer: %s', async (code) => {
+    const fs = new InMemoryFileSystem('/work');
+    const folder = '/work/Å-ring';
+    const legacy = readOnlyArtifactRootById(fs, legacyDerivedFolderId(folder.normalize('NFD')));
+    const canonical = readOnlyArtifactRoot(fs, folder);
+    fs.addFile(`${legacy.path}/summaries/clip.json`, { content: 'retained' });
+    const rename = fs.renamePath.bind(fs);
+    vi.spyOn(fs, 'renamePath').mockImplementationOnce(async (from, to) => {
+      if (code === 'ENOENT') await rename(from, to);
+      else fs.addFile(`${to}/canonical.json`, { content: 'canonical' });
+      return { ok: false, error: { code: 'internal', message: 'Concurrent migration', details: { code } } };
+    });
+    expect(await discoverArtifactRootForWrite(fs, folder)).toEqual({ ok: true, value: canonical });
+    expect(await fs.readTextFile(`${canonical.path}/summaries/clip.json`)).toEqual({ ok: true, value: 'retained' });
+    expect(await fs.exists(legacy.path)).toEqual({ ok: true, value: false });
+    expect(await discoverArtifactRootForWrite(fs, folder)).toEqual({ ok: true, value: canonical });
+  });
+
   it('6hCrvVvrqp4FQV6m retains legacy-only artifacts when a merge write fails and resumes without loss', async () => {
     const fs = new InMemoryFileSystem('/work');
     const folder = '/work/Å-ring';

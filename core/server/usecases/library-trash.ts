@@ -479,6 +479,7 @@ const acquireLibraryTrashResources = async (
   if (progress !== undefined && !progress.ok) return progress;
   const keys = [...new Set([
     'catalog-write',
+    'photo-process:*all-roots*',
     ...roots.flatMap((root) => [root, `photo-scan:${root}`, `photo-process:${root}`]),
     ...paths,
     'faces-write',
