@@ -13,10 +13,10 @@ import type {
 } from '@core/contract/index.js';
 
 import { en } from '../../i18n/dictionary.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
+import { SavedToastProvider } from '../../components/ui/SavedToastProvider.js';
 import { SavedSnackbar } from '../../components/ui/SavedSnackbar.js';
 import { credentialDeletionMessage } from './settings-model.js';
 import { SettingsModal } from './SettingsModal.js';
@@ -24,7 +24,7 @@ import { SLOW_SAVE_HINT_MS } from './use-settings.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
-  renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
+  renderWithProviders(<ThemeProvider theme={theme}><SavedToastProvider>{ui}</SavedToastProvider></ThemeProvider>);
 
 type StoredConfig = z.output<typeof storedConfigSchema>;
 type Requirements = z.output<typeof localAiRequirementsOutputSchema>;
@@ -912,7 +912,6 @@ describe('settings modal', () => {
   });
 
   it('keeps the credential storage location visible after settings refresh', async () => {
-    savedToastStore.dismiss();
     stubEndpoints(apiProviderConfig);
     server.use(
       http.post('/api/credentials', () => HttpResponse.json({
@@ -936,7 +935,6 @@ describe('settings modal', () => {
 
     expect(await screen.findByText(en.credentials.savedFile)).toBeDefined();
     expect(screen.getByTestId('saved-snackbar').textContent).toContain(en.credentials.savedFile);
-    savedToastStore.dismiss();
   });
 
   it('derives the API credential slot when the endpoint changes', async () => {

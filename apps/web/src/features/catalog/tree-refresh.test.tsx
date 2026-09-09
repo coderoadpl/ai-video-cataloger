@@ -1,3 +1,4 @@
+import { actions } from '../../api.js';
 import { useMemo, useState } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { act, screen, waitFor } from '@testing-library/react';
@@ -106,7 +107,7 @@ describe('lazy tree folder cache refresh', () => {
 
     folderVideo = makeVideo({ status: 'completed', duplicate: null });
     await act(async () => {
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: actions.catalogTreeFolder({ folder: '/media' }).queryKey.slice(0, 1) });
     });
 
     await waitFor(() => {

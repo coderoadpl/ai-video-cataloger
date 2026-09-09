@@ -12,6 +12,7 @@ import {
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type FileSystemPort,
+  type ApplyGeoBackfillResult,
   type GeoBackfillCandidate,
   type GlobalCatalogStore,
   type JobExecutionContext,
@@ -267,7 +268,8 @@ const matchCandidate = async (
   if (match === null) {
     summary.unmatched += 1;
     if (!input.dryRun && capturedAtWrite !== undefined) {
-      await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, capturedAt: capturedAtWrite });
+      const written = await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, capturedAt: capturedAtWrite });
+      recordWriteFailure(deps, candidate, summary, written);
     }
     return null;
   }
@@ -292,10 +294,9 @@ const matchCandidate = async (
       resolvedAt: new Date().toISOString(),
     },
   });
-  if (result.ok) {
-    if (result.value === 'written') summary.written += 1;
-    else if (result.value === 'unchanged') summary.unchanged += 1;
-  }
+  if (recordWriteFailure(deps, candidate, summary, result) || !result.ok) return null;
+  if (result.value === 'written') summary.written += 1;
+  else if (result.value === 'unchanged') summary.unchanged += 1;
   return { lat: match.lat, lon: match.lon };
 };
 
@@ -320,7 +321,8 @@ const resolvePlaceIfNeeded = async (
   placesInstalled: boolean,
   summary: GpsBackfillSummary,
 ): Promise<void> => {
-  const needsResolve = candidate.placeName === null || input.reresolvePlaces;
+  const needsResolve = candidate.placeName === null || input.reresolvePlaces
+    || coordinates.lat !== candidate.gpsLat || coordinates.lon !== candidate.gpsLon;
   if (!needsResolve) return;
   if (!placesInstalled) {
     summary.places.skippedNoDataset += 1;
@@ -342,8 +344,21 @@ const resolvePlaceIfNeeded = async (
     dataset: resolved.value.dataset,
   };
   if (!input.dryRun) {
-    await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, place });
+    const written = await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, place });
+    recordWriteFailure(deps, candidate, summary, written);
   }
+};
+
+const recordWriteFailure = (
+  deps: GpsBackfillPassDeps,
+  candidate: GeoBackfillCandidate,
+  summary: GpsBackfillSummary,
+  result: Result<ApplyGeoBackfillResult, AppError>,
+): boolean => {
+  if (result.ok && result.value !== 'skipped_precedence') return false;
+  const error = result.ok ? appError('processing_error', 'GPS write skipped by coordinate precedence') : result.error;
+  summary.failures.push({ path: deps.fs.join(candidate.folderPath, candidate.fileName), scope: 'file', code: error.code, message: error.message });
+  return true;
 };
 
 const report = (

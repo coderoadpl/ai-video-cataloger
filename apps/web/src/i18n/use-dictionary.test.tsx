@@ -1,3 +1,4 @@
+import { actions } from '../api.js';
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -26,7 +27,7 @@ describe('useDocumentLanguage', () => {
     await waitFor(() => expect(document.documentElement.lang).toBe('en'));
 
     language = 'pl';
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.config().queryKey.slice(0, 1) });
 
     await waitFor(() => expect(document.documentElement.lang).toBe('pl'));
   });
@@ -47,7 +48,7 @@ describe('useDictionary', () => {
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('Save'));
 
     language = 'pl';
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.config().queryKey.slice(0, 1) });
 
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('Zapisz'));
   });

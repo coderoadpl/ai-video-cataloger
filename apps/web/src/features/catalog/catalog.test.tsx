@@ -1,3 +1,4 @@
+import { actions } from '../../api.js';
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
@@ -288,7 +289,7 @@ describe('catalog', () => {
 
     await screen.findByText('a.mp4');
     await waitFor(() => expect(thumbnailCalls).toBe(1));
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.scan({ folder: FOLDER }).queryKey.slice(0, 1) });
 
     await waitFor(() => expect(thumbnailCalls).toBe(2));
     expect((await screen.findAllByTestId('media-thumbnail-img')).length).toBeGreaterThan(0);
@@ -337,7 +338,7 @@ describe('catalog', () => {
     const { queryClient } = renderThemed(<Harness folder={FOLDER} />);
 
     expect(await screen.findByText('Generating thumbnails…')).toBeDefined();
-    await queryClient.invalidateQueries();
+    await queryClient.invalidateQueries({ queryKey: actions.scan({ folder: FOLDER }).queryKey.slice(0, 1) });
     release?.();
     await waitFor(() => expect(screen.queryByText('Generating thumbnails…')).toBeNull());
   });

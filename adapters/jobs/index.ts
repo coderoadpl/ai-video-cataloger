@@ -106,11 +106,16 @@ export class InProcessJobsPort implements JobsPort {
     this.settleCallbacks.set(jobId, existing);
   }
 
-  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+  async acquireResource(key: string, signal?: AbortSignal | undefined, onWait?: () => Promise<Result<void, AppError>>): Promise<Result<() => void, AppError>> {
     if (signal?.aborted === true) return Promise.resolve({ ok: false, error: cancellationError() });
     if (!this.isResourceBusy(key)) {
       this.heldClaims.add(key);
       return Promise.resolve(ok(this.claimRelease(key)));
+    }
+    if (onWait !== undefined) {
+      const reported = await onWait();
+      if (!reported.ok) return reported;
+      return this.acquireResource(key, signal);
     }
     return new Promise((resolve) => {
       const waiter = (): void => {

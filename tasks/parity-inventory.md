@@ -1214,3 +1214,15 @@ Sources: `electron/renderer/src/components/main-panel.tsx`, `electron/renderer/s
 - Terminal log can hide raw JSON while still preserving it in the buffer.
 - Local AI read-only status commands do not start/download runtime; pull/analyze are the start points.
 - `config.ts` currently contains a duplicated `const keyDef = CONFIG_KEYS[key];` inside `displayConfigKey`; this is source behavior to be aware of during rewrite parity review.
+
+
+## R5 backlog event corrections
+
+The drive progress step `faces_waiting` is emitted only when the `faces-write`
+resource is occupied at acquisition, rather than before every claim. A failed
+claim produces `faces_pass_skipped` with reason `failed` unless its abort signal
+is cancelled; the run summary retains the original error code and message in
+`faces.error`. Existing event names and envelopes remain unchanged.
+GPS backfill summaries now populate `failures` for rejected writes, including
+`skipped_precedence` outcomes reported as `processing_error`. Numeric option
+usage errors exit 1 before job dispatch. No on-disk layout changes are made.

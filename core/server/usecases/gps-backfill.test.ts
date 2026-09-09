@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { type AppError, type CatalogFile, type CatalogFolder, type Result, ok } from '@core/domain/index.js';
+import { type AppError, type CatalogFile, type CatalogFolder, type Result, appError, ok } from '@core/domain/index.js';
 
 import type { DependencyStatus, JobProgress, PlaceMatch, PlacesPort } from '../ports.js';
 import { runGpsBackfill } from './gps-backfill.js';
@@ -264,5 +264,54 @@ describe('runGpsBackfill', () => {
     await runGpsBackfill({ fs, media, places: new FakePlaces(), globalCatalog: catalog }, { ...baseInput, timelinePath: '/timeline.json' }, progress);
 
     expect(events.map((event) => event.step)).toEqual(['gps_timeline_loaded', 'gps_backfill_file', 'gps_backfill_done']);
+  });
+});
+
+
+describe('backfill write outcomes', () => {
+  const fixture = async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addFile('/timeline.json', { content: buildTimeline([visitEntry('2026-01-01T09:00:00Z', '2026-01-01T11:00:00Z', 10, 20)]) });
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await globalCatalog.upsertFolder(folder);
+    await globalCatalog.upsertFile({ ...baseFile, capturedAt: '2026-01-01T10:00:00.000Z' });
+    const places = new FakePlaces();
+    places.installed = true;
+    places.matches.set('10.00|20.00', { name: 'Newtown', region: null, country: null, countryCode: null, distanceM: 0, dataset: 'test' });
+    return { fs, globalCatalog, places, media: new InMemoryMedia(fs) };
+  };
+
+  it.each(['processing_error', 'not_found'] as const)('records a failed coordinate write with its %s class and avoids a place write', async (code) => {
+    const deps = await fixture();
+    const write = vi.spyOn(deps.globalCatalog, 'applyGeoBackfill').mockResolvedValue({ ok: false, error: appError(code, 'write failed') });
+    const result = await runGpsBackfill(deps, { ...baseInput, timelinePath: '/timeline.json' });
+    expect(result.ok && result.value.failures).toEqual([{ path: '/media/drive-a/clip.mp4', scope: 'file', code, message: 'write failed' }]);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a precedence-skipped write and does not resolve the rejected coordinates', async () => {
+    const deps = await fixture();
+    const write = vi.spyOn(deps.globalCatalog, 'applyGeoBackfill').mockResolvedValue(ok('skipped_precedence'));
+    const resolve = vi.spyOn(deps.places, 'resolve');
+    const result = await runGpsBackfill(deps, { ...baseInput, timelinePath: '/timeline.json' });
+    expect(result.ok && result.value.failures).toEqual([expect.objectContaining({ scope: 'file', code: 'processing_error', message: expect.stringContaining('precedence') })]);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('re-resolves an existing place after coordinates change on a rerun', async () => {
+    const deps = await fixture();
+    await deps.globalCatalog.upsertFile({ ...baseFile, capturedAt: '2026-01-01T10:00:00.000Z', gpsLat: 1, gpsLon: 2, gpsSource: 'timeline', place: { name: 'Oldtown', region: null, country: null, countryCode: null, distanceM: 0, dataset: 'test' } });
+    await runGpsBackfill(deps, { ...baseInput, timelinePath: '/timeline.json' });
+    const stored = await deps.globalCatalog.getFile(baseFile.fingerprint);
+    expect(stored.ok && stored.value?.place?.name).toBe('Newtown');
+  });
+
+  it('records a failed place write', async () => {
+    const deps = await fixture();
+    const original = deps.globalCatalog.applyGeoBackfill.bind(deps.globalCatalog);
+    vi.spyOn(deps.globalCatalog, 'applyGeoBackfill').mockImplementation((input) => input.place === undefined ? original(input) : Promise.resolve({ ok: false, error: appError('not_found', 'place write failed') }));
+    const result = await runGpsBackfill(deps, { ...baseInput, timelinePath: '/timeline.json' });
+    expect(result.ok && result.value.failures).toEqual([expect.objectContaining({ code: 'not_found', message: 'place write failed' })]);
   });
 });

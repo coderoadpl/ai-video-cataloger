@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
 
@@ -57,7 +58,7 @@ export const useTreeAbsentFiles = (root: string | null, enabled: boolean): TreeA
       setError(null);
       try {
         await forgetMutation.mutateAsync({ fingerprint });
-        await queryClient.invalidateQueries();
+        await invalidateAffected(queryClient, 'catalog');
         return true;
       } catch (caught) {
         setError(messageOf(caught));

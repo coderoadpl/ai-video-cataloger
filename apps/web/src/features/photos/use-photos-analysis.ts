@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import { ApiError, invalidatePhotosQueries, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
 import { photoProcessSummarySchema, type photosDetailOutputSchema, type photosVariantRecordSchema } from '@core/contract/index.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
@@ -190,7 +191,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
 
   const invalidate = useCallback(async () => {
     if (!guard.isMounted()) return;
-    await queryClient.invalidateQueries();
+    await invalidateAffected(queryClient, 'photos');
   }, [queryClient, guard]);
 
   const runJob = useCallback(

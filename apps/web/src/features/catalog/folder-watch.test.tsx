@@ -61,7 +61,8 @@ describe('useFolderWatch', () => {
       subscription.handlers[0]?.({ folderPath: '/drive' });
     });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalled();
+    expect(invalidate.mock.calls.map(([filter]) => filter?.queryKey?.[0])).toContain('catalog-tree');
   });
 
   it('rescans photos when the current watched folder changes in photos mode', async () => {

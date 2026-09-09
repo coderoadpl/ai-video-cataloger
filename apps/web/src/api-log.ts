@@ -60,10 +60,20 @@ const truncate = (text: string): string =>
 const urlOf = (input: RequestInfo | URL): string =>
   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
-const REDACTED_BODY_ROUTES = ['/api/credentials'];
+export const SECRET_BODY_ROUTE_PREFIXES = [
+  '/api/credentials',
+  '/api/backup/connect',
+  '/api/backup/enable',
+  '/api/backup/restore',
+  '/api/backup/recovery-key',
+  '/api/oauth',
+] as const;
 
 const isRedactedRoute = (url: string): boolean =>
-  REDACTED_BODY_ROUTES.some((route) => new URL(url, 'http://localhost').pathname === route);
+  SECRET_BODY_ROUTE_PREFIXES.some((route) => {
+    const pathname = new URL(url, 'http://localhost').pathname;
+    return pathname === route || pathname.startsWith(`${route}/`);
+  });
 
 const requestBodyFor = (url: string, body: RequestInit['body']): string | null => {
   if (typeof body !== 'string') return null;
@@ -106,14 +116,14 @@ export const instrumentFetch = (fetchImpl: FetchLike): FetchLike => async (input
       url,
       status: null,
       durationMs: Date.now() - startedAt,
-      body: String(cause),
+      body: isRedactedRoute(url) ? '[redacted]' : String(cause),
     });
     throw cause;
   }
 
   let body: string | null = null;
   try {
-    body = truncate(await response.clone().text());
+    body = isRedactedRoute(url) ? '[redacted]' : truncate(await response.clone().text());
   } catch {
     body = null;
   }

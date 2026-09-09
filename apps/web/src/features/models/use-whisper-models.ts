@@ -5,11 +5,12 @@ import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import type { WhisperModelName } from '@core/domain/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
+import { invalidateAffected } from '../../api-invalidation.js';
 import { actions } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatMb, whisperDiskUsageMb, type WhisperModelEntry } from './models-model.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
-import { savedToastStore } from '../../lib/saved-toast.js';
+import { useSavedToast } from '../../components/ui/SavedToastProvider.js';
 import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 
 export interface WhisperDownloadProgress {
@@ -53,6 +54,7 @@ export const useWhisperModels = ({
   const guard = useMountGuard();
   const log = useGuardedCallback(guard, addLine);
   const dictionary = useDictionary();
+  const showSavedToast = useSavedToast();
   const queryClient = useQueryClient();
   const listQuery = useQuery({ ...actions.modelsWhisper, enabled: open });
   const downloadMutation = useMutation(actions.downloadWhisperModel);
@@ -93,8 +95,8 @@ export const useWhisperModels = ({
             if (!guard.isMounted()) return;
             log(dictionary.models.terminal.whisperDownloaded(modelName), 'success');
             await refetch();
-            await queryClient.invalidateQueries();
-            savedToastStore.show(dictionary.models.terminal.downloadedToast(modelName));
+            await invalidateAffected(queryClient, 'whisper');
+            showSavedToast(dictionary.models.terminal.downloadedToast(modelName));
           } else if (guard.isMounted()) {
             const message = dictionary.models.terminal.failedDownload(
               modelName,
@@ -114,7 +116,7 @@ export const useWhisperModels = ({
         }
       })();
     },
-    [isBusy, log, downloadMutation, intervalMs, queryClient, refetch, dictionary, guard],
+    [showSavedToast, isBusy, log, downloadMutation, intervalMs, queryClient, refetch, dictionary, guard],
   );
 
   const activate = useCallback(
@@ -129,8 +131,8 @@ export const useWhisperModels = ({
           if (!guard.isMounted()) return;
           log(dictionary.models.terminal.modelActive(modelName), 'success');
           await refetch();
-          await queryClient.invalidateQueries();
-          savedToastStore.show(dictionary.wizard.controller.whisperModelActive(modelName));
+          await invalidateAffected(queryClient, 'whisper');
+          showSavedToast(dictionary.wizard.controller.whisperModelActive(modelName));
         } catch (error) {
           if (guard.isMounted()) {
             const message = dictionary.models.terminal.failedActivate(modelName, messageOf(error));
@@ -142,7 +144,7 @@ export const useWhisperModels = ({
         }
       })();
     },
-    [isBusy, log, activateMutation, queryClient, refetch, dictionary, guard],
+    [showSavedToast, isBusy, log, activateMutation, queryClient, refetch, dictionary, guard],
   );
 
   const remove = useCallback(
@@ -157,8 +159,8 @@ export const useWhisperModels = ({
           if (!guard.isMounted()) return;
           log(dictionary.models.terminal.modelDeleted(modelName), 'success');
           await refetch();
-          await queryClient.invalidateQueries();
-          savedToastStore.show(dictionary.models.terminal.deletedToast(modelName));
+          await invalidateAffected(queryClient, 'whisper');
+          showSavedToast(dictionary.models.terminal.deletedToast(modelName));
         } catch (error) {
           if (guard.isMounted()) {
             const message = dictionary.models.terminal.failedDelete(modelName, messageOf(error));
@@ -170,7 +172,7 @@ export const useWhisperModels = ({
         }
       })();
     },
-    [isBusy, log, deleteMutation, queryClient, refetch, dictionary, guard],
+    [showSavedToast, isBusy, log, deleteMutation, queryClient, refetch, dictionary, guard],
   );
 
   const models = listQuery.data?.models ?? [];

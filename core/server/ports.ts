@@ -1515,5 +1515,5 @@ export interface JobsPort {
   list(): Promise<Result<JobRecord[], AppError>>;
   cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>>;
   onSettled(jobId: string, callback: () => void | Promise<void>): void;
-  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>>;
+  acquireResource(key: string, signal?: AbortSignal | undefined, onWait?: () => Promise<Result<void, AppError>>): Promise<Result<() => void, AppError>>;
 }

@@ -1,16 +1,15 @@
-import { useSyncExternalStore } from 'react';
 import { Snackbar } from '@mui/material';
 
-import { savedToastStore } from '../../lib/saved-toast.js';
+import { useSavedMessage } from './SavedToastProvider.js';
 
 export const SavedSnackbar = () => {
-  const message = useSyncExternalStore(savedToastStore.subscribe, savedToastStore.snapshot);
+  const { message, dismiss } = useSavedMessage();
 
   return (
     <Snackbar
       open={message !== null}
       autoHideDuration={2500}
-      onClose={() => savedToastStore.dismiss()}
+      onClose={dismiss}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       message={message ?? ''}
       data-testid="saved-snackbar"

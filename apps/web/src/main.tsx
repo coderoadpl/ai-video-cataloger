@@ -15,6 +15,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
+import { SavedToastProvider } from './components/ui/SavedToastProvider.js';
 import { SavedSnackbar } from './components/ui/SavedSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { IndexRoute } from './routes/index.js';
@@ -50,9 +51,11 @@ createRoot(container).render(
       <CssBaseline />
       <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
         <QueryClientProvider client={queryClient}>
-          <RefreshSnackbar />
-          <SavedSnackbar />
-          <RouterProvider router={router} />
+          <SavedToastProvider>
+            <RefreshSnackbar />
+            <SavedSnackbar />
+            <RouterProvider router={router} />
+          </SavedToastProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </ThemeModeProvider>
