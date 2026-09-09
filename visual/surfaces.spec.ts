@@ -15,6 +15,7 @@ const SURFACES = [
   'photos-sidebar-wide',
   'people-pair-review',
   'people-pair-review-alerts',
+  'people-pair-review-empty',
 ] as const;
 
 for (const surface of SURFACES) {
@@ -28,6 +29,8 @@ for (const surface of SURFACES) {
     } else if (surface === 'people-pair-review') {
       await expect(page.getByTestId('people-pair-review-question')).toBeVisible();
       await expect(page.getByTestId('people-pair-review-position')).toHaveText('1 of 6');
+    } else if (surface === 'people-pair-review-empty') {
+      await expect(page.getByTestId('people-pair-review-empty')).toBeVisible();
     } else if (surface === 'people-pair-review-alerts') {
       await expect(page.getByTestId('people-pair-review-error')).toBeVisible();
       await expect(page.getByTestId('people-pair-review-not-undoable')).toBeVisible();

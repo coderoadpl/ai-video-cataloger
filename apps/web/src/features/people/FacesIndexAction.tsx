@@ -18,7 +18,10 @@ export const FacesIndexAction = ({ active, folder, addLine, lockReason, hasIndex
   const facesIndex = useFacesIndex({ active, folder, addLine });
   const mutationsBlocked = lockReason !== undefined;
   const indexableMediaMissing = folder !== null && !hasIndexableMedia;
-  const disabledTitle = lockReason ?? (indexableMediaMissing ? dictionary.people.indexFacesNoIndexableMedia : undefined);
+  const facesOff = facesIndex.facesEnabled === false;
+  const disabledTitle = lockReason
+    ?? (facesOff ? dictionary.people.indexFacesFacesOff : undefined)
+    ?? (indexableMediaMissing ? dictionary.people.indexFacesNoIndexableMedia : undefined);
   const disabled = folder === null
     || facesIndex.isBusy
     || facesIndex.facesEnabled !== true

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, ButtonBase } from '@mui/material';
 
 import { mediaUrl } from '../../lib/media-url.js';
+import { DETAIL_FRAME_STAGE_MAX_WIDTH } from '../../theme.js';
 
 export const FrameGallery = ({
   framePaths,
@@ -20,12 +21,14 @@ export const FrameGallery = ({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box
+        data-testid="active-frame-stage"
         sx={{
           position: 'relative',
           borderRadius: 1,
           overflow: 'hidden',
           bgcolor: 'common.black',
           aspectRatio: '16 / 9',
+          maxWidth: DETAIL_FRAME_STAGE_MAX_WIDTH,
         }}
       >
         <Box

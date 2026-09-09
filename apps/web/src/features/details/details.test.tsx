@@ -13,7 +13,7 @@ import type { ConfigDescriptor } from '@core/domain/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
-import { createAppTheme } from '../../theme.js';
+import { createAppTheme, DETAIL_FRAME_STAGE_MAX_WIDTH } from '../../theme.js';
 import { DetailsPanel } from './DetailsPanel.js';
 import type { VariantData, VariantsData } from './index.web.js';
 import { StatusActions } from './StatusActions.js';
@@ -447,6 +447,26 @@ describe('details panel', () => {
     expect(active.getAttribute('src')).toContain('frame-001.jpg');
     fireEvent.click(screen.getByRole('button', { name: 'Frame 2' }));
     expect(active.getAttribute('src')).toContain('frame-002.jpg');
+  });
+
+  it('caps the active frame stage so the thumbnail strip stays beside it on a wide pane', () => {
+    const video = makeVideo({
+      artifacts: {
+        framePaths: ['/videos/frames/clip/frame-001.jpg', '/videos/frames/clip/frame-002.jpg'],
+        transcriptContent: null,
+        transcriptPath: null,
+        summary: null,
+        summaryPath: null,
+        thumbnailPath: null,
+        thumbnailMtime: null,
+        newFilename: null,
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    const stage = screen.getByTestId('active-frame-stage');
+    expect(getComputedStyle(stage).maxWidth).toBe(`${String(DETAIL_FRAME_STAGE_MAX_WIDTH)}px`);
   });
 
   it('loads the actual variants by stable fingerprint on the initial details open', async () => {
