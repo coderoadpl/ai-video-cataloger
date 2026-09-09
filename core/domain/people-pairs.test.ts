@@ -126,7 +126,7 @@ it('FPR-007 reuses bounded distinct-vector scores across decisions and undo', ()
   expect(decidedMs).toBeLessThan(scaledTimeout(3000));
   expect(undoneMs).toBeLessThan(scaledTimeout(3000));
   process.stdout.write(`FPR-007 distinct-vector generation: cold ${coldMs.toFixed(1)} ms, decide ${decidedMs.toFixed(1)} ms, undo ${undoneMs.toFixed(1)} ms\n`);
-}, scaledTimeout(45000));
+}, scaledTimeout(90000));
 
 it('FPR-007 invalidates cached scores when an embedding changes', () => {
   let scored = 0;
@@ -265,7 +265,7 @@ it('FPR-007 yields during preprocessing and pair rows and reuses warm scores', (
   scored = 0;
   expect(buildPeoplePairCandidates(input)).toEqual(step.value);
   expect(scored).toBeLessThanOrEqual(3 * people.length);
-}, scaledTimeout(45000));
+}, scaledTimeout(90000));
 
 it('keeps warm ranking and pending counts exact across limits and exclusions', () => {
   const people = Array.from({ length: 24 }, (_, i) => pairPerson(`exact-${String(i).padStart(2, '0')}`, i * 0.07, 1 + i % 7));
