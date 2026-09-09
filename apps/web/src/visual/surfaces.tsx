@@ -7,6 +7,7 @@ import {
   TERMINAL_DEFAULT_SIZE,
 } from '../components/layout/AppShell.js';
 import { AppHeader } from '../components/ui/AppHeader.js';
+import { PageHeader } from '../components/ui/PageHeader.js';
 import { FolderIcon } from '../components/ui/icons.js';
 import { TerminalLog } from '../components/ui/TerminalLog.js';
 import type { LogLine } from '../components/ui/use-terminal-log.js';
@@ -23,6 +24,7 @@ import {
 import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PairReview } from '../features/people/PairReview.js';
+import { PeopleHeaderActions } from '../features/people/PeopleHeaderActions.js';
 import type { FacesPairCandidate, PeoplePairsState } from '../features/people/use-people-pairs.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
@@ -45,6 +47,7 @@ const SURFACE_IDS = [
   'people-pair-review',
   'people-pair-review-alerts',
   'people-pair-review-empty',
+  'people-header',
 ] as const;
 
 export type SurfaceId = (typeof SURFACE_IDS)[number];
@@ -56,7 +59,8 @@ type StandaloneSurfaceId =
   | 'photos-sidebar-wide'
   | 'people-pair-review'
   | 'people-pair-review-alerts'
-  | 'people-pair-review-empty';
+  | 'people-pair-review-empty'
+  | 'people-header';
 type ShellSurfaceId = Exclude<SurfaceId, StandaloneSurfaceId>;
 
 const DEFAULT_SURFACE: SurfaceId = 'shell-default';
@@ -428,6 +432,7 @@ const PAIR_REVIEW_STATE: PeoplePairsState = {
   fetchStatus: 'idle',
   isLoading: false,
   isBusy: false,
+  busyKind: null,
   canUndo: false,
   notUndoable: false,
   error: null,
@@ -462,6 +467,32 @@ const PAIR_REVIEW_STATE_BY_SURFACE = {
 const PairReviewFixture = ({ state }: { state: PeoplePairsState }) => (
   <Box sx={{ maxWidth: 880, p: 3 }}>
     <PairReview state={state} disabled={false} lockReason={undefined} onBack={noop} />
+  </Box>
+);
+
+const PeopleHeaderFixture = () => (
+  <Box sx={{ p: 3 }}>
+    <PageHeader
+      testId="people-header"
+      title={dictionary.people.title}
+      subtitle={dictionary.people.subtitle}
+      actions={(
+        <PeopleHeaderActions
+          minObservations={10}
+          onMinObservationsChange={noop}
+          sort="frequent"
+          onSortChange={noop}
+          mergeDisabled={false}
+          mergeHintVisible
+          onMerge={noop}
+          pairPending={437}
+          pairLimit={200}
+          pairDisabled={false}
+          onOpenPairReview={noop}
+          lockReason={undefined}
+        />
+      )}
+    />
   </Box>
 );
 
@@ -601,6 +632,13 @@ export const VisualSurface = ({ id }: { id: SurfaceId }) => {
     return (
       <Box data-testid={`visual-surface-${id}`} sx={{ minHeight: '100vh', p: 2 }}>
         <PhotosSidebarFixture width={id === 'photos-sidebar-narrow' ? SIDEBAR_NARROW_WIDTH : SIDEBAR_WIDE_WIDTH} />
+      </Box>
+    );
+  }
+  if (id === 'people-header') {
+    return (
+      <Box data-testid="visual-surface-people-header" sx={{ minHeight: '100vh' }}>
+        <PeopleHeaderFixture />
       </Box>
     );
   }

@@ -505,6 +505,8 @@ export interface Dictionary {
     sortOrder: string;
     minObservationThreshold: (count: number) => string;
     minObservationThresholdAria: string;
+    minObservationButton: (count: number) => string;
+    minObservationHint: string;
     otherPeopleTile: (people: number, observations: number) => string;
     otherPeopleOpen: string;
     otherPeopleScope: string;
@@ -531,7 +533,7 @@ export interface Dictionary {
     mergeBody: (count: number, target: string) => string;
     mergeNameChoice: string;
     mergeSelectHint: string;
-    pairReviewOpen: (pending: number) => string;
+    pairReviewOpen: (count: number, more: boolean) => string;
     pairReviewQuestion: string;
     pairReviewPosition: (index: number, total: number) => string;
     pairReviewTruncated: (limit: number) => string;
@@ -540,6 +542,8 @@ export interface Dictionary {
     pairReviewSkip: string;
     pairReviewKeyHint: (key: string) => string;
     pairReviewUndo: string;
+    pairReviewMerging: string;
+    pairReviewSaving: string;
     pairReviewDifferentCaption: string;
     pairReviewNotUndoable: string;
     pairReviewConfirmTitle: string;
@@ -674,6 +678,7 @@ export interface Dictionary {
     apiCostEstimate: (cost: string) => string;
     facesEnableLabel: string;
     facesHelper: string;
+    facesDisableHelper: string;
     facesPairScopeLabel: string;
     facesPairScopeHelper: string;
     facesPairScopeCareful: string;
@@ -1637,6 +1642,8 @@ export const en: Dictionary = {
     sortOrder: 'Order',
     minObservationThreshold: (count) => `Show people with at least ${String(count)} ${count === 1 ? 'observation' : 'observations'}`,
     minObservationThresholdAria: 'Minimum observations',
+    minObservationButton: (count) => `Min. observations: ${String(count)}`,
+    minObservationHint: 'People seen fewer times are folded into the Other tile.',
     otherPeopleTile: (people, observations) =>
       `Other — ${String(people)} ${people === 1 ? 'person' : 'people'} · ${String(observations)} ${observations === 1 ? 'observation' : 'observations'}`,
     otherPeopleOpen: 'Show folded people',
@@ -1664,15 +1671,17 @@ export const en: Dictionary = {
     mergeBody: (count, target) => `Merge ${count} people into "${target}"? The other groupings disappear. This cannot be undone.`,
     mergeNameChoice: 'Which name should be kept?',
     mergeSelectHint: 'Select at least two people.',
-    pairReviewOpen: (pending) => `Review look-alikes (${String(pending)})`,
+    pairReviewOpen: (count, more) => `Review look-alikes (${String(count)}${more ? '+' : ''})`,
     pairReviewQuestion: 'Is this the same person?',
     pairReviewPosition: (index, total) => `${String(index)} of ${String(total)}`,
-    pairReviewTruncated: (limit) => `Showing the first ${String(limit)}`,
+    pairReviewTruncated: (limit) => `Showing the first ${String(limit)} — more appear as you answer`,
     pairReviewSame: 'Yes',
     pairReviewDifferent: 'No',
     pairReviewSkip: 'Skip',
     pairReviewKeyHint: (key) => `Key ${key}`,
     pairReviewUndo: 'Undo (Backspace)',
+    pairReviewMerging: 'Merging…',
+    pairReviewSaving: 'Saving…',
     pairReviewDifferentCaption: 'We will remember these are different people',
     pairReviewNotUndoable: 'A merge cannot be undone',
     pairReviewConfirmTitle: 'Merge these two people',
@@ -1810,6 +1819,7 @@ export const en: Dictionary = {
     apiCostEstimate: (cost) => `About ${cost} per video (rough estimate).`,
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
+    facesDisableHelper: 'Turning this off pauses face indexing and hides the People tab. It keeps every person already grouped and every answer you gave; turning it back on restores them.',
     facesPairScopeLabel: 'How eagerly to propose people to compare',
     facesPairScopeHelper: 'A wider scope also asks about people that look less alike. The questions appear on the People tab.',
     facesPairScopeCareful: 'Careful',
@@ -2840,6 +2850,8 @@ export const pl: Dictionary = {
     sortOrder: 'Kolejność',
     minObservationThreshold: (count) => `Pokaż osoby z co najmniej ${String(count)} ${plPlural(count, 'wystąpieniem', 'wystąpieniami', 'wystąpieniami')}`,
     minObservationThresholdAria: 'Minimalna liczba wystąpień',
+    minObservationButton: (count) => `Min. wystąpień: ${String(count)}`,
+    minObservationHint: 'Osoby widziane rzadziej chowamy w kafelku Inne.',
     otherPeopleTile: (people, observations) =>
       `Inne — ${String(people)} ${plPlural(people, 'osoba', 'osoby', 'osób')} · ${String(observations)} ${plPlural(observations, 'wystąpienie', 'wystąpienia', 'wystąpień')}`,
     otherPeopleOpen: 'Pokaż zwinięte osoby',
@@ -2867,15 +2879,17 @@ export const pl: Dictionary = {
     mergeBody: (count, target) => `Scal ${count} ${plPlural(count, 'osobę', 'osoby', 'osób')} w „${target}”? Pozostałe grupy znikną. Tego nie można cofnąć.`,
     mergeNameChoice: 'Którą nazwę zachować?',
     mergeSelectHint: 'Zaznacz co najmniej dwie osoby.',
-    pairReviewOpen: (pending) => `Sprawdź podobne osoby (${String(pending)})`,
+    pairReviewOpen: (count, more) => `Sprawdź podobne osoby (${String(count)}${more ? '+' : ''})`,
     pairReviewQuestion: 'Czy to ta sama osoba?',
     pairReviewPosition: (index, total) => `${String(index)} z ${String(total)}`,
-    pairReviewTruncated: (limit) => `Pokazujemy pierwsze ${String(limit)}`,
+    pairReviewTruncated: (limit) => `Pokazujemy pierwsze ${String(limit)} — kolejne pojawią się w miarę odpowiadania`,
     pairReviewSame: 'Tak',
     pairReviewDifferent: 'Nie',
     pairReviewSkip: 'Pomiń',
     pairReviewKeyHint: (key) => `Klawisz ${key}`,
     pairReviewUndo: 'Cofnij (Backspace)',
+    pairReviewMerging: 'Scalanie…',
+    pairReviewSaving: 'Zapisywanie…',
     pairReviewDifferentCaption: 'Zapamiętamy, że to różne osoby',
     pairReviewNotUndoable: 'Scalenia nie da się cofnąć',
     pairReviewConfirmTitle: 'Scal te dwie osoby',
@@ -3013,6 +3027,7 @@ export const pl: Dictionary = {
     apiCostEstimate: (cost) => `Około ${cost} za film (szacunek orientacyjny).`,
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
+    facesDisableHelper: 'Wyłączenie wstrzymuje indeksowanie twarzy i ukrywa zakładkę Osoby, ale nie usuwa żadnej rozpoznanej osoby ani Twoich odpowiedzi — po ponownym włączeniu wszystko wraca.',
     facesPairScopeLabel: 'Jak chętnie proponować osoby do porównania',
     facesPairScopeHelper: 'Szerszy zakres pyta też o osoby mniej do siebie podobne. Pytania pojawiają się na karcie Osoby.',
     facesPairScopeCareful: 'Ostrożnie',

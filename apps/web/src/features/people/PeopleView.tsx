@@ -25,8 +25,6 @@ import {
   Snackbar,
   TextField,
   Typography,
-  ToggleButton,
-  ToggleButtonGroup,
 } from '@mui/material';
 
 import { ApiError, invalidateLibraryVisibilityConsumers, isTerminalJobStatus } from '@core/client/index.js';
@@ -41,7 +39,6 @@ import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
 import { NoticePanel } from '../../components/ui/NoticePanel.js';
 import { PageHeader } from '../../components/ui/PageHeader.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
-import { SliderField } from '../../components/ui/SliderField.js';
 import { TrashConfirmationDialog, type TrashConfirmationCounts, type TrashConfirmationRoot } from '../../components/ui/dialogs/TrashConfirmationDialog.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
@@ -53,7 +50,9 @@ import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { useGuardedCallback, useMountGuard } from '../../components/ui/use-mount-guard.js';
 import { readStorageItem, writeStorageItem } from '../../lib/persistent-storage.js';
 import {
+  PEOPLE_MIN_OBSERVATIONS_DEFAULT,
   defaultMergeTarget,
+  isPeopleMinObservations,
   mergeNameChoices,
   mergePlanFor,
   peopleForMedium,
@@ -62,9 +61,11 @@ import {
   personFileCountLabel,
   sortPeople,
   type PeopleMedia,
+  type PeopleMinObservations,
   type PeopleSort,
 } from './core/index.js';
 import { PairReview } from './PairReview.js';
+import { PeopleHeaderActions } from './PeopleHeaderActions.js';
 import { type FacePerson, type FacesReclusterReport, usePeople } from './use-people.js';
 import { usePeoplePairs } from './use-people-pairs.js';
 
@@ -106,15 +107,10 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-const MERGE_HINT_ID = 'people-merge-hint';
 const PEOPLE_SORT_KEY = 'avc.people.sort';
 const PEOPLE_MIN_OBSERVATIONS_KEY = 'avc.people.minObservations';
-const PEOPLE_MIN_OBSERVATION_OPTIONS = [1, 2, 3, 5, 10, 20, 50] as const;
-type PeopleMinObservations = (typeof PEOPLE_MIN_OBSERVATION_OPTIONS)[number];
 
 const isPeopleSort = (value: string | null): value is PeopleSort => value === 'frequent' || value === 'order';
-const isPeopleMinObservations = (value: number): value is PeopleMinObservations =>
-  PEOPLE_MIN_OBSERVATION_OPTIONS.some((option) => option === value);
 
 const readPeopleSort = (): PeopleSort => {
   const raw = readStorageItem('local', PEOPLE_SORT_KEY);
@@ -123,15 +119,8 @@ const readPeopleSort = (): PeopleSort => {
 
 const readPeopleMinObservations = (): PeopleMinObservations => {
   const parsed = Number(readStorageItem('local', PEOPLE_MIN_OBSERVATIONS_KEY));
-  return Number.isInteger(parsed) && isPeopleMinObservations(parsed) ? parsed : 10;
+  return Number.isInteger(parsed) && isPeopleMinObservations(parsed) ? parsed : PEOPLE_MIN_OBSERVATIONS_DEFAULT;
 };
-
-const peopleMinObservationSliderMarks = PEOPLE_MIN_OBSERVATION_OPTIONS.map((value, index) => ({ value: index, label: String(value) }));
-
-const peopleMinObservationIndex = (value: PeopleMinObservations): number => PEOPLE_MIN_OBSERVATION_OPTIONS.indexOf(value);
-
-const peopleMinObservationAtIndex = (index: number): PeopleMinObservations | null =>
-  PEOPLE_MIN_OBSERVATION_OPTIONS[index] ?? null;
 
 const peopleObservationTotal = (people: readonly FacePerson[]): number =>
   people.reduce((total, person) => total + person.observationCount, 0);
@@ -329,81 +318,28 @@ export const PeopleView = ({
   const mediumEmpty = hasCachedPeople && gridPeople.length === 0 && !foldedOpen && media !== 'all';
 
   const headerActions = (
-    <>
-      <Box sx={{ width: { xs: '100%', sm: 220 } }}>
-        <SliderField
-          label={dictionary.people.minObservationThresholdAria}
-          valueLabel={String(minObservations)}
-          testId="people-threshold-slider"
-          min={0}
-          max={PEOPLE_MIN_OBSERVATION_OPTIONS.length - 1}
-          step={1}
-          marks={peopleMinObservationSliderMarks}
-          value={peopleMinObservationIndex(minObservations)}
-          valueLabelFormat={(current) => String(peopleMinObservationAtIndex(current) ?? '')}
-          getAriaValueText={(current) => {
-            const threshold = peopleMinObservationAtIndex(current);
-            return threshold === null ? '' : dictionary.people.minObservationThreshold(threshold);
-          }}
-          onChange={(next) => {
-            const threshold = peopleMinObservationAtIndex(next);
-            if (threshold !== null) setMinObservations(threshold);
-          }}
-        />
-      </Box>
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        value={sort}
-        onChange={(_event, next: PeopleSort | null) => { if (next !== null) setSort(next); }}
-        data-testid="people-sort"
-      >
-        <ToggleButton value="frequent" data-testid="people-sort-frequency">
-          {dictionary.people.sortFrequent}
-        </ToggleButton>
-        <ToggleButton value="order" data-testid="people-sort-order">
-          {dictionary.people.sortOrder}
-        </ToggleButton>
-      </ToggleButtonGroup>
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.25 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          disabled={!canMerge || people.isBusy || mutationsBlocked}
-          title={lockReason}
-          {...(selected.length === 1 ? { 'aria-describedby': MERGE_HINT_ID } : {})}
-          onClick={() => {
-            people.clearMergeError();
-            setChosenNamePersonId(null);
-            setMergeOpen(true);
-          }}
-          data-testid="people-merge-selected"
-        >
-          {dictionary.people.mergeSelected}
-        </Button>
-        {selected.length === 1 ? (
-          <Typography id={MERGE_HINT_ID} variant="caption" data-testid="people-merge-hint">
-            {dictionary.people.mergeSelectHint}
-          </Typography>
-        ) : null}
-      </Box>
-      {pairs.pending === 0 ? null : (
-        <Button
-          variant="contained"
-          size="small"
-          disabled={people.isBusy || mutationsBlocked}
-          title={lockReason}
-          onClick={() => {
-            setFoldedOpen(false);
-            setReviewOpen(true);
-            pairs.openSession();
-          }}
-          data-testid="people-pair-review-open"
-        >
-          {dictionary.people.pairReviewOpen(pairs.pending)}
-        </Button>
-      )}
-    </>
+    <PeopleHeaderActions
+      minObservations={minObservations}
+      onMinObservationsChange={setMinObservations}
+      sort={sort}
+      onSortChange={setSort}
+      mergeDisabled={!canMerge || people.isBusy || mutationsBlocked}
+      mergeHintVisible={selected.length === 1}
+      onMerge={() => {
+        people.clearMergeError();
+        setChosenNamePersonId(null);
+        setMergeOpen(true);
+      }}
+      pairPending={pairs.pending}
+      pairLimit={pairs.limit}
+      pairDisabled={people.isBusy || mutationsBlocked}
+      onOpenPairReview={() => {
+        setFoldedOpen(false);
+        setReviewOpen(true);
+        pairs.openSession();
+      }}
+      lockReason={lockReason}
+    />
   );
 
   const headerScope = reviewOpen

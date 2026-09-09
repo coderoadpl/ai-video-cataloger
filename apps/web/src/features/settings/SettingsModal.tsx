@@ -345,6 +345,9 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               <Typography variant="caption">
                 {dictionary.settingsModal.facesHelper}
               </Typography>
+              <Typography variant="caption" data-testid="faces-disable-helper">
+                {dictionary.settingsModal.facesDisableHelper}
+              </Typography>
               <FormLabel id="settings-faces-pair-scope-label" sx={{ typography: 'subtitle2', mt: 0.5 }}>
                 {dictionary.settingsModal.facesPairScopeLabel}
               </FormLabel>

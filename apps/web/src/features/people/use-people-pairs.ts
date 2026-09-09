@@ -13,6 +13,8 @@ export type FacesPairsOutput = z.output<typeof facesPairsOutputSchema>;
 export type FacesPairCandidate = FacesPairsOutput['candidates'][number];
 export type FacesPairPerson = FacesPairCandidate['a'];
 
+type PairReviewBusyKind = PeoplePairDecisionKind | 'undo';
+
 export interface PeoplePairsState {
   pending: number;
   truncated: boolean;
@@ -24,6 +26,7 @@ export interface PeoplePairsState {
   fetchStatus: 'fetching' | 'paused' | 'idle';
   isLoading: boolean;
   isBusy: boolean;
+  busyKind: PairReviewBusyKind | null;
   isSuccess: boolean;
   isError: boolean;
   queryError: string | null;
@@ -68,7 +71,8 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
     return restored === null ? remaining : [restored, ...remaining.filter((entry) => !isSamePair(entry, restored.a.personId, restored.b.personId))];
   }, [answered, candidates, restored]);
   const inFlight = useRef(false);
-  const [isBusy, setIsBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState<PairReviewBusyKind | null>(null);
+  const isBusy = busyKind !== null;
   const isPairAvailable = useCallback((pair: { personAId: string; personBId: string }) =>
     pairs.isSuccess && queue.some((entry) => isSamePair(entry, pair.personAId, pair.personBId)), [pairs.isSuccess, queue]);
 
@@ -89,7 +93,7 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
       const candidate = pair === undefined ? queue[0] : queue.find((entry) => isSamePair(entry, pair.personAId, pair.personBId));
       if (candidate === undefined || inFlight.current) return;
       inFlight.current = true;
-      setIsBusy(true);
+      setBusyKind(decision);
       void (async () => {
         setError(null);
         try {
@@ -112,7 +116,7 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
             if (guard.isMounted()) setError(messageOf(caught));
           } finally {
             inFlight.current = false;
-            if (guard.isMounted()) setIsBusy(false);
+            if (guard.isMounted()) setBusyKind(null);
           }
         }
       })();
@@ -124,7 +128,7 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
     const last = answered[answered.length - 1];
     if (last === undefined || last.decision === 'same' || undoRefused || inFlight.current) return;
     inFlight.current = true;
-    setIsBusy(true);
+    setBusyKind('undo');
     void (async () => {
       setError(null);
       try {
@@ -146,7 +150,7 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
           if (guard.isMounted()) setError(messageOf(caught));
         } finally {
           inFlight.current = false;
-          if (guard.isMounted()) setIsBusy(false);
+          if (guard.isMounted()) setBusyKind(null);
         }
       }
     })();
@@ -167,6 +171,7 @@ export const usePeoplePairs = ({ enabled }: UsePeoplePairsOptions): PeoplePairsS
     queryError: pairs.error === null ? null : messageOf(pairs.error),
     isPairAvailable,
     isBusy,
+    busyKind,
     canUndo: answered.length > 0 && answered[answered.length - 1]?.decision !== 'same' && !undoRefused && !isBusy,
     notUndoable: undoRefused,
     error,

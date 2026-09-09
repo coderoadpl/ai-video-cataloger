@@ -195,6 +195,15 @@ export const PHOTO_ROW_THUMB_BOX = 56;
 export const PHOTO_ROW_HEIGHT = 96;
 export const DETAIL_FRAME_STAGE_MAX_WIDTH = 560;
 
+const HEADER_ACTION_HEIGHT = 32;
+export const HEADER_ACTION_CONTROL_SX = { height: HEADER_ACTION_HEIGHT, minHeight: HEADER_ACTION_HEIGHT } as const;
+
+const PAIR_REVIEW_CROP_COLUMNS = 3;
+const PAIR_REVIEW_CROP_GAP = 6;
+const PAIR_REVIEW_CROP_ROW_VH = 20;
+export const PAIR_REVIEW_SHEET_MAX_WIDTH =
+  `calc(${String(PAIR_REVIEW_CROP_ROW_VH * PAIR_REVIEW_CROP_COLUMNS)}vh + ${String(PAIR_REVIEW_CROP_GAP * (PAIR_REVIEW_CROP_COLUMNS - 1))}px)`;
+
 export const createAppTheme = (mode: ThemeMode): Theme => {
   const c = mode === 'dark' ? DARK : LIGHT;
 

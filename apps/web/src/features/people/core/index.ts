@@ -1,4 +1,14 @@
 export {
+  PEOPLE_MIN_OBSERVATIONS_DEFAULT,
+  PEOPLE_MIN_OBSERVATION_OPTIONS,
+  isPeopleMinObservations,
+  peopleMinObservationAtIndex,
+  peopleMinObservationIndex,
+  peopleMinObservationMarks,
+  type PeopleMinObservations,
+} from './min-observations.js';
+export { pairReviewBadge, type PairReviewBadge } from './pair-review-badge.js';
+export {
   defaultMergeTarget,
   mergeNameChoices,
   mergePlanFor,
