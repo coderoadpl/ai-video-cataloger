@@ -28,6 +28,8 @@ import {
   localAnalyzerConfig,
   pairsReviewOutcome,
   peopleOutcome,
+  photosScanDecision,
+  scratchPhotoExpectation,
   withoutBackupConfig,
   parseAnalyzerFlag,
   parseMediaChipCount,
@@ -412,6 +414,56 @@ describe('prepareScratchFixtures', () => {
     const scratchDir = prepareScratchFixtures(sourceWithPhotos());
 
     expect(readFileSync(path.join(scratchDir, BROKEN_PHOTO_NAME)).length).toBeLessThan(64);
+  });
+});
+
+describe('photosScanDecision', () => {
+  it('waits while the photo scan is still running, even when rows already exist', () => {
+    expect(photosScanDecision({ rows: 1, scanning: true, expected: 6 })).toBe('wait');
+    expect(photosScanDecision({ rows: 6, scanning: true, expected: 6 })).toBe('wait');
+  });
+
+  it('waits after the scan reports itself idle until every planted photo is catalogued', () => {
+    expect(photosScanDecision({ rows: 1, scanning: false, expected: 6 })).toBe('wait');
+    expect(photosScanDecision({ rows: 5, scanning: false, expected: 6 })).toBe('wait');
+  });
+
+  it('is ready once the scan is idle and the catalogued rows reach the planted count', () => {
+    expect(photosScanDecision({ rows: 6, scanning: false, expected: 6 })).toBe('ready');
+    expect(photosScanDecision({ rows: 7, scanning: false, expected: 6 })).toBe('ready');
+  });
+
+  it('skips a home whose finished scan catalogued nothing', () => {
+    expect(photosScanDecision({ rows: 0, scanning: false, expected: 6 })).toBe('skip');
+    expect(photosScanDecision({ rows: 0, scanning: true, expected: 6 })).toBe('wait');
+  });
+});
+
+describe('scratchPhotoExpectation', () => {
+  it('counts the planted root photos by distinct content, so the duplicate pair is one row', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    const { expectedRows } = scratchPhotoExpectation(scratchDir);
+
+    expect(expectedRows).toBe(3);
+  });
+
+  it('lists the planted real photos without the unloadable one', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    const { realPhotoNames } = scratchPhotoExpectation(scratchDir);
+
+    expect(realPhotoNames).toEqual(['photo-01-duplicate.jpg', 'photo-01.jpg', 'photo-02.jpg']);
+    expect(realPhotoNames).not.toContain(BROKEN_PHOTO_NAME);
+  });
+
+  it('ignores photos below the root, which the folder scope never lists', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    const { expectedRows, realPhotoNames } = scratchPhotoExpectation(scratchDir);
+
+    expect(realPhotoNames).not.toContain(path.basename(TREE_PHOTO_PATH));
+    expect(expectedRows).toBe(3);
   });
 });
 

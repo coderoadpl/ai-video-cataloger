@@ -315,13 +315,20 @@ the "Otwórz w Analizie" escape hatch and asserts it lands in the Analysis
 details panel with the file selected. `library-hide-restore` selects two
 Kolekcja tiles, hides them, opens the `Ukryte` view, restores them, and
 captures the restored default collection. `photos-sidebar` switches
-Analysis to Zdjęcia and captures the sidebar state (folder header, scope
-toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
-the first sidebar row that does not carry the `proxyFailed` badge (the analyze
-strip only renders once `proxyState` is `done`, and the planted broken photo
-is always `failed`) and asserts the workspace detail (`photos-analysis-detail`)
-and the analyze strip render, and that the video list is never visible in the
-photos sidebar.
+Analysis to Zdjęcia and waits for the auto-scan to finish before capturing the
+sidebar state (folder header, scope toggle, badge rows): no scan surface
+visible (`photos-sidebar-loading`, `photos-sidebar-unscanned`,
+`photos-analyze-status-label`), a catalogued row count that is stable across
+two polls, and at least as many rows as the distinct planted root photos the
+runner itself copied into the scratch fixtures. The step's note carries how
+long that wait took; a scan that never settles is a failed step, not a capture
+of a half-scanned sidebar (W123). `analysis-photos` then clicks the first
+sidebar row whose path is not the planted `broken-photo.jpg` — by name, never
+by the `proxyFailed` badge, which only renders once the proxy pass has already
+failed and therefore lets the broken row through mid-scan — asserts the clicked
+row is one of the planted real photos, and asserts the workspace detail
+(`photos-analysis-detail`) and the analyze strip render, and that the video
+list is never visible in the photos sidebar.
 
 `people` opens Biblioteka > Osoby and captures the unified people surface. It is
 `ok` in two shapes, and the note says which one the run produced: the media
