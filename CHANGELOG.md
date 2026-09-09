@@ -14,16 +14,26 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.41] - 2026-09-09
+
 ### Fixed
 
-- Materializing renamed legacy videos migrates name-based artifacts and retains originals when replacement verification fails.
-- Backups stage artifacts with hard links and a copy fallback, and observe cancellation between staged entries.
-- Variant changes write summaries, transcripts and frames under the fingerprint-verified filename used by previews.
-- Library trash waits for all-roots photo processing before removing photo records and artifacts.
-- Aborted HTTP catalog mutations leave the resource queue without waiting for an active backup or trash job.
-- Concurrent searches recover from legacy mirror rename races by re-discovering the migrated destination.
-- The release walkthrough excludes hidden photo files and sidecars from its expected scan row count.
-- Pair review accounts for cache row overhead, preserves scores across output-limit changes and yields during preprocessing and row scoring while reusing warm rankings.
+- Materializing renamed legacy videos migrates name-based artifacts and retains originals when replacement verification fails
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Backups stage artifacts with hard links and a copy fallback, and observe cancellation between staged entries
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Variant changes write summaries, transcripts and frames under the fingerprint-verified filename used by previews
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Library trash waits for all-roots photo processing before removing photo records and artifacts
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Aborted HTTP catalog mutations leave the resource queue without waiting for an active backup or trash job
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Concurrent searches recover from legacy mirror rename races by re-discovering the migrated destination
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- The release walkthrough excludes hidden photo files and sidecars from its expected scan row count
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
+- Pair review accounts for cache row overhead, preserves scores across output-limit changes and yields during preprocessing and row scoring while reusing warm rankings
+  ([`5eae73f`](https://github.com/coderoadpl/ai-video-cataloger/commit/5eae73f3747c879cd10025936a295315bf6cd7be)).
 
 ## [0.6.40] - 2026-09-09
 
