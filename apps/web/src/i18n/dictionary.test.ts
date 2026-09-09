@@ -169,10 +169,43 @@ describe('dictionary', () => {
   });
 
   it('names the pair-review entry point with a verb and a noun', () => {
-    expect(pl.people.pairReviewOpen(3)).toBe('Sprawdź podobne osoby (3)');
-    expect(en.people.pairReviewOpen(3)).toBe('Review look-alikes (3)');
+    expect(pl.people.pairReviewOpen(3, false)).toBe('Sprawdź podobne osoby (3)');
+    expect(en.people.pairReviewOpen(3, false)).toBe('Review look-alikes (3)');
     expect(pl.settingsModal.facesPairScopeHelper).toContain('Osoby');
     expect(en.settingsModal.facesPairScopeHelper).toContain('People tab');
+  });
+
+  it('marks a capped review queue with a plus instead of the raw candidate count', () => {
+    expect(pl.people.pairReviewOpen(200, true)).toBe('Sprawdź podobne osoby (200+)');
+    expect(en.people.pairReviewOpen(200, true)).toBe('Review look-alikes (200+)');
+  });
+
+  it('says the truncated queue refills as answers come in', () => {
+    expect(pl.people.pairReviewTruncated(200)).toContain('200');
+    expect(pl.people.pairReviewTruncated(200)).toContain('kolejne');
+    expect(en.people.pairReviewTruncated(200)).toContain('200');
+    expect(en.people.pairReviewTruncated(200)).toContain('more');
+  });
+
+  it('labels the folding threshold as a compact button with its current value', () => {
+    expect(pl.people.minObservationButton(10)).toBe('Min. wystąpień: 10');
+    expect(en.people.minObservationButton(10)).toBe('Min. observations: 10');
+    expect(pl.people.minObservationHint).toContain('Inne');
+    expect(en.people.minObservationHint).toContain('Other');
+  });
+
+  it('separates the merging wait from the plain saving wait after an answer', () => {
+    expect(pl.people.pairReviewMerging).toBe('Scalanie…');
+    expect(pl.people.pairReviewSaving).toBe('Zapisywanie…');
+    expect(en.people.pairReviewMerging).toBe('Merging…');
+    expect(en.people.pairReviewSaving).toBe('Saving…');
+  });
+
+  it('promises that switching face grouping off keeps every recognised person', () => {
+    expect(pl.settingsModal.facesDisableHelper).toContain('nie usuwa');
+    expect(pl.settingsModal.facesDisableHelper).toContain('Osoby');
+    expect(en.settingsModal.facesDisableHelper).toContain('keeps');
+    expect(en.settingsModal.facesDisableHelper).toContain('People');
   });
 
   it('says a skipped pair comes back, so Skip does not read as permanent', () => {

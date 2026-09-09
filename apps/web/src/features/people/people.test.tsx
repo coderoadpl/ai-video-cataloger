@@ -296,7 +296,7 @@ describe('PeopleView', () => {
     );
 
     await screen.findByTestId('people-disabled-state');
-    expect(screen.queryByTestId('people-threshold-slider-field')).toBeNull();
+    expect(screen.queryByTestId('people-threshold-button')).toBeNull();
     expect(screen.queryByTestId('people-sort')).toBeNull();
     expect(screen.queryByTestId('people-merge-selected')).toBeNull();
   });
@@ -321,9 +321,38 @@ describe('PeopleView', () => {
     );
 
     await screen.findByTestId('people-grid');
-    expect(screen.getByTestId('people-threshold-slider-field')).toBeDefined();
+    expect(screen.getByTestId('people-threshold-button')).toBeDefined();
     expect(screen.getByTestId('people-sort')).toBeDefined();
     expect(screen.getByTestId('people-merge-selected')).toBeDefined();
+  });
+
+  it('keeps the folding threshold in a popover the header button opens and Escape closes', async () => {
+    const user = userEvent.setup();
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 12,
+      people: [person({ personId: 'p-main', observationCount: 12, videoCount: 12, photoCount: 0, fileCounts: { video: 2, photo: 0 } })],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onOpenInCollection={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    const button = screen.getByTestId('people-threshold-button');
+    expect(button.textContent).toBe('Min. observations: 10');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('people-threshold-slider-field')).toBeNull();
+
+    await user.click(button);
+    const field = await screen.findByTestId('people-threshold-slider-field');
+    expect(field.textContent).toContain('Minimum observations');
+    expect(screen.getByTestId('people-threshold-button').getAttribute('aria-expanded')).toBe('true');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('people-threshold-slider-field')).toBeNull());
+    expect(screen.getByTestId('people-threshold-button').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('installs face grouping models when enabled but missing', async () => {
@@ -1268,7 +1297,7 @@ describe('PeopleView media chips', () => {
     );
 
     await screen.findByTestId('people-grid');
-    expect(screen.getByTestId('people-threshold-slider-field').textContent).toContain('Minimum observations');
+    expect(screen.getByTestId('people-threshold-button').textContent).toBe('Min. observations: 10');
     expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-main']);
     expect(screen.getByTestId('people-other-tile').textContent).toContain('Other — 2 people · 9 observations');
     expect(screen.queryByText('Person 2')).toBeNull();
@@ -1292,9 +1321,9 @@ describe('PeopleView media chips', () => {
     );
 
     await screen.findByTestId('people-grid');
-    fireEvent.change(screen.getByTestId('people-threshold-slider').querySelector('input') ?? screen.getByTestId('people-threshold-slider'), {
-      target: { value: 1 },
-    });
+    fireEvent.click(screen.getByTestId('people-threshold-button'));
+    const slider = await screen.findByTestId('people-threshold-slider');
+    fireEvent.change(slider.querySelector('input') ?? slider, { target: { value: 1 } });
 
     await waitFor(() => expect(window.localStorage.getItem('avc.people.minObservations')).toBe('2'));
     expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'))).toEqual(['p-three', 'p-two']);

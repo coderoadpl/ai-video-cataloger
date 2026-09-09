@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -18,12 +19,16 @@ import {
   Typography,
 } from '@mui/material';
 
+import type { PeoplePairDecisionKind } from '@core/domain/index.js';
+
 import { CardGridSkeleton } from '../../components/ui/CardGridSkeleton.js';
 import { EmptyState } from '../../components/ui/EmptyState.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
 import { personLabel } from '../../i18n/person-label.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { PAIR_REVIEW_SHEET_MAX_WIDTH } from '../../theme.js';
 import { mergeNameChoices, personTotalsLabel } from './core/index.js';
 import type { FacesPairCandidate, FacesPairPerson, PeoplePairsState } from './use-people-pairs.js';
 
@@ -36,12 +41,16 @@ interface PairReviewProps {
 
 interface PairAnswer {
   testId: string;
+  decision: PeoplePairDecisionKind;
   variant: 'contained' | 'outlined' | 'text';
   label: string;
   hint: string;
   caption?: string;
   onClick: () => void;
 }
+
+const busyLabel = (dictionary: Dictionary, decision: PeoplePairDecisionKind): string =>
+  decision === 'same' ? dictionary.people.pairReviewMerging : dictionary.people.pairReviewSaving;
 
 const describedBy = (answer: PairAnswer): string =>
   answer.caption === undefined ? `${answer.testId}-hint` : `${answer.testId}-hint ${answer.testId}-caption`;
@@ -117,6 +126,7 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
   const answers: PairAnswer[] = [
     {
       testId: 'people-pair-review-same',
+      decision: 'same',
       variant: 'contained',
       label: dictionary.people.pairReviewSame,
       hint: dictionary.people.pairReviewKeyHint('1'),
@@ -124,6 +134,7 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
     },
     {
       testId: 'people-pair-review-different',
+      decision: 'different',
       variant: 'outlined',
       label: dictionary.people.pairReviewDifferent,
       hint: dictionary.people.pairReviewKeyHint('2'),
@@ -132,6 +143,7 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
     },
     {
       testId: 'people-pair-review-skip',
+      decision: 'skip',
       variant: 'text',
       label: dictionary.people.pairReviewSkip,
       hint: dictionary.people.pairReviewKeyHint('3'),
@@ -161,9 +173,18 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
         ) : null}
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-        <PairPersonPanel testId="people-pair-review-person-a" person={current.a} />
-        <PairPersonPanel testId="people-pair-review-person-b" person={current.b} />
+      <Box sx={{ position: 'relative' }} aria-busy={state.isBusy}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, opacity: state.isBusy ? 0.55 : 1 }}>
+          <PairPersonPanel testId="people-pair-review-person-a" person={current.a} />
+          <PairPersonPanel testId="people-pair-review-person-b" person={current.b} />
+        </Box>
+        {state.isBusy ? (
+          <Box
+            aria-hidden
+            data-testid="people-pair-review-busy"
+            sx={{ position: 'absolute', inset: 0, bgcolor: 'action.hover', borderRadius: 1 }}
+          />
+        ) : null}
       </Box>
 
       {state.error === null ? null : (
@@ -187,8 +208,11 @@ export const PairReview = ({ state, disabled, lockReason, onBack }: PairReviewPr
                 aria-describedby={describedBy(answer)}
                 onClick={answer.onClick}
                 data-testid={answer.testId}
+                {...(state.busyKind === answer.decision
+                  ? { startIcon: <CircularProgress size={14} color="inherit" /> }
+                  : {})}
               >
-                {answer.label}
+                {state.busyKind === answer.decision ? busyLabel(dictionary, answer.decision) : answer.label}
               </Button>
             </Box>
           ))}
@@ -275,7 +299,7 @@ const PairPersonPanel = ({ testId, person }: { testId: string; person: FacesPair
       <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography variant="subtitle2" noWrap title={name}>{name}</Typography>
         <Typography variant="caption">{personTotalsLabel(dictionary.people, person)}</Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.75 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 0.75, maxWidth: PAIR_REVIEW_SHEET_MAX_WIDTH }}>
           {person.cropPaths.length === 0 ? (
             <Box sx={{ aspectRatio: '1 / 1' }}>
               <PlaceholderTile

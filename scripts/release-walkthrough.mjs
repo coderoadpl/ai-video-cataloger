@@ -1235,8 +1235,11 @@ const drive = async (plan) => {
     if (!(await appeared(card.or(page.getByTestId('people-other-tile')), VISIBLE_TIMEOUT_MS))) {
       return failed('the faces pass grouped nobody out of the faces fixture');
     }
+    await page.getByTestId('people-threshold-button').click();
     await page.getByTestId('people-threshold-slider').locator('input').focus();
     await page.keyboard.press('Home');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('people-threshold-slider').waitFor({ state: 'detached', timeout: VISIBLE_TIMEOUT_MS });
     if (!(await appeared(card, VISIBLE_TIMEOUT_MS))) return failed('the unfolded Osoby grid rendered no person card');
 
     const query = await awaitPairsQuery(page);

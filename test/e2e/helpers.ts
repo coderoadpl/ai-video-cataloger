@@ -691,8 +691,11 @@ export async function awaitPeopleGridUnfolded(page: Page, timeoutMs: number): Pr
   const card = page.getByTestId('people-card');
   const otherTile = page.getByTestId('people-other-tile');
   await card.or(otherTile).first().waitFor({ state: 'visible', timeout: timeoutMs });
+  await page.getByTestId('people-threshold-button').click();
   await page.getByTestId('people-threshold-slider').locator('input').focus();
   await page.keyboard.press('Home');
+  await page.keyboard.press('Escape');
+  await page.getByTestId('people-threshold-slider').waitFor({ state: 'detached', timeout: 15_000 });
   await otherTile.first().waitFor({ state: 'detached', timeout: 15_000 });
   await card.first().waitFor({ state: 'visible', timeout: 15_000 });
 }

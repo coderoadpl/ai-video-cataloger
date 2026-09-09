@@ -14,6 +14,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The Osoby header keeps the minimum-observations threshold behind a compact button that opens a popover with the slider and a hint, instead of an inline slider with its tick scale.
+- Every control in the Osoby header action row shares one height and baseline.
+- The look-alike review badge shows the reviewable queue size, with a trailing `+` when more pairs are pending than the review serves, and the review card says the queue refills as answers come in.
+- The contact sheets of a look-alike pair are capped against the viewport height, so the Tak/Nie/Pomiń row stays visible without scrolling.
+
+### Added
+
+- Answering a look-alike pair shows a spinner and a Scalanie…/Zapisywanie… label on the answered button and dims the pair card until the answer settles.
+- Settings says that turning local face grouping off pauses indexing and hides Osoby while keeping every recognised person and every answer.
+
 ## [0.6.41] - 2026-09-09
 
 ### Fixed

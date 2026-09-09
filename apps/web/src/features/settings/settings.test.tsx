@@ -755,6 +755,7 @@ describe('settings modal', () => {
     expect(await screen.findByText('Local face grouping (experimental)')).toBeDefined();
     expect(screen.getByText(/face grouping is opt-in/u).textContent).toContain('grouping');
     expect(screen.queryByText(/recognition/iu)).toBeNull();
+    expect(screen.getByTestId('faces-disable-helper').textContent).toBe(en.settingsModal.facesDisableHelper);
 
     fireEvent.click(screen.getByTestId('faces-enabled-switch'));
     fireEvent.click(screen.getByTestId('settings-save'));

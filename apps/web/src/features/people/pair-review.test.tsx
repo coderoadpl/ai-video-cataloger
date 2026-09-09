@@ -305,7 +305,7 @@ describe('Osoby pair review entry point', () => {
     expect(screen.queryByTestId('people-pair-review-open')).toBeNull();
   });
 
-  it('shows the uncapped pending count even when the queue slice is truncated', async () => {
+  it('caps the badge at the reviewable queue size and marks the rest with a plus', async () => {
     stubReview({
       candidates: [candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 }))],
       pending: 437,
@@ -313,7 +313,17 @@ describe('Osoby pair review entry point', () => {
     });
     renderPeople();
 
-    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('Review look-alikes (437)');
+    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('Review look-alikes (200+)');
+  });
+
+  it('shows the exact pending count while it fits in the reviewable queue', async () => {
+    stubReview({
+      candidates: [candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 }))],
+      pending: 37,
+    });
+    renderPeople();
+
+    expect((await screen.findByTestId('people-pair-review-open')).textContent).toBe('Review look-alikes (37)');
   });
 
   it('is rendered but disabled with the catalog lock reason as its title', async () => {
@@ -364,6 +374,82 @@ describe('Osoby pair review entry point', () => {
 
 describe('Osoby pair review card', () => {
   beforeEach(() => window.localStorage.clear());
+
+  const gatedDecide = (queue: PairQueue) => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.post('/api/faces/pairs/decide', async ({ request }) => {
+      const decision = facesPairsDecideInputSchema.parse(await request.json());
+      await gate;
+      const index = queue.candidates.findIndex((entry) =>
+        entry.a.personId === decision.personAId && entry.b.personId === decision.personBId);
+      if (index >= 0) {
+        queue.candidates.splice(index, 1);
+        queue.pending -= 1;
+      }
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          decision: decision.decision,
+          personAId: decision.personAId,
+          personBId: decision.personBId,
+          merge: null,
+          survivingPersonId: decision.decision === 'same' ? decision.survivorPersonId ?? decision.personAId : null,
+          pending: queue.pending,
+        },
+      });
+    }));
+    return () => release();
+  };
+
+  it('marks the answered button and the card as busy until a plain answer settles', async () => {
+    const user = userEvent.setup();
+    const queue = stubReview({
+      candidates: [
+        candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 })),
+        candidate(pairPerson({ personId: 'c', fallbackIndex: 2 }), pairPerson({ personId: 'd', fallbackIndex: 3 })),
+      ],
+    });
+    const release = gatedDecide(queue);
+    renderPeople();
+    await openReview(user);
+
+    expect(screen.queryByTestId('people-pair-review-busy')).toBeNull();
+    await user.click(screen.getByTestId('people-pair-review-different'));
+
+    await waitFor(() => expect(screen.getByTestId('people-pair-review-different').textContent).toBe('Saving…'));
+    expect(screen.getByTestId('people-pair-review-busy')).toBeDefined();
+    expect(screen.getByTestId('people-pair-review-same').textContent).toBe('Yes');
+
+    release();
+    await waitFor(() =>
+      expect(screen.getByTestId('people-pair-review-person-a').getAttribute('data-person-id')).toBe('c'));
+    await waitFor(() => expect(screen.queryByTestId('people-pair-review-busy')).toBeNull());
+    expect(screen.getByTestId('people-pair-review-different').textContent).toBe('No');
+  });
+
+  it('says the merge is running on the accepted pair until it settles', async () => {
+    const user = userEvent.setup();
+    const queue = stubReview({
+      candidates: [
+        candidate(pairPerson({ personId: 'a' }), pairPerson({ personId: 'b', fallbackIndex: 1 })),
+        candidate(pairPerson({ personId: 'c', fallbackIndex: 2 }), pairPerson({ personId: 'd', fallbackIndex: 3 })),
+      ],
+    });
+    const release = gatedDecide(queue);
+    renderPeople();
+    await openReview(user);
+
+    await user.click(screen.getByTestId('people-pair-review-same'));
+    await user.click(await screen.findByTestId('people-pair-review-confirm-accept'));
+
+    await waitFor(() => expect(screen.getByTestId('people-pair-review-same').textContent).toBe('Merging…'));
+    expect(screen.getByTestId('people-pair-review-busy')).toBeDefined();
+
+    release();
+    await waitFor(() => expect(screen.queryByTestId('people-pair-review-busy')).toBeNull());
+    expect(screen.getByTestId('people-pair-review-same').textContent).toBe('Yes');
+  });
 
   it('renders both people with names, counts and contact sheets, and advances on an answer', async () => {
     const user = userEvent.setup();
@@ -652,7 +738,7 @@ describe('Osoby pair review focus and hints', () => {
     renderPeople();
     await openWithOneSelected(user);
 
-    expect(screen.queryByTestId('people-threshold-slider')).toBeNull();
+    expect(screen.queryByTestId('people-threshold-button')).toBeNull();
     expect(screen.queryByTestId('people-sort')).toBeNull();
     expect(screen.queryByTestId('people-merge-selected')).toBeNull();
     expect(screen.queryByTestId('people-pair-review-open')).toBeNull();
