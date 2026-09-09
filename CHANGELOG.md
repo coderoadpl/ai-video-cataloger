@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Trash and photo processing complete without deadlocking when processing reaches its chained face pass.
+- Pair review bounds retained score buffers to 8 MiB on large catalogs and yields between people during generation.
 - Pair review always confirms a merge and warns that it cannot be undone, including for automatically named people.
 - Pair review confirmation submits the displayed pair's IDs and closes when that pair is no longer available.
 - Pair review prevents additional answers and undo actions until the queue refresh completes.

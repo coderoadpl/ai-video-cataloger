@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { sha256Hex } from './sha256.js';
 import { selectExemplars, type ExemplarCandidate, type FaceObservationSummary } from './faces.js';
 
 export const peoplePairDecisionKindSchema = z.enum(['same', 'different', 'skip']);
@@ -60,14 +61,14 @@ export interface PeoplePairCandidatesInput {
   cut: number;
   limit: number;
   scoreCache?: PeoplePairScoreCache;
+  peopleVersion?: string;
   onPairScored?: () => void;
   onPairVisited?: () => void;
 }
 
 export interface PeoplePairScoreCache {
   revision?: string;
-  centroids?: Float64Array;
-  exemplars?: Float64Array;
+  rows?: Map<number, Float64Array>;
 }
 
 export const PAIR_REVIEW_ASK_LOW_BY_SCOPE = { careful: 0.5, standard: 0.44, wide: 0.34 } as const;
@@ -75,6 +76,8 @@ export const PAIR_REVIEW_PREFILTER_MARGIN = 0.1;
 export const PAIR_REVIEW_DEFAULT_LIMIT = 200;
 export const PAIR_REVIEW_MAX_LIMIT = 1000;
 export const PAIR_REVIEW_CROPS_PER_PERSON = 6;
+export const PAIR_REVIEW_SCORE_CACHE_BYTES = 8 * 1024 * 1024;
+const SCORE_ROW_STRIDE = 4;
 
 const compareId = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const compareQuality = (a: ExemplarCandidate, b: ExemplarCandidate): number => b.quality - a.quality || compareId(a.obsId, b.obsId);
@@ -117,9 +120,46 @@ const dot = (a: readonly number[], b: readonly number[]): number => {
 const compareCandidate = (a: PeoplePairCandidate, b: PeoplePairCandidate): number =>
   b.expectedValue - a.expectedValue || b.similarity - a.similarity || compareId(a.a.personId, b.a.personId) || compareId(a.b.personId, b.b.personId);
 
-export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
-  candidates: PeoplePairCandidate[]; pending: number; truncated: boolean;
-} => {
+export interface PeoplePairCandidatesOutput {
+  candidates: PeoplePairCandidate[];
+  pending: number;
+  truncated: boolean;
+}
+
+interface CachedPairScore {
+  index: number;
+  centroid: number;
+  exemplar: number;
+  expectedValue: number;
+}
+
+const retainScore = (scores: CachedPairScore[], score: CachedPairScore, limit: number): void => {
+  if (limit === 0) return;
+  const compare = (other: CachedPairScore): number => other.expectedValue - score.expectedValue
+    || Math.max(other.centroid, other.exemplar) - Math.max(score.centroid, score.exemplar)
+    || score.index - other.index;
+  const last = scores[scores.length - 1];
+  if (scores.length === limit && last !== undefined && compare(last) >= 0) return;
+  let low = 0;
+  let high = scores.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const other = scores[middle];
+    if (other !== undefined && compare(other) < 0) high = middle;
+    else low = middle + 1;
+  }
+  scores.splice(low, 0, score);
+  if (scores.length > limit) scores.pop();
+};
+
+export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): PeoplePairCandidatesOutput => {
+  const steps = buildPeoplePairCandidatesSteps(input);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+};
+
+export function* buildPeoplePairCandidatesSteps(input: PeoplePairCandidatesInput): Generator<void, PeoplePairCandidatesOutput> {
   const observations = new Map<string, FaceObservationSummary[]>();
   for (const observation of input.visibleObservations) {
     if (observation.personId === null) continue;
@@ -164,44 +204,61 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
     };
   });
   const scoreCache = input.scoreCache;
+  const limit = Math.min(PAIR_REVIEW_MAX_LIMIT, Math.max(1, input.limit));
+  const rowLimit = Math.min(limit, Math.floor(PAIR_REVIEW_SCORE_CACHE_BYTES / (Math.max(1, people.length) * SCORE_ROW_STRIDE * Float64Array.BYTES_PER_ELEMENT)));
   if (scoreCache !== undefined) {
-    const revision = JSON.stringify(people.map((entry) => [entry.person.personId, entry.centroid, entry.exemplars]));
+    const peopleVersion = input.peopleVersion ?? sha256Hex(JSON.stringify([
+      input.people, input.visibleObservations, input.anchorObservations,
+      [...input.exemplarEmbeddings].map(([id, vector]) => [id, [...vector]]),
+    ]));
+    const revision = JSON.stringify([peopleVersion, input.askLow, input.cut, limit]);
     if (scoreCache.revision !== revision) {
       scoreCache.revision = revision;
-      const count = people.length * (people.length - 1) / 2;
-      scoreCache.centroids = new Float64Array(count).fill(NaN);
-      scoreCache.exemplars = new Float64Array(count).fill(NaN);
+      scoreCache.rows = new Map();
     }
   }
+  const scoreRows = scoreCache?.rows;
   const candidates: PeoplePairCandidate[] = [];
-  const limit = Math.min(PAIR_REVIEW_MAX_LIMIT, Math.max(1, input.limit));
   let pending = 0;
   for (let i = 0; i < people.length; i += 1) {
     const a = people[i];
     if (a === undefined) continue;
     const excludedPartners = excluded.get(a.person.personId);
+    const cached = new Map<number, CachedPairScore>();
+    const rowScores: CachedPairScore[] = [];
+    const row = scoreRows?.get(i);
+    if (row !== undefined) for (let offset = 0; offset < row.length; offset += SCORE_ROW_STRIDE) {
+      const index = row[offset];
+      const centroid = row[offset + 1];
+      const exemplar = row[offset + 2];
+      const expectedValue = row[offset + 3];
+      if (index === undefined || centroid === undefined || exemplar === undefined || expectedValue === undefined) continue;
+      const score = { index, centroid, exemplar, expectedValue };
+      cached.set(index, score);
+      retainScore(rowScores, score, rowLimit);
+    }
     for (let j = i + 1; j < people.length; j += 1) {
       const b = people[j];
       if (b === undefined) continue;
       input.onPairVisited?.();
       if (a.person.personId === b.person.personId || excludedPartners?.has(b.person.personId)) continue;
-      const scoreIndex = i * (2 * people.length - i - 1) / 2 + j - i - 1;
-      const cachedCentroid = scoreCache?.centroids?.[scoreIndex] ?? NaN;
-      const centroidSimilarity = Number.isNaN(cachedCentroid) ? dot(a.centroid, b.centroid) : cachedCentroid;
-      if (scoreCache?.centroids !== undefined) scoreCache.centroids[scoreIndex] = centroidSimilarity;
+      const cachedScore = cached.get(j);
+      const centroidSimilarity = cachedScore?.centroid ?? dot(a.centroid, b.centroid);
       if (centroidSimilarity < input.askLow - PAIR_REVIEW_PREFILTER_MARGIN) continue;
-      let bestObservationSimilarity = scoreCache?.exemplars?.[scoreIndex] ?? NaN;
-      if (Number.isNaN(bestObservationSimilarity)) {
+      let bestObservationSimilarity = cachedScore?.exemplar;
+      if (bestObservationSimilarity === undefined) {
         input.onPairScored?.();
         bestObservationSimilarity = -1;
         for (const left of a.exemplars) for (const right of b.exemplars) bestObservationSimilarity = Math.max(bestObservationSimilarity, dot(left, right));
-        if (scoreCache?.exemplars !== undefined) scoreCache.exemplars[scoreIndex] = bestObservationSimilarity;
       }
       if (centroidSimilarity < input.askLow && bestObservationSimilarity < input.cut) continue;
       pending += 1;
       const similarity = Math.max(centroidSimilarity, bestObservationSimilarity);
       const weight = Math.min(1, Math.max(0, (similarity - input.askLow) / (input.cut - input.askLow)));
       const expectedValue = weight * a.weight * b.weight;
+      if (scoreCache !== undefined && cachedScore === undefined) retainScore(rowScores, {
+        index: j, centroid: centroidSimilarity, exemplar: bestObservationSimilarity, expectedValue,
+      }, rowLimit);
       const last = candidates[candidates.length - 1];
       if (candidates.length === limit && last !== undefined && (expectedValue < last.expectedValue || (expectedValue === last.expectedValue && similarity <= last.similarity))) continue;
       const candidate: PeoplePairCandidate = {
@@ -219,6 +276,14 @@ export const buildPeoplePairCandidates = (input: PeoplePairCandidatesInput): {
       candidates.splice(low, 0, candidate);
       if (candidates.length > limit) candidates.pop();
     }
+    if (scoreRows !== undefined && rowScores.length > 0) {
+      const buffer = row?.length === rowScores.length * SCORE_ROW_STRIDE ? row : new Float64Array(rowScores.length * SCORE_ROW_STRIDE);
+      for (const [index, score] of rowScores.entries()) {
+        buffer.set([score.index, score.centroid, score.exemplar, score.expectedValue], index * SCORE_ROW_STRIDE);
+      }
+      scoreRows.set(i, buffer);
+    }
+    yield;
   }
   return { candidates, pending, truncated: pending > limit };
-};
+}

@@ -1,6 +1,10 @@
+import { setImmediate } from 'node:timers/promises';
+import { z } from 'zod';
+import { sha256Hex } from '@core/domain/sha256.js';
+
 import type { GlobalCatalogStore } from '../ports.js';
 import {
-  FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, PAIR_REVIEW_DEFAULT_LIMIT, buildPeoplePairCandidates, configValueSchema,
+  FACE_CLUSTERING, PAIR_REVIEW_ASK_LOW_BY_SCOPE, PAIR_REVIEW_DEFAULT_LIMIT, PAIR_REVIEW_MAX_LIMIT, buildPeoplePairCandidatesSteps, configValueSchema,
   selectExemplars, selectPairReviewCrops, pairReviewSurvivor, pairDecisionIsActive, type PeoplePairDecision, type LabelledPair, appError, ok, type AppError, type Result, type PeoplePairCandidate, type PeoplePairScoreCache,
 } from '@core/domain/index.js';
 import { buildVisiblePeople, ensureFacesEnabled, reanchorFaceCropPath, withFaceMutation, type FacesDeps, type FacesPeopleDeps } from './faces.js';
@@ -35,9 +39,13 @@ export interface FacesPairsCache {
   output: FacesPairsOutput | null;
 }
 
+const pairsInputSchema = z.object({ limit: z.number().int().min(1).max(PAIR_REVIEW_MAX_LIMIT) }).strict();
+
 const pairScoreCaches = new WeakMap<GlobalCatalogStore, PeoplePairScoreCache>();
 
 export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }, cache?: FacesPairsCache): Promise<Result<FacesPairsOutput, AppError>> => {
+  const parsed = pairsInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: appError('validation', 'Invalid pair review limit') };
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   const loaded = await loadPairReviewPeople(deps);
@@ -62,23 +70,34 @@ export const facesPairs = async (deps: FacesPeopleDeps, input: { limit: number }
   const askLow = PAIR_REVIEW_ASK_LOW_BY_SCOPE[scope.data];
   const nowIso = new Date().toISOString();
   const activeDecisions = decisions.value.filter((d) => pairDecisionIsActive(d, nowIso));
-  const revision = JSON.stringify([loaded.value, [...embeddings.value].map(([id, vector]) => [id, [...vector]]), activeDecisions, scope.data, input.limit]);
-  if (cache?.revision === revision && cache.output !== null) return ok(cache.output);
-  let scoreCache = pairScoreCaches.get(deps.globalCatalog);
-  if (scoreCache === undefined) {
-    scoreCache = {};
-    pairScoreCaches.set(deps.globalCatalog, scoreCache);
+  try {
+    const peopleVersion = sha256Hex(JSON.stringify([loaded.value, [...embeddings.value].map(([id, vector]) => [id, [...vector]])]));
+    const revision = sha256Hex(JSON.stringify([peopleVersion, activeDecisions, scope.data, parsed.data.limit]));
+    if (cache?.revision === revision && cache.output !== null) return ok(cache.output);
+    let scoreCache = pairScoreCaches.get(deps.globalCatalog);
+    if (scoreCache === undefined) {
+      scoreCache = {};
+      pairScoreCaches.set(deps.globalCatalog, scoreCache);
+    }
+    const steps = buildPeoplePairCandidatesSteps({
+      scoreCache, peopleVersion,
+      people: loaded.value.people, visibleObservations: loaded.value.visible, anchorObservations: loaded.value.anchors,
+      exemplarEmbeddings: embeddings.value, decisions: activeDecisions, nowIso,
+      askLow, cut: FACE_CLUSTERING.clusterCutSimilarity, limit: parsed.data.limit,
+    });
+    let step = steps.next();
+    while (!step.done) {
+      await setImmediate();
+      step = steps.next();
+    }
+    const queue = step.value;
+    for (const candidate of queue.candidates) for (const side of [candidate.a, candidate.b]) side.cropPaths = side.cropPaths.map((p) => reanchorFaceCropPath(loaded.value.catalogDir, p));
+    const output = { ...queue, scope: scope.data, askLow, clusterCut: FACE_CLUSTERING.clusterCutSimilarity };
+    if (cache !== undefined) { cache.revision = revision; cache.output = output; }
+    return ok(output);
+  } catch {
+    return { ok: false, error: appError('internal', 'Pair review candidate generation failed') };
   }
-  const queue = buildPeoplePairCandidates({
-    scoreCache,
-    people: loaded.value.people, visibleObservations: loaded.value.visible, anchorObservations: loaded.value.anchors,
-    exemplarEmbeddings: embeddings.value, decisions: activeDecisions, nowIso,
-    askLow, cut: FACE_CLUSTERING.clusterCutSimilarity, limit: input.limit,
-  });
-  for (const candidate of queue.candidates) for (const side of [candidate.a, candidate.b]) side.cropPaths = side.cropPaths.map((p) => reanchorFaceCropPath(loaded.value.catalogDir, p));
-  const output = { ...queue, scope: scope.data, askLow, clusterCut: FACE_CLUSTERING.clusterCutSimilarity };
-  if (cache !== undefined) { cache.revision = revision; cache.output = output; }
-  return ok(output);
 };
 
 export interface FacesPairsDecideInput {
