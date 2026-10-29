@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Library video tiles refresh after thumbnail backfill finishes, replacing cached low-resolution covers with the generated grid thumbnails.
+
 ## [0.6.42] - 2026-09-09
 
 ### Changed

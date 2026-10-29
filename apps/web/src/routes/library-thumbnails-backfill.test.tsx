@@ -2,6 +2,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { bridge } from '../api.js';
 import { renderWithProviders } from '../test/render.js';
@@ -128,6 +129,30 @@ const stubBaseline = (items: Record<string, unknown>[] = []) => {
   );
 };
 
+const stubVideoCollection = (items: () => Record<string, unknown>[]) => {
+  stubBaseline([]);
+  const request = vi.fn(() => {
+    const videos = items();
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        query: null,
+        media: 'all',
+        limit: 200,
+        total: videos.length,
+        videoTotal: videos.length,
+        photoTotal: 0,
+        mediaTotals: { all: videos.length, video: videos.length, photo: 0 },
+        count: videos.length,
+        items: videos,
+        nextCursor: null,
+      },
+    });
+  });
+  server.use(http.get('/api/library/collection', request));
+  return request;
+};
+
 describe('Library collection activation triggers a thumbnails backfill', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -197,6 +222,136 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
 
     await screen.findByTestId('library-tile');
     await waitFor(() => expect(backfillRequests).toEqual([{ root: FOLDER, force: false }]));
+  });
+
+  it('replaces the small video thumbnail after its grid backfill completes', async () => {
+    const completed = deferred<boolean>();
+    let gridThumbReady = false;
+    const thumbnailPath = `${FOLDER}/.ai-video-cataloger/thumbnails/clip.jpg`;
+    const gridThumbnailPath = `${FOLDER}/.ai-video-cataloger/thumbnails/clip.grid.jpg`;
+    const collection = stubVideoCollection(() => [searchResult({
+      thumbnailPath,
+      gridThumbnailPath: gridThumbReady ? gridThumbnailPath : null,
+    })]);
+    server.use(
+      http.post('/api/thumbnails', () => HttpResponse.json({ ok: true, data: { jobId: 'job-video-grid' } })),
+      http.get('/api/jobs/status', async () => {
+        await completed.promise;
+        return HttpResponse.json({
+          ok: true,
+          data: { ...completedPhotoGridJob('job-video-grid'), kind: 'thumbnails' },
+        });
+      }),
+    );
+
+    renderRoute();
+
+    const image = await findTileThumbnail('clip.mp4');
+    expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain(thumbnailPath);
+    expect(collection).toHaveBeenCalledTimes(1);
+    gridThumbReady = true;
+    completed.resolve(true);
+
+    await waitFor(() => expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain(gridThumbnailPath));
+    expect(collection).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps another folder polling when the first completed backfill refreshes the collection', async () => {
+    const firstCompleted = deferred<boolean>();
+    const secondCompleted = deferred<boolean>();
+    const started: string[] = [];
+    const ready = new Set<string>();
+    const collection = stubVideoCollection(() => [FOLDER, OTHER_FOLDER].map((folder, index) => searchResult({
+      fingerprint: `fp-${String(index)}`,
+      fileName: `clip-${String(index)}.mp4`,
+      thumbnailPath: `${folder}/clip.jpg`,
+      gridThumbnailPath: ready.has(folder) ? `${folder}/clip.grid.jpg` : null,
+      folder: {
+        folderId: index === 0 ? '11111111-1111-4111-8111-111111111111' : '22222222-2222-4222-8222-222222222222',
+        currentPath: folder,
+        displayName: folder,
+        online: true,
+      },
+    })));
+    const backfills: unknown[] = [];
+    server.use(
+      http.post('/api/thumbnails', async ({ request }) => {
+        const input = z.object({ root: z.string(), force: z.boolean() }).parse(await request.json());
+        backfills.push(input);
+        const first = input.root === FOLDER;
+        return HttpResponse.json({ ok: true, data: { jobId: first ? 'job-first' : 'job-second' } });
+      }),
+      http.get('/api/jobs/status', async ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        started.push(jobId);
+        await (jobId === 'job-first' ? firstCompleted.promise : secondCompleted.promise);
+        return HttpResponse.json({ ok: true, data: { ...completedPhotoGridJob(jobId), kind: 'thumbnails' } });
+      }),
+    );
+
+    renderRoute();
+
+    await waitFor(() => expect(started).toEqual(expect.arrayContaining(['job-first', 'job-second'])));
+    const firstImage = await findTileThumbnail('clip-0.mp4');
+    const secondImage = await findTileThumbnail('clip-1.mp4');
+    ready.add(FOLDER);
+    firstCompleted.resolve(true);
+    await waitFor(() => expect(decodeURIComponent(firstImage.getAttribute('src') ?? '')).toContain(`${FOLDER}/clip.grid.jpg`));
+    expect(decodeURIComponent(secondImage.getAttribute('src') ?? '')).toContain(`${OTHER_FOLDER}/clip.jpg`);
+    ready.add(OTHER_FOLDER);
+    secondCompleted.resolve(true);
+    await waitFor(() => expect(decodeURIComponent(secondImage.getAttribute('src') ?? '')).toContain(`${OTHER_FOLDER}/clip.grid.jpg`));
+    expect(collection).toHaveBeenCalledTimes(3);
+    expect(backfills).toHaveLength(2);
+  });
+
+  it('produces no post-unmount invalidation while video backfill polling is pending', async () => {
+    const statusStarted = deferred<boolean>();
+    const statusCompleted = deferred<boolean>();
+    stubBaseline([searchResult({ gridThumbnailPath: null })]);
+    server.use(
+      http.post('/api/thumbnails', () => HttpResponse.json({ ok: true, data: { jobId: 'job-video-unmount' } })),
+      http.get('/api/jobs/status', async () => {
+        statusStarted.resolve(true);
+        await statusCompleted.promise;
+        return HttpResponse.json({ ok: true, data: { ...completedPhotoGridJob('job-video-unmount'), kind: 'thumbnails' } });
+      }),
+    );
+    const rendered = renderRoute();
+    const invalidate = vi.spyOn(rendered.queryClient, 'invalidateQueries');
+
+    await statusStarted.promise;
+    rendered.unmount();
+    const callsAtUnmount = invalidate.mock.calls.length;
+    statusCompleted.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invalidate).toHaveBeenCalledTimes(callsAtUnmount);
+  });
+
+  it('refetches video tiles when a completed backfill disappears before status polling', async () => {
+    let gridThumbReady = false;
+    const collection = stubVideoCollection(() => [searchResult({
+      thumbnailPath: `${FOLDER}/clip.jpg`,
+      gridThumbnailPath: gridThumbReady ? `${FOLDER}/clip.grid.jpg` : null,
+    })]);
+    server.use(
+      http.post('/api/thumbnails', () => {
+        gridThumbReady = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-video-gone' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json(
+        { ok: false, error: { code: 'not_found', message: 'Job not found' } },
+        { status: 404 },
+      )),
+    );
+
+    renderRoute();
+
+    const image = await findTileThumbnail('clip.mp4');
+    await waitFor(() => expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain(`${FOLDER}/clip.grid.jpg`));
+    expect(collection).toHaveBeenCalledTimes(2);
   });
 
   it('never backfills an offline folder, whose files cannot be read at all', async () => {
