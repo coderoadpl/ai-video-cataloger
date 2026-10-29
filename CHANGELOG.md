@@ -14,10 +14,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.43] - 2026-10-29
+
 ### Fixed
 
-- Video tiles whose sources have a short edge below 512 px get a grid thumbnail at native resolution instead of the low-resolution cover.
-- Library video tiles refresh after thumbnail backfill finishes, replacing cached low-resolution covers with the generated grid thumbnails.
+- Video tiles whose sources have a short edge below 512 px get a grid thumbnail at native resolution instead of the low-resolution cover
+  ([`c0cf6a4`](https://github.com/coderoadpl/ai-video-cataloger/commit/c0cf6a47970a14338dfafc4064f7773eb48d3451)).
+- Library video tiles refresh after thumbnail backfill finishes, replacing cached low-resolution covers with the generated grid thumbnails
+  ([`e9235a4`](https://github.com/coderoadpl/ai-video-cataloger/commit/e9235a43329c9499b345ce97cf1c1f66cb69680b)).
 
 ## [0.6.42] - 2026-09-09
 
