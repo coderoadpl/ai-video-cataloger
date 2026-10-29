@@ -5,6 +5,7 @@ import type { CatalogAnalysis, CatalogFile, CatalogFolder, FaceObservation, Pers
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia, InMemoryPhotosStore } from '../../../test/server/usecases/test-fakes.js';
 import { libraryCollection } from './collection.js';
 import { buildSearchMatch, libraryPreviewDetail, sanitizeSearchQuery, search, type SearchFiltersInput } from './search.js';
+import { GRID_THUMBNAIL_GENERATION_VERSION } from './thumbnail.js';
 
 const EMPTY_FILTERS: SearchFiltersInput = {
   tags: [],
@@ -635,11 +636,11 @@ describe('search', () => {
       .toEqual(['drone-a.grid.jpg', 'drone-a.jpg']);
   });
 
-  it('reports no grid thumbnail when every candidate source is below the grid floor', async () => {
+  it('returns a native-resolution grid thumbnail when every candidate source is below the grid floor', async () => {
     const fs = new InMemoryFileSystem('/media');
     fs.addFile('/media/online/drone.mp4');
     fs.addFile('/media/online/frames/drone/frame-001.jpg');
-    const media = new InMemoryMedia();
+    const media = new InMemoryMedia(fs);
     media.dimensions.set('/media/online/frames/drone/frame-001.jpg', { width: 320, height: 180 });
     media.dimensions.set('/media/online/drone.mp4', { width: 320, height: 180 });
     const store = new InMemoryGlobalCatalogStore();
@@ -656,7 +657,21 @@ describe('search', () => {
       offset: 0,
     });
 
-    expect(result.ok && result.value.results[0]?.gridThumbnailPath).toBeNull();
+    const gridThumbnailPath = '/media/online/.ai-video-cataloger/thumbnails/drone.grid.jpg';
+    expect(result.ok && result.value.results[0]?.gridThumbnailPath).toBe(gridThumbnailPath);
+    await expect(fs.isFile(gridThumbnailPath)).resolves.toEqual({ ok: true, value: true });
+    expect(media.thumbnailFromFrameInputs.filter((input) => input.thumbnailPath === gridThumbnailPath)).toEqual([
+      expect.objectContaining({
+        framePath: '/media/online/frames/drone/frame-001.jpg', width: 180, height: 180, fit: 'cover',
+      }),
+    ]);
+    await expect(store.getGridThumbnail(gridThumbnailPath)).resolves.toEqual({
+      ok: true,
+      value: {
+        outputPath: gridThumbnailPath, generationVersion: GRID_THUMBNAIL_GENERATION_VERSION,
+        sourcePath: '/media/online/frames/drone/frame-001.jpg', sourceKind: 'frame', primary: true,
+      },
+    });
   });
 });
 
