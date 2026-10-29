@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Video tiles whose sources have a short edge below 512 px get a grid thumbnail at native resolution instead of the low-resolution cover.
 - Library video tiles refresh after thumbnail backfill finishes, replacing cached low-resolution covers with the generated grid thumbnails.
 
 ## [0.6.42] - 2026-09-09

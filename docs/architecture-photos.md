@@ -322,17 +322,21 @@ sidecar tree inside the photo folder. All of them live under one home root:
 ~/.ai-video-cataloger/photo-artifacts/
   proxies/{fingerprint}.jpg            # long edge ≤1280, quality ~82
   thumbs/{fingerprint}.jpg             # long edge ≤320
-  thumbs/{fingerprint}.grid.jpg        # 512 square, center-cropped, frame-first (proxy-derived)
+  thumbs/{fingerprint}.grid.jpg        # up to 512 square, center-cropped, proxy-first
   variants/{fingerprint}/{configId}/analysis.json
 ```
 
 `thumbs/{fingerprint}.grid.jpg` is the photo half of the video/photo-shared
 grid-thumbnail feature (`docs/architecture.md`, "Grid thumbnails"): the same
-`GRID_THUMBNAIL_EDGE` (512) square cover generated via
+`GRID_THUMBNAIL_EDGE` (512) maximum square cover generated via
 `MediaPort.thumbnailFromFrame({ fit: 'cover' })` reading the already-written
 proxy — one implementation of "square center-crop" shared with videos, zero
-changes to `PhotoMediaPort`/sips. `runPhotoProxiesPass` generates it
-best-effort right after a proxy lands `done` (a grid failure is counted in
+changes to `PhotoMediaPort`/sips. The shared selector prefers the first source
+meeting the 512px short-edge floor, then the largest available short edge when
+no available source meets it (ties keep proxy-first order). Known
+dimensions cap the crop at the source's short edge, without upscaling;
+unknown dimensions retain the existing 512px treatment. `runPhotoProxiesPass`
+generates it best-effort right after a proxy lands `done` (a grid failure is counted in
 the pass summary's `gridFailed` and never flips `proxyState`/`thumbState`);
 a new `photos grid-thumbs` job/route (`POST /api/photos/grid-thumbs`, job
 kind `photo_grid_thumbs`) walks `photo-artifacts/proxies/*.jpg` and

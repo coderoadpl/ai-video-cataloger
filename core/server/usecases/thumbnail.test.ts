@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { ensureGridThumbnail, generateGridThumbnail, generateThumbnail, stagedFrameCandidates } from './thumbnail.js';
-import { InMemoryFileSystem, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
+import { appError } from '@core/domain/index.js';
+import { GRID_THUMBNAIL_GENERATION_VERSION, ensureGridThumbnail, generateGridThumbnail, generateThumbnail, stagedFrameCandidates } from './thumbnail.js';
+import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
 
 describe('generateThumbnail', () => {
   it('validates the video and delegates thumbnail generation to media', async () => {
@@ -219,13 +220,15 @@ describe('generateGridThumbnail', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'thumbnail_error' } });
   });
 
-  it('never treats a sub-512 source as usable, and falls through to the next candidate', async () => {
+  it('prefers the first floor-meeting source over a sub-512 source and later larger sources', async () => {
     const fs = new InMemoryFileSystem('/work');
     const media = new InMemoryMedia();
     fs.addFile('/work/proxy.jpg');
     fs.addFile('/work/original.jpg');
+    fs.addFile('/work/larger.jpg');
     media.dimensions.set('/work/proxy.jpg', { width: 128, height: 70 });
     media.dimensions.set('/work/original.jpg', { width: 4000, height: 3000 });
+    media.dimensions.set('/work/larger.jpg', { width: 6000, height: 4000 });
 
     const result = await generateGridThumbnail(
       { fs, media },
@@ -233,6 +236,7 @@ describe('generateGridThumbnail', () => {
         candidates: [
           { kind: 'proxy', path: '/work/proxy.jpg' },
           { kind: 'original', path: '/work/original.jpg' },
+          { kind: 'original', path: '/work/larger.jpg' },
         ],
         gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
         force: false,
@@ -249,7 +253,7 @@ describe('generateGridThumbnail', () => {
       },
     });
     expect(media.thumbnailFromFrameInputs).toEqual([
-      expect.objectContaining({ framePath: '/work/original.jpg' }),
+      expect.objectContaining({ framePath: '/work/original.jpg', width: 512, height: 512, fit: 'cover' }),
     ]);
   });
 
@@ -280,12 +284,12 @@ describe('generateGridThumbnail', () => {
     ]);
   });
 
-  it('skips and removes a stale grid thumb when no candidate meets the 512 floor', async () => {
+  it.each(['missing', 'unprobeable'])('skips and removes a stale grid thumb when the source is %s', async (source) => {
     const fs = new InMemoryFileSystem('/work');
     const media = new InMemoryMedia();
-    fs.addFile('/work/proxy.jpg');
+    if (source === 'unprobeable') fs.addFile('/work/proxy.jpg');
     fs.addFile('/work/.ai-video-cataloger/thumbnails/ph.grid.jpg');
-    media.dimensions.set('/work/proxy.jpg', { width: 128, height: 70 });
+    vi.spyOn(media, 'probe').mockResolvedValue({ ok: false, error: appError('processing_error', 'Probe failed') });
 
     const result = await generateGridThumbnail(
       { fs, media },
@@ -310,6 +314,92 @@ describe('generateGridThumbnail', () => {
       ok: true,
       value: false,
     });
+  });
+
+  it.each([
+    { width: 856, height: 480, edge: 480 },
+    { width: 480, height: 856, edge: 480 },
+    { width: 128, height: 72, edge: 72 },
+    { width: 512, height: 512, edge: 512 },
+    { width: 1920, height: 1080, edge: 512 },
+  ])('generates and caches a $edge square cover from a $width by $height video without upscaling', async ({ width, height, edge }) => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia(fs);
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const videoPath = '/work/clip.mp4';
+    const gridThumbnailPath = '/work/clip.grid.jpg';
+    fs.addFile(videoPath);
+    media.dimensions.set(videoPath, { width, height });
+    const input = {
+      videoPath, gridThumbnailPath, projectedFramePath: null,
+      catalogDirectory: '/work/.ai-video-cataloger', fingerprint: null, force: false,
+    };
+
+    const result = await ensureGridThumbnail({ fs, media, globalCatalog }, input);
+
+    expect(result).toMatchObject({ ok: true, value: { generated: true, skipped: false, source: 'video' } });
+    expect(media.thumbnailInputs).toEqual([
+      expect.objectContaining({ videoPath, width: edge, height: edge, fit: 'cover', seekPercent: 0.25 }),
+    ]);
+    await expect(fs.isFile(gridThumbnailPath)).resolves.toEqual({ ok: true, value: true });
+    await expect(globalCatalog.getGridThumbnail(gridThumbnailPath)).resolves.toEqual({
+      ok: true,
+      value: {
+        outputPath: gridThumbnailPath, generationVersion: GRID_THUMBNAIL_GENERATION_VERSION,
+        sourcePath: videoPath, sourceKind: 'video', primary: true,
+      },
+    });
+    const probe = vi.spyOn(media, 'probe');
+    await expect(ensureGridThumbnail({ fs, media, globalCatalog }, input)).resolves.toMatchObject({
+      ok: true, value: { generated: false, skipped: true },
+    });
+    expect(probe).not.toHaveBeenCalled();
+    expect(media.thumbnailInputs).toHaveLength(1);
+  });
+
+  it.each([
+    { frameEdge: 300, videoEdge: 480, source: 'video', primary: false, edge: 480 },
+    { frameEdge: 480, videoEdge: 300, source: 'frame', primary: true, edge: 480 },
+    { frameEdge: 480, videoEdge: 480, source: 'frame', primary: true, edge: 480 },
+  ])('selects $source for subfloor edges $frameEdge and $videoEdge, preserving primary=$primary', async ({ frameEdge, videoEdge, source, primary, edge }) => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia(fs);
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    fs.addFile('/work/frame.jpg');
+    fs.addFile('/work/clip.mp4');
+    media.dimensions.set('/work/frame.jpg', { width: 856, height: frameEdge });
+    media.dimensions.set('/work/clip.mp4', { width: videoEdge, height: 856 });
+
+    const result = await generateGridThumbnail({ fs, media, globalCatalog }, {
+      candidates: [{ kind: 'frame', path: '/work/frame.jpg' }, { kind: 'video', path: '/work/clip.mp4' }],
+      gridThumbnailPath: '/work/clip.grid.jpg', force: false,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { generated: true, skipped: false, source } });
+    expect([...media.thumbnailInputs, ...media.thumbnailFromFrameInputs]).toEqual([
+      expect.objectContaining({ width: edge, height: edge, fit: 'cover' }),
+    ]);
+    await expect(globalCatalog.getGridThumbnail('/work/clip.grid.jpg')).resolves.toMatchObject({
+      ok: true, value: { sourceKind: source, sourcePath: primary ? '/work/frame.jpg' : '/work/clip.mp4', primary },
+    });
+  });
+
+  it.each([{ width: null, height: 70 }, { width: 128, height: null }])('keeps unknown dimensions eligible in candidate order: %o', async (dimensions) => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/frame.jpg');
+    fs.addFile('/work/clip.mp4');
+    media.dimensions.set('/work/frame.jpg', dimensions);
+    media.dimensions.set('/work/clip.mp4', { width: 1920, height: 1080 });
+
+    const result = await generateGridThumbnail({ fs, media }, {
+      candidates: [{ kind: 'frame', path: '/work/frame.jpg' }, { kind: 'video', path: '/work/clip.mp4' }],
+      gridThumbnailPath: '/work/clip.grid.jpg', force: false,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { source: 'frame' } });
+    expect(media.thumbnailFromFrameInputs).toEqual([expect.objectContaining({ width: 512, height: 512 })]);
+    expect(media.thumbnailInputs).toEqual([]);
   });
 
   it('never generates from a source without probing it first, and falls back to the source-video seek when the stored frame is degraded', async () => {

@@ -203,24 +203,30 @@ export interface GridThumbnailOutput extends ThumbnailGeneration {
   source: GridThumbnailCandidate['kind'] | null;
 }
 
-const meetsGridFloor = (width: number | null, height: number | null): boolean => {
-  if (width === null || height === null) return true;
-  return Math.min(width, height) >= GRID_THUMBNAIL_EDGE;
-};
+interface GridThumbnailSelection {
+  candidate: GridThumbnailCandidate;
+  edge: number;
+}
 
 const selectGridThumbnailSource = async (
   deps: { fs: FileSystemPort; media: MediaPort; globalCatalog?: GlobalCatalogStore | undefined },
   candidates: readonly GridThumbnailCandidate[],
-): Promise<Result<GridThumbnailCandidate | null, AppError>> => {
+): Promise<Result<GridThumbnailSelection | null, AppError>> => {
+  let best: GridThumbnailSelection | null = null;
   for (const candidate of candidates) {
     const exists = await deps.fs.exists(candidate.path);
     if (!exists.ok) return exists;
     if (!exists.value) continue;
     const probe = await deps.media.probe({ videoPath: candidate.path });
     if (!probe.ok) continue;
-    if (meetsGridFloor(probe.value.width, probe.value.height)) return ok(candidate);
+    const { width, height } = probe.value;
+    const edge = width === null || height === null
+      ? GRID_THUMBNAIL_EDGE
+      : Math.min(GRID_THUMBNAIL_EDGE, width, height);
+    if (edge === GRID_THUMBNAIL_EDGE) return ok({ candidate, edge });
+    if (best === null || edge > best.edge) best = { candidate, edge };
   }
-  return ok(null);
+  return ok(best);
 };
 
 export const generateGridThumbnail = async (
@@ -239,9 +245,8 @@ export const generateGridThumbnail = async (
   }
   const selection = await selectGridThumbnailSource(deps, input.candidates);
   if (!selection.ok) return selection;
-  const winner = selection.value;
 
-  if (winner === null) {
+  if (selection.value === null) {
     const existing = await deps.fs.exists(input.gridThumbnailPath);
     if (!existing.ok) return existing;
     if (existing.value) {
@@ -251,6 +256,7 @@ export const generateGridThumbnail = async (
     return ok({ path: input.gridThumbnailPath, generated: false, skipped: true, source: null });
   }
 
+  const { candidate: winner, edge } = selection.value;
   const isPrimary = input.candidates[0] === winner;
   const forceThis = input.force || !isPrimary || deps.globalCatalog !== undefined;
 
@@ -259,8 +265,8 @@ export const generateGridThumbnail = async (
       videoPath: winner.path,
       thumbnailPath: input.gridThumbnailPath,
       seekPercent: winner.seekPercent ?? 0.25,
-      width: GRID_THUMBNAIL_EDGE,
-      height: GRID_THUMBNAIL_EDGE,
+      width: edge,
+      height: edge,
       force: forceThis,
       fit: 'cover',
       priority: input.priority,
@@ -268,8 +274,8 @@ export const generateGridThumbnail = async (
     : await deps.media.thumbnailFromFrame({
       framePath: winner.path,
       thumbnailPath: input.gridThumbnailPath,
-      width: GRID_THUMBNAIL_EDGE,
-      height: GRID_THUMBNAIL_EDGE,
+      width: edge,
+      height: edge,
       force: forceThis,
       fit: 'cover',
       priority: input.priority,

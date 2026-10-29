@@ -741,7 +741,7 @@ describe('runPhotoGridThumbsPass', () => {
     );
   });
 
-  it('repairs a stale grid thumb and leaves it skipped when the proxy is degenerate and the original is unreachable', async () => {
+  it('generates a native-resolution grid thumb from a sub-512 proxy when the original is unreachable and caches it', async () => {
     const { deps, fs, media } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'a' });
     await runPhotoScan(deps, { root: '/work/photos' });
@@ -754,8 +754,18 @@ describe('runPhotoGridThumbsPass', () => {
 
     const pass = await runPhotoGridThumbsPass(deps, { force: true });
 
-    expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, skipped: 1, failed: 0 });
-    await expect(fs.exists(gridPath)).resolves.toEqual({ ok: true, value: false });
+    expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 1, skipped: 0, failed: 0 });
+    await expect(fs.exists(gridPath)).resolves.toEqual({ ok: true, value: true });
+    expect(media.thumbnailFromFrameInputs.at(-1)).toMatchObject({
+      framePath: proxyPath, width: 70, height: 70, fit: 'cover',
+    });
+    const probe = vi.spyOn(media, 'probe');
+    const generate = vi.spyOn(media, 'thumbnailFromFrame');
+    await expect(runPhotoGridThumbsPass(deps, { force: false })).resolves.toMatchObject({
+      ok: true, value: { generated: 0, skipped: 1, failed: 0 },
+    });
+    expect(probe).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
   });
 });
 

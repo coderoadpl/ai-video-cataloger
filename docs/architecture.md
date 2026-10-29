@@ -293,25 +293,29 @@ photo proxy the same way. `search`/`/api/search` results and
 acceptable source exists in `'ensure'` mode) — additive fields, old
 consumers keep parsing.
 
-Existence alone never satisfies the grid-thumbnail pass — only resolution and
-provenance do (owner rule, W28). The small 128x72 cover (or any source whose
-short edge is below `GRID_THUMBNAIL_EDGE`) is never an acceptable grid
-source: two thumbnail sizes exist by design (a sidebar-scale cover and a
-512px library grid), and the generator refuses to fake the second by
-upscaling the first. `generateGridThumbnail` (`core/server/usecases/
+Existence alone never satisfies the grid-thumbnail pass — generation provenance
+and version also matter. `GRID_THUMBNAIL_EDGE` is a source preference, not a
+minimum required resolution. `generateGridThumbnail` (`core/server/usecases/
 thumbnail.ts`) takes a priority-ordered list of candidate sources — the
 stored analysis frame first, then a source-video seek when the drive is
 reachable for videos; the photo proxy first, then the original photo when
 the drive is reachable for photos — probes each with `MediaPort.probe` and
-picks the first whose short edge meets the floor. When none qualifies, any
-existing `.grid.jpg` is deleted rather than left stale, and the search/photo
+picks the first whose short edge meets the floor. When none meets it, the
+existing, successfully probed candidate with the largest short edge wins;
+ties keep candidate order. The square cover crop uses the smaller of 512 and
+the selected source's short edge, without upscaling. Unknown dimensions retain
+their existing treatment: the candidate qualifies in order for a 512px crop.
+Only when no candidate exists or can be probed is an existing `.grid.jpg`
+deleted rather than left stale, and the search/photo
 list rows report `null` for it rather than a path to a file that is not
 there. The library and photo tiles then fall back to the small cover, still
 rendered `object-fit: cover` in the fixed tile box (W103): honesty about a
 missing grid thumbnail is carried by the backfill and the unavailable
 placeholder, not by letting one tile letterbox itself into a different
-apparent size than its neighbours. Generation provenance and version distinguish current primary-source thumbnails
-from missing, stale and fallback outputs. Ordinary passes verify cached output
+apparent size than its neighbours. Subfloor outputs record the same source kind,
+primary status and generation version as other outputs, so current primary-source
+outputs are cached. Generation provenance and version distinguish current
+primary-source thumbnails from missing, stale and fallback outputs. Ordinary passes verify cached output
 existence before metadata or media work; `--force` explicitly re-probes changed
 sources. A fallback (non-primary) source remains a repair candidate on every pass,
 bypassing the normal exists-skip.
