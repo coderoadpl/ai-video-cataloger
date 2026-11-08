@@ -12,6 +12,8 @@ import {
   appError,
   canonicalPath,
   compareUtf8Bytes,
+  rebasePath,
+  rebasePathByPrefixes,
   normalizeEmbedding,
   ok,
   type AppConfig,
@@ -54,6 +56,8 @@ import type {
   CollectionRowAnchor,
   CatalogSearchRow,
   CatalogFilePerson,
+  CatalogRootRelocationResult,
+  CatalogRootRelocationStats,
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
@@ -125,10 +129,13 @@ import type {
   PhotoSearchRow,
   PhotoSightingRecord,
   PhotosCounts,
+  PhotosRootRelocationResult,
+  PhotosRootRelocationStats,
   PhotosStore,
   PhotoVariantRecord,
   RecordPhotoAnalysisInput,
   RecordPhotoAnalysisFailureInput,
+  RootRelocationInput,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
@@ -1961,6 +1968,63 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
+  rootRelocationStats(input: RootRelocationInput): Promise<Result<CatalogRootRelocationStats, AppError>> {
+    return Promise.resolve(ok(this.rootRelocationPlan(input).stats));
+  }
+
+  relocateRoot(input: RootRelocationInput): Promise<Result<CatalogRootRelocationResult, AppError>> {
+    const plan = this.rootRelocationPlan(input);
+    for (const folder of input.folders) {
+      const existing = this.folders.get(folder.fromFolderId);
+      if (existing === undefined) continue;
+      this.folders.delete(folder.fromFolderId);
+      this.folders.set(folder.toFolderId, {
+        ...existing,
+        folderId: folder.toFolderId,
+        currentPath: canonicalPath(folder.toPath),
+        displayName: folder.displayName,
+      });
+      if (folder.toFolderId === folder.fromFolderId) continue;
+      for (const [fingerprint, file] of this.files) {
+        if (file.folderId === folder.fromFolderId) this.files.set(fingerprint, { ...file, folderId: folder.toFolderId });
+      }
+      const folderDefault = this.folderDefaultVariants.get(folder.fromFolderId);
+      if (folderDefault !== undefined) {
+        this.folderDefaultVariants.delete(folder.fromFolderId);
+        this.folderDefaultVariants.set(folder.toFolderId, folderDefault);
+      }
+    }
+    for (const run of plan.driveRuns) this.driveRuns.set(run.runId, run);
+    for (const grid of plan.gridThumbnails) {
+      this.gridThumbnailStates.delete(grid.fromOutputPath);
+      this.gridThumbnailStates.set(grid.state.outputPath, grid.state);
+    }
+    return Promise.resolve(ok({ folders: input.folders.length, ...plan.stats }));
+  }
+
+  private rootRelocationPlan(input: RootRelocationInput): {
+    stats: CatalogRootRelocationStats;
+    driveRuns: DriveRunRecord[];
+    gridThumbnails: { fromOutputPath: string; state: GridThumbnailState }[];
+  } {
+    const movedFolderIds = new Set(input.folders.map((folder) => folder.fromFolderId));
+    const files = [...this.files.values()].filter((file) => movedFolderIds.has(file.folderId)).length;
+    const driveRuns = [...this.driveRuns.values()].flatMap((run) => {
+      const root = rebasePath(run.root, input.fromRoot, input.toRoot);
+      return root === null ? [] : [{ ...run, root }];
+    });
+    const gridThumbnails = [...this.gridThumbnailStates.values()].flatMap((state) => {
+      const outputPath = rebasePathByPrefixes(state.outputPath, input.pathPrefixes);
+      const sourcePath = rebasePathByPrefixes(state.sourcePath, input.pathPrefixes);
+      if (outputPath === null && sourcePath === null) return [];
+      return [{
+        fromOutputPath: state.outputPath,
+        state: { ...state, outputPath: outputPath ?? state.outputPath, sourcePath: sourcePath ?? state.sourcePath },
+      }];
+    });
+    return { stats: { files, driveRuns: driveRuns.length, gridThumbnails: gridThumbnails.length }, driveRuns, gridThumbnails };
+  }
+
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     const file = this.files.get(fingerprint);
     if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));
@@ -3186,6 +3250,67 @@ export class InMemoryPhotosStore implements PhotosStore {
       .map((photo) => photo.fingerprint)
       .sort(compareUtf8Bytes);
     return Promise.resolve(ok(fingerprints));
+  }
+
+  listFolders(): Promise<Result<PhotoFolderRecord[], AppError>> {
+    return Promise.resolve(ok([...this.folders.values()]));
+  }
+
+  rootRelocationStats(fromRoot: string, toRoot: string): Promise<Result<PhotosRootRelocationStats, AppError>> {
+    const movedPaths = [...this.sightings.values()].filter((sighting) => rebasePath(sighting.currentPath, fromRoot, toRoot) !== null);
+    const pathCollisions = movedPaths
+      .filter((sighting) => this.sightings.has(sightingKey(sighting.fingerprint, rebasePath(sighting.currentPath, fromRoot, toRoot) ?? '')))
+      .map((sighting) => sighting.currentPath)
+      .sort(compareUtf8Bytes);
+    return Promise.resolve(ok({
+      photos: [...this.photoRows.values()].filter((photo) => rebasePath(photo.currentPath, fromRoot, toRoot) !== null).length,
+      paths: movedPaths.length,
+      runs: [...this.runs.values()].filter((run) => rebasePath(run.root, fromRoot, toRoot) !== null).length,
+      pathCollisions,
+    }));
+  }
+
+  relocateRoot(input: RootRelocationInput): Promise<Result<PhotosRootRelocationResult, AppError>> {
+    const idMap = new Map(input.folders.map((folder) => [folder.fromFolderId, folder.toFolderId]));
+    for (const folder of input.folders) {
+      const existing = this.folders.get(folder.fromFolderId);
+      if (existing === undefined) continue;
+      this.folders.delete(folder.fromFolderId);
+      this.folders.set(folder.toFolderId, {
+        ...existing,
+        folderId: folder.toFolderId,
+        currentPath: canonicalPath(folder.toPath),
+        displayName: folder.displayName,
+      });
+    }
+    let photos = 0;
+    for (const [fingerprint, photo] of this.photoRows) {
+      const currentPath = rebasePath(photo.currentPath, input.fromRoot, input.toRoot);
+      if (currentPath !== null) photos += 1;
+      this.photoRows.set(fingerprint, {
+        ...photo,
+        folderId: idMap.get(photo.folderId) ?? photo.folderId,
+        currentPath: currentPath ?? photo.currentPath,
+      });
+    }
+    let paths = 0;
+    for (const [key, sighting] of [...this.sightings]) {
+      const currentPath = rebasePath(sighting.currentPath, input.fromRoot, input.toRoot);
+      const folderId = idMap.get(sighting.folderId) ?? sighting.folderId;
+      if (currentPath === null && folderId === sighting.folderId) continue;
+      if (currentPath !== null) paths += 1;
+      this.sightings.delete(key);
+      const moved = { ...sighting, folderId, currentPath: currentPath ?? sighting.currentPath };
+      this.sightings.set(sightingKey(moved.fingerprint, moved.currentPath), moved);
+    }
+    let runs = 0;
+    for (const [runId, run] of this.runs) {
+      const root = rebasePath(run.root, input.fromRoot, input.toRoot);
+      if (root === null) continue;
+      runs += 1;
+      this.runs.set(runId, { ...run, root });
+    }
+    return Promise.resolve(ok({ folders: input.folders.length, photos, paths, runs }));
   }
 }
 

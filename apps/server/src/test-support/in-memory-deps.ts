@@ -23,6 +23,8 @@ import {
   appError,
   canonicalPath,
   compareUtf8Bytes,
+  rebasePath,
+  rebasePathByPrefixes,
   ok,
   type AnalysisLanguageResolution,
   type BackupPhase,
@@ -75,6 +77,8 @@ import type {
   ApplyGeoBackfillResult,
   CatalogFilePerson,
   CatalogFileRecord,
+  CatalogRootRelocationResult,
+  CatalogRootRelocationStats,
   CatalogLockSnapshot,
   CatalogRepository,
   CatalogRepositoryFactory,
@@ -125,6 +129,7 @@ import type {
   ProviderTestResult,
   ReconcileFolderInput,
   ReconcileFolderResult,
+  RootRelocationInput,
   SpendLedgerPort,
   SpendLedgerTotal,
   TagTermExpansion,
@@ -1273,6 +1278,63 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     if (file === undefined) return Promise.resolve(ok(undefined));
     this.files.set(fingerprint, { ...file, folderId, fileName });
     return Promise.resolve(ok(undefined));
+  }
+
+  rootRelocationStats(input: RootRelocationInput): Promise<Result<CatalogRootRelocationStats, AppError>> {
+    return Promise.resolve(ok(this.rootRelocationPlan(input).stats));
+  }
+
+  relocateRoot(input: RootRelocationInput): Promise<Result<CatalogRootRelocationResult, AppError>> {
+    const plan = this.rootRelocationPlan(input);
+    for (const folder of input.folders) {
+      const existing = this.folders.get(folder.fromFolderId);
+      if (existing === undefined) continue;
+      this.folders.delete(folder.fromFolderId);
+      this.folders.set(folder.toFolderId, {
+        ...existing,
+        folderId: folder.toFolderId,
+        currentPath: canonicalPath(folder.toPath),
+        displayName: folder.displayName,
+      });
+      if (folder.toFolderId === folder.fromFolderId) continue;
+      for (const [fingerprint, file] of this.files) {
+        if (file.folderId === folder.fromFolderId) this.files.set(fingerprint, { ...file, folderId: folder.toFolderId });
+      }
+      const folderDefault = this.folderDefaultVariants.get(folder.fromFolderId);
+      if (folderDefault !== undefined) {
+        this.folderDefaultVariants.delete(folder.fromFolderId);
+        this.folderDefaultVariants.set(folder.toFolderId, folderDefault);
+      }
+    }
+    for (const run of plan.driveRuns) this.driveRuns.set(run.runId, run);
+    for (const grid of plan.gridThumbnails) {
+      this.gridThumbnailStates.delete(grid.fromOutputPath);
+      this.gridThumbnailStates.set(grid.state.outputPath, grid.state);
+    }
+    return Promise.resolve(ok({ folders: input.folders.length, ...plan.stats }));
+  }
+
+  private rootRelocationPlan(input: RootRelocationInput): {
+    stats: CatalogRootRelocationStats;
+    driveRuns: DriveRunRecord[];
+    gridThumbnails: { fromOutputPath: string; state: GridThumbnailState }[];
+  } {
+    const movedFolderIds = new Set(input.folders.map((folder) => folder.fromFolderId));
+    const files = [...this.files.values()].filter((file) => movedFolderIds.has(file.folderId)).length;
+    const driveRuns = [...this.driveRuns.values()].flatMap((run) => {
+      const root = rebasePath(run.root, input.fromRoot, input.toRoot);
+      return root === null ? [] : [{ ...run, root }];
+    });
+    const gridThumbnails = [...this.gridThumbnailStates.values()].flatMap((state) => {
+      const outputPath = rebasePathByPrefixes(state.outputPath, input.pathPrefixes);
+      const sourcePath = rebasePathByPrefixes(state.sourcePath, input.pathPrefixes);
+      if (outputPath === null && sourcePath === null) return [];
+      return [{
+        fromOutputPath: state.outputPath,
+        state: { ...state, outputPath: outputPath ?? state.outputPath, sourcePath: sourcePath ?? state.sourcePath },
+      }];
+    });
+    return { stats: { files, driveRuns: driveRuns.length, gridThumbnails: gridThumbnails.length }, driveRuns, gridThumbnails };
   }
 
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {

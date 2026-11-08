@@ -41,6 +41,8 @@ import {
   normalizeTagList,
   normalizeTagName,
   ok,
+  rebasePath,
+  rebasePathByPrefixes,
   type AppError,
   acceptsGpsWrite,
   type CatalogAnalysis,
@@ -60,6 +62,8 @@ import type {
   ApplyGeoBackfillInput,
   ApplyGeoBackfillResult,
   CatalogFilePerson,
+  CatalogRootRelocationResult,
+  CatalogRootRelocationStats,
   CatalogFileRecord,
   FaceIndexCandidate,
   FaceIndexScope,
@@ -84,6 +88,7 @@ import type {
   LibraryFacets,
   ReconcileFolderInput,
   ReconcileFolderResult,
+  RootRelocationInput,
   TagTermExpansion,
 } from '@core/server/index.js';
 
@@ -1364,6 +1369,33 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async rootRelocationStats(input: RootRelocationInput): Promise<Result<CatalogRootRelocationStats, AppError>> {
+    return this.read((_db, client) => catalogRootRelocationPlan(client, input).stats);
+  }
+
+  async relocateRoot(input: RootRelocationInput): Promise<Result<CatalogRootRelocationResult, AppError>> {
+    return this.write((_db, client) => this.runTransaction(client, () => {
+      const plan = catalogRootRelocationPlan(client, input);
+      for (const folder of input.folders) {
+        client.run(
+          'UPDATE folders SET folder_id = ?, current_path = ?, display_name = ? WHERE folder_id = ?',
+          [folder.toFolderId, canonicalPath(folder.toPath), folder.displayName, folder.fromFolderId],
+        );
+        if (folder.toFolderId !== folder.fromFolderId) {
+          client.run('UPDATE files SET folder_id = ? WHERE folder_id = ?', [folder.toFolderId, folder.fromFolderId]);
+        }
+      }
+      for (const run of plan.driveRuns) client.run('UPDATE drive_runs SET root = ? WHERE run_id = ?', [run.root, run.runId]);
+      for (const grid of plan.gridThumbnails) {
+        client.run(
+          'UPDATE OR REPLACE grid_thumbnail_state SET output_path = ?, source_path = ? WHERE output_path = ?',
+          [grid.outputPath, grid.sourcePath, grid.fromOutputPath],
+        );
+      }
+      return { folders: input.folders.length, ...plan.stats };
+    }));
+  }
+
   async forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     return this.write((db, client) => this.runTransaction(client, () => {
       const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
@@ -2578,6 +2610,37 @@ const rebuildSearchIndex = (db: GlobalDrizzle, client: Database): { indexed: num
   const fileRows = db.select().from(files).all();
   for (const file of fileRows) syncSearchDocument(db, client, file.fingerprint);
   return { indexed: fileRows.length };
+};
+
+const catalogRootRelocationPlan = (client: Database, input: RootRelocationInput): {
+  stats: CatalogRootRelocationStats;
+  driveRuns: { runId: string; root: string }[];
+  gridThumbnails: { fromOutputPath: string; outputPath: string; sourcePath: string }[];
+} => {
+  let fileCount = 0;
+  for (const folder of input.folders) {
+    const counted = client.exec('SELECT COUNT(*) FROM files WHERE folder_id = ?', [folder.fromFolderId]);
+    fileCount += numberValue(counted[0]?.values[0]?.[0]);
+  }
+  const runRows = client.exec('SELECT run_id, root FROM drive_runs')[0]?.values ?? [];
+  const driveRunUpdates = runRows.flatMap((row) => {
+    const root = rebasePath(stringValue(row[1]), input.fromRoot, input.toRoot);
+    return root === null ? [] : [{ runId: stringValue(row[0]), root }];
+  });
+  const gridRows = client.exec('SELECT output_path, source_path FROM grid_thumbnail_state')[0]?.values ?? [];
+  const gridUpdates = gridRows.flatMap((row) => {
+    const fromOutputPath = stringValue(row[0]);
+    const fromSourcePath = stringValue(row[1]);
+    const outputPath = rebasePathByPrefixes(fromOutputPath, input.pathPrefixes);
+    const sourcePath = rebasePathByPrefixes(fromSourcePath, input.pathPrefixes);
+    if (outputPath === null && sourcePath === null) return [];
+    return [{ fromOutputPath, outputPath: outputPath ?? fromOutputPath, sourcePath: sourcePath ?? fromSourcePath }];
+  });
+  return {
+    stats: { files: fileCount, driveRuns: driveRunUpdates.length, gridThumbnails: gridUpdates.length },
+    driveRuns: driveRunUpdates,
+    gridThumbnails: gridUpdates,
+  };
 };
 
 const runCatalogTransaction = <T>(client: Database, operation: () => T): T => {

@@ -29,6 +29,7 @@ import {
   normalizeTagList,
   ok,
   photoExtensionSchema,
+  rebasePath,
   type AppError,
   type CapturedAtSource,
   type CatalogPlace,
@@ -61,8 +62,11 @@ import type {
   PhotosCounts,
   PhotosStore,
   PhotoVariantRecord,
+  PhotosRootRelocationResult,
+  PhotosRootRelocationStats,
   RecordPhotoAnalysisInput,
   RecordPhotoAnalysisFailureInput,
+  RootRelocationInput,
   TagTermExpansion,
 } from '@core/server/index.js';
 
@@ -1296,6 +1300,60 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async listFolders(): Promise<Result<PhotoFolderRecord[], AppError>> {
+    return this.read((db) => db.select().from(photoFolders).all().map(rowToFolder));
+  }
+
+  async rootRelocationStats(fromRoot: string, toRoot: string): Promise<Result<PhotosRootRelocationStats, AppError>> {
+    return this.read((_db, client) => {
+      const scope = rootRelocationScope(fromRoot, toRoot);
+      const photoCount = client.exec(`SELECT COUNT(*) FROM photos WHERE ${scope.where}`, scope.params);
+      const pathCount = client.exec(`SELECT COUNT(*) FROM photo_paths WHERE ${scope.where}`, scope.params);
+      const movedScope = rootRelocationScope(fromRoot, toRoot, 'moved.current_path');
+      const collisions = client.exec(
+        `SELECT moved.current_path FROM photo_paths moved
+         JOIN photo_paths existing ON existing.fingerprint = moved.fingerprint
+           AND existing.current_path = $toRoot || substr(moved.current_path, length($fromRoot) + 1)
+         WHERE ${movedScope.where}
+         ORDER BY moved.current_path ASC`,
+        movedScope.params,
+      );
+      return {
+        photos: numberValue(photoCount[0]?.values[0]?.[0]),
+        paths: numberValue(pathCount[0]?.values[0]?.[0]),
+        runs: photoRunRelocations(client, fromRoot, toRoot).length,
+        pathCollisions: (collisions[0]?.values ?? []).map((row) => stringValue(row[0])),
+      };
+    });
+  }
+
+  async relocateRoot(input: RootRelocationInput): Promise<Result<PhotosRootRelocationResult, AppError>> {
+    return this.write((_db, client) => {
+      let result: PhotosRootRelocationResult = { folders: 0, photos: 0, paths: 0, runs: 0 };
+      runPhotosTransaction(client, () => {
+        const scope = rootRelocationScope(input.fromRoot, input.toRoot);
+        for (const folder of input.folders) {
+          client.run(
+            'UPDATE photo_folders SET folder_id = ?, current_path = ?, display_name = ? WHERE folder_id = ?',
+            [folder.toFolderId, canonicalPath(folder.toPath), folder.displayName, folder.fromFolderId],
+          );
+          if (folder.toFolderId === folder.fromFolderId) continue;
+          client.run('UPDATE photos SET folder_id = ? WHERE folder_id = ?', [folder.toFolderId, folder.fromFolderId]);
+          client.run('UPDATE photo_paths SET folder_id = ? WHERE folder_id = ?', [folder.toFolderId, folder.fromFolderId]);
+        }
+        const rebased = '$toRoot || substr(current_path, length($fromRoot) + 1)';
+        client.run(`UPDATE photos SET current_path = ${rebased} WHERE ${scope.where}`, scope.params);
+        const photoCount = client.getRowsModified();
+        client.run(`UPDATE photo_paths SET current_path = ${rebased} WHERE ${scope.where}`, scope.params);
+        const pathCount = client.getRowsModified();
+        const runs = photoRunRelocations(client, input.fromRoot, input.toRoot);
+        for (const run of runs) client.run('UPDATE photo_runs SET root = ? WHERE run_id = ?', [run.root, run.runId]);
+        result = { folders: input.folders.length, photos: photoCount, paths: pathCount, runs: runs.length };
+      });
+      return result;
+    });
+  }
+
   private async read<T>(operation: (db: PhotosDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen(false);
@@ -1484,6 +1542,28 @@ const readSchemaVersion = (client: Database): number => {
   const value = result[0]?.values[0]?.[0];
   return typeof value === 'number' ? value : 0;
 };
+
+const rootRelocationScope = (fromRoot: string, toRoot: string, column = 'current_path'): {
+  where: string;
+  params: Record<string, string>;
+} => {
+  const canonicalRoot = canonicalPath(fromRoot);
+  return {
+    where: `(${column} = $fromRoot OR (${column} >= $scopeLower AND ${column} < $scopeUpper))`,
+    params: {
+      $fromRoot: canonicalRoot,
+      $toRoot: canonicalPath(toRoot),
+      $scopeLower: `${canonicalRoot}/`,
+      $scopeUpper: `${canonicalRoot}0`,
+    },
+  };
+};
+
+const photoRunRelocations = (client: Database, fromRoot: string, toRoot: string): { runId: string; root: string }[] =>
+  (client.exec('SELECT run_id, root FROM photo_runs')[0]?.values ?? []).flatMap((row) => {
+    const root = rebasePath(stringValue(row[1]), fromRoot, toRoot);
+    return root === null ? [] : [{ runId: stringValue(row[0]), root }];
+  });
 
 const runPhotosTransaction = (client: Database, operation: () => void): void => {
   client.run('BEGIN IMMEDIATE TRANSACTION');
