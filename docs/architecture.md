@@ -240,6 +240,40 @@ keeps a mirror reachable by its stable catalog id after a read-only folder is
 renamed or moved, without letting a stale mirror shadow a folder that has
 since become writable.
 
+A library root whose mount point changed — the same files copied byte for
+byte to another volume or a network share — is moved with
+`relocate-root --from <old> --to <new>` (`core/server/usecases/relocate-root.ts`,
+`POST /api/index/relocate-root`) instead of being re-catalogued. Every folder
+row whose `current_path` equals the old root or starts with the old root plus
+`/`, compared on the canonical NFC form, gets that prefix replaced; a sibling
+that merely shares the prefix (`/a/media2` for `/a/media`) never matches. A
+path-derived folder id (`path-…`) is re-derived from the new canonical path,
+and every row that references it moves in one transaction per database:
+`folders` and `files.folder_id` in `catalog.db`; `photo_folders`, `photos` and
+`photo_paths` in `photos.db`, whose `current_path` columns are rewritten by the
+same prefix rule. A marker-UUID folder keeps its id and only changes its path.
+Run records follow (`drive_runs.root`; `photo_runs.root`, which feeds the
+photo-roots summary), as do the paths in the `grid_thumbnail_state` cache. The
+read-only mirror `read-only-folders/{oldId}` — or, when only that exists, its
+pre-canonical NFD-keyed twin — is renamed to `{newId}`. `--media video|photo`
+limits the rewrite to one database.
+
+Without `--apply` the command is a dry run that writes nothing and reports, per
+database, the folders, files or photo paths, ids that change, mirrors to
+rename, run records and up to 20 example rows. A collision — a target id that
+already exists as a folder row or a mirror directory, a target path held by a
+folder row that is not moving, or a photo sighting whose rewritten path already
+exists for the same content — makes the dry run exit with the `conflict` code
+and makes `--apply` abort before its first write, listing every collision.
+`--apply` takes the catalog lock (and refuses with `catalog_locked` while the
+app holds it), snapshots both databases into
+`~/.ai-video-cataloger/backups/<timestamp>--relocate-root/`, renames the
+mirrors, rewrites the databases (a failed catalog rewrite moves the mirrors
+back), flushes, and then re-plans to report how many rows still reference the
+old root — zero on success. Media files are never touched, and the new root
+does not have to be mounted; when it is, the first and the last planned folder
+must exist there or the run carries a warning.
+
 A folder analysed read-only can be **materialized** once its mount becomes
 writable: `materialize <root>` looks every file up by fingerprint, takes the
 selected variant, and replays the writes the writable path would have made —
