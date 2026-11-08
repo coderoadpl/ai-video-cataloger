@@ -78,6 +78,7 @@ import {
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { RECOVERY_KEY_ENV, resolveRecoveryKey } from './recovery-key.js';
+import { relocateRootHuman, relocateRootIncomplete } from './relocate-root-human.js';
 import { timeoutOption, toleranceMinutesOption, maxVisitHoursOption } from './numeric-option.js';
 import { runProgram } from './run-program.js';
 import {
@@ -119,6 +120,13 @@ interface ProcessDriveOptions extends ProcessOptions {
 interface MaterializeOptions extends JsonOption {
   dryRun?: boolean | undefined;
   keepAwake?: boolean | undefined;
+}
+
+interface RelocateRootOptions extends JsonOption {
+  from: string;
+  to: string;
+  media: 'all' | 'video' | 'photo';
+  apply?: boolean | undefined;
 }
 
 interface FacesReclusterOptions extends JsonOption {
@@ -1609,6 +1617,30 @@ index
         : `No catalog entry for ${data.fingerprint}`,
       { raw: true },
     );
+  });
+
+program
+  .command('relocate-root')
+  .description('Rewrite a moved library root in the video and photo catalogs (dry run unless --apply)')
+  .requiredOption('--from <oldRoot>', 'library root as currently recorded in the catalogs')
+  .requiredOption('--to <newRoot>', 'new location of the same library root')
+  .option('--media <scope>', 'catalogs to rewrite: all, video, or photo', libraryMediaOption, 'all')
+  .option('--apply', 'back up both databases and apply the rewrite', false)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (options: RelocateRootOptions) => {
+    const json = isJsonMode(options);
+    const input = { from: options.from, to: options.to, media: options.media, apply: options.apply === true };
+    emitStarted(json, 'relocate_root', input);
+    const result = await api.indexRelocateRoot(input);
+    if (!result.ok) {
+      emitError(json, result.error, result.error.details);
+      return;
+    }
+    for (const database of result.value.databases) emitProgress(json, { step: 'relocate-root-database', data: database });
+    emitCompleted(json, result.value, relocateRootHuman(result.value));
+    if (relocateRootIncomplete(result.value)) {
+      process.exitCode = result.value.collisions.length > 0 ? EXIT_CODE_BY_ERROR_CODE.conflict : EXIT_CODE_BY_ERROR_CODE.internal;
+    }
   });
 
 const tags = program.command('tags').description('Inspect and manage catalog tags');
