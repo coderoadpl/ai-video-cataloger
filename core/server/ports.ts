@@ -705,6 +705,52 @@ export interface PhotosStore {
   setPhotosHidden(fingerprints: readonly string[], hiddenAt: number | null): Promise<Result<{ changed: number; unchanged: number }, AppError>>;
   countHidden(): Promise<Result<number, AppError>>;
   listHiddenFingerprints(): Promise<Result<string[], AppError>>;
+  listFolders(): Promise<Result<PhotoFolderRecord[], AppError>>;
+  rootRelocationStats(fromRoot: string, toRoot: string): Promise<Result<PhotosRootRelocationStats, AppError>>;
+  relocateRoot(input: RootRelocationInput): Promise<Result<PhotosRootRelocationResult, AppError>>;
+}
+
+export interface FolderRelocation {
+  fromFolderId: string;
+  toFolderId: string;
+  toPath: string;
+  displayName: string;
+}
+
+export interface PathPrefixRewrite {
+  from: string;
+  to: string;
+}
+
+export interface RootRelocationInput {
+  fromRoot: string;
+  toRoot: string;
+  folders: readonly FolderRelocation[];
+  pathPrefixes: readonly PathPrefixRewrite[];
+}
+
+export interface CatalogRootRelocationStats {
+  files: number;
+  driveRuns: number;
+  gridThumbnails: number;
+}
+
+export interface CatalogRootRelocationResult extends CatalogRootRelocationStats {
+  folders: number;
+}
+
+export interface PhotosRootRelocationStats {
+  photos: number;
+  paths: number;
+  runs: number;
+  pathCollisions: string[];
+}
+
+export interface PhotosRootRelocationResult {
+  folders: number;
+  photos: number;
+  paths: number;
+  runs: number;
 }
 
 export interface DriveRunRecord {
@@ -775,6 +821,8 @@ export interface GlobalCatalogStore {
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>>;
   relocateFile(fingerprint: string, folderId: string, fileName: string): Promise<Result<void, AppError>>;
+  rootRelocationStats(input: RootRelocationInput): Promise<Result<CatalogRootRelocationStats, AppError>>;
+  relocateRoot(input: RootRelocationInput): Promise<Result<CatalogRootRelocationResult, AppError>>;
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>>;
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;

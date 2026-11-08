@@ -845,6 +845,44 @@ describe('route schemas', () => {
     expect(jobKindSchema.parse('faces_exemplars')).toBe('faces_exemplars');
   });
 
+  it('exposes the relocate-root route with dry-run defaults and canonical roots', () => {
+    expect(API_ROUTES.indexRelocateRoot).toMatchObject({ method: 'POST', path: '/api/index/relocate-root' });
+    expect(API_ROUTES.indexRelocateRoot.input.parse({ from: '/Volumes/test-drive/A\u030a', to: '/Volumes/fixture-drive' }))
+      .toEqual({ from: '/Volumes/test-drive/\u00c5', to: '/Volumes/fixture-drive', media: 'all', apply: false });
+    expect(API_ROUTES.indexRelocateRoot.input.safeParse({ from: '/a', to: '/b', media: 'audio' }).success).toBe(false);
+    const output = {
+      from: '/Volumes/test-drive',
+      to: '/Volumes/fixture-drive',
+      media: 'all',
+      apply: false,
+      applied: false,
+      targetMounted: false,
+      databases: [{
+        media: 'video',
+        databasePath: '/data/.ai-video-cataloger/catalog.db',
+        folders: 1,
+        files: 2,
+        paths: 0,
+        idChanges: 1,
+        mirrorsToRename: 1,
+        runs: 0,
+        gridThumbnails: 0,
+        examples: [{
+          fromPath: '/Volumes/test-drive/trip',
+          toPath: '/Volumes/fixture-drive/trip',
+          fromFolderId: 'path-00000001',
+          toFolderId: 'path-00000002',
+          mirror: { from: '/data/m/path-00000001', to: '/data/m/path-00000002' },
+        }],
+      }],
+      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/test-drive/a.jpg', target: '/Volumes/fixture-drive/a.jpg' }],
+      warnings: [],
+      backupDirectory: null,
+      remaining: null,
+    };
+    expect(API_ROUTES.indexRelocateRoot.output.parse(output)).toEqual(output);
+  });
+
   it('exposes the materialize route and round-trips its summary and progress step', () => {
     expect(API_ROUTES.materialize).toMatchObject({ method: 'POST', path: '/api/materialize' });
     expect(API_ROUTES.materialize.input.parse({ root: '/videos' })).toEqual({ root: '/videos', dryRun: false });

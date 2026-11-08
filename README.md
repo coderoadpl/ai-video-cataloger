@@ -96,6 +96,7 @@ library trash [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
 process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
+relocate-root --from <oldRoot> --to <newRoot> [--media all|video|photo] [--apply] [--json]
 variants list <path> [--json]
 variants import-translation <ndjson> [--dry-run] [--no-select] [--json]
 variants select <path> --config <configId> [--json]
@@ -311,6 +312,18 @@ the same root is a no-op. `--dry-run` computes and reports the identical plan
 `TARGET_READ_ONLY` (46) instead of silently doing nothing. Because artifacts
 are found through the catalog's folder id rather than the current path, the
 drive does not have to return to the exact mount path it was analysed at.
+
+`relocate-root --from <oldRoot> --to <newRoot>` moves catalog rows after a
+library was copied byte for byte to a new mount point, so nothing is
+re-analysed. It rewrites the folder paths under the old root in both the video
+and the photo catalog (`--media` picks one), re-derives path-based folder ids,
+and renames the matching read-only mirrors. Without `--apply` it only prints
+the plan — counts per database and up to 20 example rows — and exits with
+`CONFLICT` (6) when a target id, folder path, mirror or photo path already
+exists. `--apply` refuses to run while the app holds the catalog, copies both
+databases to `~/.ai-video-cataloger/backups/<timestamp>--relocate-root/` first,
+and finishes by confirming that no rows remain under the old root. Media files
+are never touched; the new root does not have to be mounted.
 
 `thumbnails <root>` fills in the covers a catalog is missing. It walks the
 tree exactly like `process-drive` discovers it, treats a file as ready when

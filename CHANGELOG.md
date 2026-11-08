@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `relocate-root --from <oldRoot> --to <newRoot> [--media all|video|photo] [--apply] [--json]` moves a library root that changed mount point in the video and photo catalogs: it rewrites folder and photo paths, re-derives path-based folder ids together with every row that references them, renames read-only mirrors, aborts on any id, path or mirror collision, backs up both databases before applying, and verifies that nothing remains under the old root; without `--apply` it is a dry run.
+
 ## [0.6.43] - 2026-10-29
 
 ### Fixed

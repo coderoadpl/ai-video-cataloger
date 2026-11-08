@@ -1826,6 +1826,60 @@ export const indexForgetOutputSchema = z.object({
   snapshotSkipped: z.boolean(),
 });
 
+const RELOCATE_ROOT_MEDIA_VALUES = ['video', 'photo', 'all'] as const;
+
+export const indexRelocateRootInputSchema = z.object({
+  from: canonicalPathString(),
+  to: canonicalPathString(),
+  media: z.enum(RELOCATE_ROOT_MEDIA_VALUES).default('all'),
+  apply: z.boolean().default(false),
+});
+
+const relocateRootDatabaseMediaSchema = z.enum(['video', 'photo']);
+
+const relocateRootFolderChangeSchema = z.object({
+  fromPath: z.string().min(1),
+  toPath: z.string().min(1),
+  fromFolderId: folderIdSchema,
+  toFolderId: folderIdSchema,
+  mirror: z.object({ from: z.string().min(1), to: z.string().min(1) }).nullable(),
+});
+
+export const indexRelocateRootOutputSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  media: z.enum(RELOCATE_ROOT_MEDIA_VALUES),
+  apply: z.boolean(),
+  applied: z.boolean(),
+  targetMounted: z.boolean(),
+  databases: z.array(z.object({
+    media: relocateRootDatabaseMediaSchema,
+    databasePath: z.string().min(1),
+    folders: z.number().int().nonnegative(),
+    files: z.number().int().nonnegative(),
+    paths: z.number().int().nonnegative(),
+    idChanges: z.number().int().nonnegative(),
+    mirrorsToRename: z.number().int().nonnegative(),
+    runs: z.number().int().nonnegative(),
+    gridThumbnails: z.number().int().nonnegative(),
+    examples: z.array(relocateRootFolderChangeSchema),
+  })),
+  collisions: z.array(z.object({
+    media: relocateRootDatabaseMediaSchema,
+    kind: z.enum(['folder_id', 'folder_path', 'mirror', 'photo_path']),
+    fromPath: z.string().min(1),
+    target: z.string().min(1),
+  })),
+  warnings: z.array(z.string()),
+  backupDirectory: z.string().nullable(),
+  remaining: z.array(z.object({
+    media: relocateRootDatabaseMediaSchema,
+    folders: z.number().int().nonnegative(),
+    paths: z.number().int().nonnegative(),
+    runs: z.number().int().nonnegative(),
+  })).nullable(),
+});
+
 export const tagsListOutputSchema = z.object({
   tags: z.array(z.object({
     name: z.string().min(1),
@@ -2678,6 +2732,12 @@ export const API_ROUTES = {
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
   indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
+  indexRelocateRoot: {
+    method: 'POST',
+    path: '/api/index/relocate-root',
+    input: indexRelocateRootInputSchema,
+    output: indexRelocateRootOutputSchema,
+  },
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   tagsSuggestAliases: { method: 'GET', path: '/api/tags/suggest-aliases', input: emptyInputSchema, output: tagsSuggestAliasesOutputSchema },
@@ -2944,6 +3004,7 @@ export const API_PATHS = {
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
   indexForget: API_ROUTES.indexForget.path,
+  indexRelocateRoot: API_ROUTES.indexRelocateRoot.path,
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
   tagsSuggestAliases: API_ROUTES.tagsSuggestAliases.path,
