@@ -296,7 +296,7 @@ describe('derivedFolderId', () => {
 
 describe('isDerivedFolderId', () => {
   it('tells a path-derived id from a marker UUID', () => {
-    expect(isDerivedFolderId(derivedFolderId('/Volumes/media/a'))).toBe(true);
+    expect(isDerivedFolderId(derivedFolderId('/Volumes/test-drive/a'))).toBe(true);
     expect(isDerivedFolderId('8d3f2c1e-5b6a-4c7d-9e8f-0a1b2c3d4e5f')).toBe(false);
     expect(isDerivedFolderId('path-xyz')).toBe(false);
   });

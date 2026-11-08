@@ -12,9 +12,9 @@ import { readOnlyArtifactRootById } from './artifact-root.js';
 import { relocateRoot, type RelocateRootInput, type RelocateRootOutput } from './relocate-root.js';
 
 const now = '2026-11-01T10:00:00.000Z';
-const OLD_ROOT = '/Volumes/media';
-const NEW_ROOT = '/Volumes/library';
-const LOOKALIKE_ROOT = '/Volumes/media2';
+const OLD_ROOT = '/Volumes/test-drive';
+const NEW_ROOT = '/Volumes/fixture-drive';
+const LOOKALIKE_ROOT = '/Volumes/test-drive2';
 const MARKER_ID = '8d3f2c1e-5b6a-4c7d-9e8f-0a1b2c3d4e5f';
 const NFC_NAME = 'Łódź Å';
 const NFD_NAME = NFC_NAME.normalize('NFD');
@@ -211,7 +211,7 @@ describe('relocateRoot', () => {
 
     value(await fixture.run({ apply: true }));
 
-    expect(value(await fixture.globalCatalog.getFolder(derivedFolderId(NEW_ROOT)))?.displayName).toBe('library');
+    expect(value(await fixture.globalCatalog.getFolder(derivedFolderId(NEW_ROOT)))?.displayName).toBe('fixture-drive');
     expect(value(await fixture.globalCatalog.getFolder(derivedFolderId(`${NEW_ROOT}/custom`)))?.displayName).toBe('Holiday');
   });
 
@@ -395,7 +395,7 @@ describe('relocateRoot', () => {
     await seedPhotoFolder(fixture.photos, `${OLD_ROOT}/photos`, 'ph_1');
     const videoSnapshot = vi.spyOn(fixture.globalCatalog, 'snapshotTo');
     const photoSnapshot = vi.spyOn(fixture.photos, 'snapshotTo');
-    const backupDirectory = '/home/.ai-video-cataloger/backups/2026-11-01T10-00-00-000Z--relocate-root';
+    const backupDirectory = `${fixture.fs.homeDirectory()}/.ai-video-cataloger/backups/2026-11-01T10-00-00-000Z--relocate-root`;
 
     const output = value(await fixture.run({ apply: true }));
 
@@ -445,7 +445,7 @@ describe('relocateRoot', () => {
     const error = failure(await fixture.run({ apply: true, media: 'video' }));
 
     expect(error.code).toBe('internal');
-    expect(error.message).toContain('backups in /home/.ai-video-cataloger/backups/');
+    expect(error.message).toContain(`backups in ${fixture.fs.homeDirectory()}/.ai-video-cataloger/backups/`);
     expect(value(await fixture.fs.isFile(`${mirrorOf(fixture.fs, oldId)}/thumbnails/clip.jpg`))).toBe(true);
   });
 

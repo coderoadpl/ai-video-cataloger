@@ -847,19 +847,19 @@ describe('route schemas', () => {
 
   it('exposes the relocate-root route with dry-run defaults and canonical roots', () => {
     expect(API_ROUTES.indexRelocateRoot).toMatchObject({ method: 'POST', path: '/api/index/relocate-root' });
-    expect(API_ROUTES.indexRelocateRoot.input.parse({ from: '/Volumes/A\u030a', to: '/Volumes/library' }))
-      .toEqual({ from: '/Volumes/\u00c5', to: '/Volumes/library', media: 'all', apply: false });
+    expect(API_ROUTES.indexRelocateRoot.input.parse({ from: '/Volumes/test-drive/A\u030a', to: '/Volumes/fixture-drive' }))
+      .toEqual({ from: '/Volumes/test-drive/\u00c5', to: '/Volumes/fixture-drive', media: 'all', apply: false });
     expect(API_ROUTES.indexRelocateRoot.input.safeParse({ from: '/a', to: '/b', media: 'audio' }).success).toBe(false);
     const output = {
-      from: '/Volumes/media',
-      to: '/Volumes/library',
+      from: '/Volumes/test-drive',
+      to: '/Volumes/fixture-drive',
       media: 'all',
       apply: false,
       applied: false,
       targetMounted: false,
       databases: [{
         media: 'video',
-        databasePath: '/home/.ai-video-cataloger/catalog.db',
+        databasePath: '/data/.ai-video-cataloger/catalog.db',
         folders: 1,
         files: 2,
         paths: 0,
@@ -868,14 +868,14 @@ describe('route schemas', () => {
         runs: 0,
         gridThumbnails: 0,
         examples: [{
-          fromPath: '/Volumes/media/trip',
-          toPath: '/Volumes/library/trip',
+          fromPath: '/Volumes/test-drive/trip',
+          toPath: '/Volumes/fixture-drive/trip',
           fromFolderId: 'path-00000001',
           toFolderId: 'path-00000002',
-          mirror: { from: '/home/m/path-00000001', to: '/home/m/path-00000002' },
+          mirror: { from: '/data/m/path-00000001', to: '/data/m/path-00000002' },
         }],
       }],
-      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/media/a.jpg', target: '/Volumes/library/a.jpg' }],
+      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/test-drive/a.jpg', target: '/Volumes/fixture-drive/a.jpg' }],
       warnings: [],
       backupDirectory: null,
       remaining: null,

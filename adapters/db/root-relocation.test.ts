@@ -9,9 +9,9 @@ import type { PhotoRecord, RootRelocationInput } from '@core/server/ports.js';
 import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import { SqlJsPhotosStore } from './photos-store.js';
 
-const OLD_ROOT = '/Volumes/media';
-const NEW_ROOT = '/Volumes/library';
-const LOOKALIKE_ROOT = '/Volumes/media2';
+const OLD_ROOT = '/Volumes/test-drive';
+const NEW_ROOT = '/Volumes/fixture-drive';
+const LOOKALIKE_ROOT = '/Volumes/test-drive2';
 const now = '2026-11-01T10:00:00.000Z';
 const tempRoots: string[] = [];
 

@@ -28,10 +28,10 @@ const post = (app: ReturnType<typeof buildApp>, body: unknown): Promise<Response
 describe('POST /api/index/relocate-root', () => {
   it('returns the dry-run plan without changing the catalog', async () => {
     const deps = createInMemoryDeps();
-    const folderId = await seed(deps, '/Volumes/media/trip');
+    const folderId = await seed(deps, '/Volumes/test-drive/trip');
     const app = buildApp(deps);
 
-    const response = await post(app, { from: '/Volumes/media', to: '/Volumes/library', media: 'video' });
+    const response = await post(app, { from: '/Volumes/test-drive', to: '/Volumes/fixture-drive', media: 'video' });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
@@ -39,19 +39,19 @@ describe('POST /api/index/relocate-root', () => {
       data: {
         apply: false,
         applied: false,
-        databases: [{ media: 'video', folders: 1, idChanges: 1, examples: [{ fromPath: '/Volumes/media/trip', toPath: '/Volumes/library/trip' }] }],
+        databases: [{ media: 'video', folders: 1, idChanges: 1, examples: [{ fromPath: '/Volumes/test-drive/trip', toPath: '/Volumes/fixture-drive/trip' }] }],
         collisions: [],
       },
     });
-    expect(value(await deps.globalCatalog.getFolder(folderId))?.currentPath).toBe('/Volumes/media/trip');
+    expect(value(await deps.globalCatalog.getFolder(folderId))?.currentPath).toBe('/Volumes/test-drive/trip');
   });
 
   it('applies the rewrite and reports nothing left under the old root', async () => {
     const deps = createInMemoryDeps();
-    await seed(deps, '/Volumes/media/trip');
+    await seed(deps, '/Volumes/test-drive/trip');
     const app = buildApp(deps);
 
-    const response = await post(app, { from: '/Volumes/media', to: '/Volumes/library', apply: true });
+    const response = await post(app, { from: '/Volumes/test-drive', to: '/Volumes/fixture-drive', apply: true });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
@@ -61,16 +61,16 @@ describe('POST /api/index/relocate-root', () => {
         remaining: [{ media: 'video', folders: 0, paths: 0, runs: 0 }, { media: 'photo', folders: 0, paths: 0, runs: 0 }],
       },
     });
-    expect(value(await deps.globalCatalog.getFolder(derivedFolderId('/Volumes/library/trip')))?.currentPath).toBe('/Volumes/library/trip');
+    expect(value(await deps.globalCatalog.getFolder(derivedFolderId('/Volumes/fixture-drive/trip')))?.currentPath).toBe('/Volumes/fixture-drive/trip');
   });
 
   it('maps a collision to the conflict envelope', async () => {
     const deps = createInMemoryDeps();
-    await seed(deps, '/Volumes/media/trip');
-    await seed(deps, '/Volumes/library/trip');
+    await seed(deps, '/Volumes/test-drive/trip');
+    await seed(deps, '/Volumes/fixture-drive/trip');
     const app = buildApp(deps);
 
-    const response = await post(app, { from: '/Volumes/media', to: '/Volumes/library', apply: true });
+    const response = await post(app, { from: '/Volumes/test-drive', to: '/Volumes/fixture-drive', apply: true });
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'conflict' } });

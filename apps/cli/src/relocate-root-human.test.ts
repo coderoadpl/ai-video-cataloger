@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { relocateRootHuman, relocateRootIncomplete, type RelocateRootOutput } from './relocate-root-human.js';
 
 const plan = (overrides: Partial<RelocateRootOutput> = {}): RelocateRootOutput => ({
-  from: '/Volumes/media',
-  to: '/Volumes/library',
+  from: '/Volumes/test-drive',
+  to: '/Volumes/fixture-drive',
   media: 'all',
   apply: false,
   applied: false,
@@ -12,7 +12,7 @@ const plan = (overrides: Partial<RelocateRootOutput> = {}): RelocateRootOutput =
   databases: [
     {
       media: 'video',
-      databasePath: '/home/.ai-video-cataloger/catalog.db',
+      databasePath: '/data/.ai-video-cataloger/catalog.db',
       folders: 2,
       files: 5,
       paths: 0,
@@ -21,8 +21,8 @@ const plan = (overrides: Partial<RelocateRootOutput> = {}): RelocateRootOutput =
       runs: 1,
       gridThumbnails: 3,
       examples: [{
-        fromPath: '/Volumes/media/trip',
-        toPath: '/Volumes/library/trip',
+        fromPath: '/Volumes/test-drive/trip',
+        toPath: '/Volumes/fixture-drive/trip',
         fromFolderId: 'path-00000001',
         toFolderId: 'path-00000002',
         mirror: { from: '/m/path-00000001', to: '/m/path-00000002' },
@@ -30,7 +30,7 @@ const plan = (overrides: Partial<RelocateRootOutput> = {}): RelocateRootOutput =
     },
     {
       media: 'photo',
-      databasePath: '/home/.ai-video-cataloger/photos.db',
+      databasePath: '/data/.ai-video-cataloger/photos.db',
       folders: 0,
       files: 0,
       paths: 0,
@@ -51,28 +51,28 @@ const plan = (overrides: Partial<RelocateRootOutput> = {}): RelocateRootOutput =
 describe('relocateRootHuman', () => {
   it('prints per-database counts, examples and the remainder of the folder list', () => {
     expect(relocateRootHuman(plan())).toBe([
-      'Dry run: /Volumes/media -> /Volumes/library (nothing changed; add --apply to rewrite)',
-      'video (/home/.ai-video-cataloger/catalog.db): 2 folders, 5 files, 1 ids change, 1 mirrors to rename, 1 drive runs, 3 grid thumbnails',
-      '  /Volumes/media/trip -> /Volumes/library/trip [path-00000001 -> path-00000002] (mirror renamed)',
+      'Dry run: /Volumes/test-drive -> /Volumes/fixture-drive (nothing changed; add --apply to rewrite)',
+      'video (/data/.ai-video-cataloger/catalog.db): 2 folders, 5 files, 1 ids change, 1 mirrors to rename, 1 drive runs, 3 grid thumbnails',
+      '  /Volumes/test-drive/trip -> /Volumes/fixture-drive/trip [path-00000001 -> path-00000002] (mirror renamed)',
       '  ... and 1 more folders',
-      'photo (/home/.ai-video-cataloger/photos.db): 0 folders, 0 photos, 0 photo paths, 0 ids change, 0 photo runs',
+      'photo (/data/.ai-video-cataloger/photos.db): 0 folders, 0 photos, 0 photo paths, 0 ids change, 0 photo runs',
     ].join('\n'));
   });
 
   it('lists collisions, warnings, the backup directory and the verification', () => {
     const output = relocateRootHuman(plan({
       applied: true,
-      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/media/a.jpg', target: '/Volumes/library/a.jpg' }],
-      warnings: ['/Volumes/library is not mounted'],
-      backupDirectory: '/home/.ai-video-cataloger/backups/x--relocate-root',
+      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/test-drive/a.jpg', target: '/Volumes/fixture-drive/a.jpg' }],
+      warnings: ['/Volumes/fixture-drive is not mounted'],
+      backupDirectory: '/data/.ai-video-cataloger/backups/x--relocate-root',
       remaining: [{ media: 'video', folders: 0, paths: 0, runs: 0 }],
     }));
 
-    expect(output).toContain('Rewrote /Volumes/media -> /Volumes/library');
-    expect(output).toContain('  photo photo_path: /Volumes/media/a.jpg -> /Volumes/library/a.jpg');
-    expect(output).toContain('Warning: /Volumes/library is not mounted');
-    expect(output).toContain('Backups: /home/.ai-video-cataloger/backups/x--relocate-root');
-    expect(output).toContain('Remaining under /Volumes/media: video 0 folders, 0 paths, 0 runs');
+    expect(output).toContain('Rewrote /Volumes/test-drive -> /Volumes/fixture-drive');
+    expect(output).toContain('  photo photo_path: /Volumes/test-drive/a.jpg -> /Volumes/fixture-drive/a.jpg');
+    expect(output).toContain('Warning: /Volumes/fixture-drive is not mounted');
+    expect(output).toContain('Backups: /data/.ai-video-cataloger/backups/x--relocate-root');
+    expect(output.split('\n').at(-1)).toBe(`Remaining under ${plan().from}: video 0 folders, 0 paths, 0 runs`);
   });
 });
 
