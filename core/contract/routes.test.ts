@@ -845,6 +845,44 @@ describe('route schemas', () => {
     expect(jobKindSchema.parse('faces_exemplars')).toBe('faces_exemplars');
   });
 
+  it('exposes the relocate-root route with dry-run defaults and canonical roots', () => {
+    expect(API_ROUTES.indexRelocateRoot).toMatchObject({ method: 'POST', path: '/api/index/relocate-root' });
+    expect(API_ROUTES.indexRelocateRoot.input.parse({ from: '/Volumes/A\u030a', to: '/Volumes/library' }))
+      .toEqual({ from: '/Volumes/\u00c5', to: '/Volumes/library', media: 'all', apply: false });
+    expect(API_ROUTES.indexRelocateRoot.input.safeParse({ from: '/a', to: '/b', media: 'audio' }).success).toBe(false);
+    const output = {
+      from: '/Volumes/media',
+      to: '/Volumes/library',
+      media: 'all',
+      apply: false,
+      applied: false,
+      targetMounted: false,
+      databases: [{
+        media: 'video',
+        databasePath: '/home/.ai-video-cataloger/catalog.db',
+        folders: 1,
+        files: 2,
+        paths: 0,
+        idChanges: 1,
+        mirrorsToRename: 1,
+        runs: 0,
+        gridThumbnails: 0,
+        examples: [{
+          fromPath: '/Volumes/media/trip',
+          toPath: '/Volumes/library/trip',
+          fromFolderId: 'path-00000001',
+          toFolderId: 'path-00000002',
+          mirror: { from: '/home/m/path-00000001', to: '/home/m/path-00000002' },
+        }],
+      }],
+      collisions: [{ media: 'photo', kind: 'photo_path', fromPath: '/Volumes/media/a.jpg', target: '/Volumes/library/a.jpg' }],
+      warnings: [],
+      backupDirectory: null,
+      remaining: null,
+    };
+    expect(API_ROUTES.indexRelocateRoot.output.parse(output)).toEqual(output);
+  });
+
   it('exposes the materialize route and round-trips its summary and progress step', () => {
     expect(API_ROUTES.materialize).toMatchObject({ method: 'POST', path: '/api/materialize' });
     expect(API_ROUTES.materialize.input.parse({ root: '/videos' })).toEqual({ root: '/videos', dryRun: false });

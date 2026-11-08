@@ -37,6 +37,7 @@ import {
   healthOutputSchema,
   healthReadyOutputSchema,
   indexForgetOutputSchema,
+  indexRelocateRootOutputSchema,
   indexRebuildOutputSchema,
   indexStatusOutputSchema,
   jobAcceptedOutputSchema,
@@ -768,6 +769,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.indexForget.method,
       API_ROUTES.indexForget.path,
       indexForgetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  indexRelocateRoot: (input: z.input<typeof API_ROUTES.indexRelocateRoot.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.indexRelocateRoot.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.indexRelocateRoot.method,
+      API_ROUTES.indexRelocateRoot.path,
+      indexRelocateRootOutputSchema,
       parsed.value,
       signal,
     );

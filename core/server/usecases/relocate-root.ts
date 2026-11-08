@@ -22,8 +22,7 @@ import type {
 } from '../ports.js';
 import { legacyReadOnlyArtifactRoot, readOnlyArtifactRootById } from './artifact-root.js';
 
-export const RELOCATE_ROOT_MEDIA = ['video', 'photo', 'all'] as const;
-export type RelocateRootMedia = (typeof RELOCATE_ROOT_MEDIA)[number];
+export type RelocateRootMedia = 'video' | 'photo' | 'all';
 export type RelocateRootDatabaseMedia = Exclude<RelocateRootMedia, 'all'>;
 
 const RELOCATE_ROOT_EXAMPLE_LIMIT = 20;

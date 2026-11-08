@@ -79,6 +79,7 @@ import {
   localAiRequirements,
   enqueueMaterialize,
   pullLocalAiModel,
+  relocateRoot,
   removeLocalAiModel,
   resetAll,
   resetSingle,
@@ -617,6 +618,15 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.indexForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.indexForget.output);
     return respond(await withCatalogWriteLock(deps, context, () => forgetCatalogEntry(deps, input.value)), API_ROUTES.indexForget.output);
+  });
+
+  app.post(API_ROUTES.indexRelocateRoot.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.indexRelocateRoot.output);
+    const input = parseInput(API_ROUTES.indexRelocateRoot.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.indexRelocateRoot.output);
+    if (!input.value.apply) return respond(await relocateRoot(deps, input.value), API_ROUTES.indexRelocateRoot.output);
+    return respond(await withCatalogWriteLock(deps, context, () => relocateRoot(deps, input.value)), API_ROUTES.indexRelocateRoot.output);
   });
 
   app.get(API_ROUTES.tagsList.path, async () =>

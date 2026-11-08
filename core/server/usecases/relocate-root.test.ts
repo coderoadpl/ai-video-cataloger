@@ -99,12 +99,21 @@ const seedVideoFolder = async (
     fileName: 'clip.mp4',
     size: 1,
     durationS: null,
+    width: null,
+    height: null,
     gpsLat: null,
     gpsLon: null,
     processedAt: now,
     analyzer: null,
     model: null,
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   }));
   if (options.mirror === true) fixture.fs.addFile(`${mirrorOf(fixture.fs, folderId)}/thumbnails/clip.jpg`, { content: 'jpg' });
   return folderId;
