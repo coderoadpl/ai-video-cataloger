@@ -1927,7 +1927,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     const migrated = migrate(client, path.join(path.dirname(this.filePath), 'backups'));
     if (canPersist && (created || migrated)) {
       persistDatabase(this.filePath, client);
-    } else if (created || migrated) {
+    } else if (!created && migrated) {
       this.dirtyCount = 1;
     }
     this.state?.client.close();

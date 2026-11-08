@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 
-import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js';
+import { SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
 import { derivedFolderId, type AppError, type Result } from '@core/domain/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -43,9 +43,6 @@ const seedCatalog = async (home: string, folderPath: string): Promise<string> =>
     place: null,
   }));
   requiredValue(await store.dispose());
-  const photos = new SqlJsPhotosStore({ homeDirectory: home });
-  requiredValue(await photos.flush());
-  requiredValue(await photos.dispose());
   mkdirSync(join(home, '.ai-video-cataloger', 'read-only-folders', folderId, 'thumbnails'), { recursive: true });
   return folderId;
 };
@@ -78,6 +75,10 @@ describe('relocate-root command', () => {
 
   it('prints the plan as NDJSON and changes nothing without --apply', async () => {
     const oldId = await seedCatalog(home, join(oldRoot, 'trip'));
+    const catalogPath = join(home, '.ai-video-cataloger', 'catalog.db');
+    const photosPath = join(home, '.ai-video-cataloger', 'photos.db');
+    const catalogBefore = readFileSync(catalogPath);
+    expect(existsSync(photosPath)).toBe(false);
 
     const result = await runCli(['relocate-root', '--from', oldRoot, '--to', newRoot, '--json'], { cwd: testDir, env: { HOME: home } });
 
@@ -87,6 +88,8 @@ describe('relocate-root command', () => {
     expect(events.filter((event) => event.step === 'relocate-root-database').map((event) => event.data))
       .toEqual([expect.objectContaining({ media: 'video', folders: 1, files: 1 }), expect.objectContaining({ media: 'photo', folders: 0 })]);
     expect(findEvent(events, 'completed')?.data).toMatchObject({ applied: false, targetMounted: true, warnings: [] });
+    expect(readFileSync(catalogPath).equals(catalogBefore)).toBe(true);
+    expect(existsSync(photosPath)).toBe(false);
     expect(await folderPathOf(home, oldId)).toBe(join(oldRoot, 'trip'));
     expect(existsSync(join(home, '.ai-video-cataloger', 'backups'))).toBe(false);
   });

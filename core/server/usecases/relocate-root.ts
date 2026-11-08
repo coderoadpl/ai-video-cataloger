@@ -417,6 +417,7 @@ const applyPlans = async (
   backupDirectory: string,
 ): Promise<Result<void, AppError>> => {
   for (const plan of plans) {
+    if (!planHasChanges(plan.summary)) continue;
     const applied = plan.summary.media === 'video'
       ? await applyVideoPlan(deps, plan)
       : await applyPhotoPlan(deps, plan);
@@ -431,6 +432,9 @@ const applyPlans = async (
   }
   return ok(undefined);
 };
+
+const planHasChanges = (summary: RelocateRootDatabasePlan): boolean =>
+  summary.folders + summary.files + summary.paths + summary.runs + summary.gridThumbnails > 0;
 
 const applyVideoPlan = async (deps: RelocateRootDeps, plan: DatabasePlan): Promise<Result<void, AppError>> => {
   const renamed: PathPrefixRewrite[] = [];

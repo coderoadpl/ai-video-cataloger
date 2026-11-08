@@ -1,6 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { derivedFolderId, type AppError, type Result } from '@core/domain/index.js';
@@ -12,6 +14,8 @@ import { SqlJsPhotosStore } from './photos-store.js';
 const OLD_ROOT = '/Volumes/test-drive';
 const NEW_ROOT = '/Volumes/fixture-drive';
 const LOOKALIKE_ROOT = '/Volumes/test-drive2';
+const NFC_ROOT = `${OLD_ROOT}/Åland`;
+const NFD_ROOT = NFC_ROOT.normalize('NFD');
 const now = '2026-11-01T10:00:00.000Z';
 const tempRoots: string[] = [];
 
@@ -67,6 +71,14 @@ const photo = (fingerprint: string, folderId: string, currentPath: string): Phot
   hiddenAt: null,
   selectedConfigId: null,
 });
+
+const rewriteStoredPaths = async (databasePath: string, statements: readonly [string, (string | number)[]][]): Promise<void> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database(await readFile(databasePath));
+  for (const [statement, params] of statements) client.run(statement, params);
+  await writeFile(databasePath, client.export());
+  client.close();
+};
 
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -220,5 +232,82 @@ describe('SqlJsPhotosStore root relocation', () => {
 
     expect(value(await store.rootRelocationStats(OLD_ROOT, NEW_ROOT)).pathCollisions).toEqual([`${OLD_ROOT}/2024/IMG_0001.jpg`]);
     value(await store.dispose());
+  });
+
+  it('rewrites representative paths and sightings stored in NFD under an NFC root', async () => {
+    const home = await tempHome();
+    const seeded = new SqlJsPhotosStore({ homeDirectory: home });
+    const oldId = await seed(seeded, `${NFC_ROOT}/trip`, 'ph_1');
+    value(await seeded.startPhotoRun({
+      runId: 'run-1', root: NFC_ROOT, stage: 'scan', startedAt: now, finishedAt: now, filesTotal: 1, filesDone: 1,
+      filesSkipped: 0, filesFailed: 0, lastActivityAt: now, batchJson: null,
+    }));
+    value(await seeded.dispose());
+    await rewriteStoredPaths(seeded.databasePath(), [
+      ['UPDATE photo_folders SET current_path = ?', [`${NFD_ROOT}/trip`]],
+      ['UPDATE photos SET current_path = ?', [`${NFD_ROOT}/trip/IMG_0001.jpg`]],
+      ['UPDATE photo_paths SET current_path = ?', [`${NFD_ROOT}/trip/IMG_0001.jpg`]],
+      ['UPDATE photo_runs SET root = ?', [NFD_ROOT]],
+    ]);
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const newId = derivedFolderId(`${NEW_ROOT}/trip`);
+
+    expect(value(await store.rootRelocationStats(NFC_ROOT, NEW_ROOT))).toEqual({ photos: 1, paths: 1, runs: 1, pathCollisions: [] });
+    expect(value(await store.relocateRoot({
+      fromRoot: NFC_ROOT,
+      toRoot: NEW_ROOT,
+      folders: [{ fromFolderId: oldId, toFolderId: newId, toPath: `${NEW_ROOT}/trip`, displayName: 'trip' }],
+      pathPrefixes: [{ from: NFC_ROOT, to: NEW_ROOT }],
+    }))).toEqual({ folders: 1, photos: 1, paths: 1, runs: 1 });
+    value(await store.dispose());
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    expect(value(await reopened.getPhoto('ph_1'))).toMatchObject({ folderId: newId, currentPath: `${NEW_ROOT}/trip/IMG_0001.jpg` });
+    expect(value(await reopened.listSightings('ph_1'))).toEqual([
+      expect.objectContaining({ folderId: newId, currentPath: `${NEW_ROOT}/trip/IMG_0001.jpg` }),
+    ]);
+    expect(value(await reopened.rootRelocationStats(NFC_ROOT, NEW_ROOT))).toEqual({ photos: 0, paths: 0, runs: 0, pathCollisions: [] });
+    value(await reopened.dispose());
+  });
+
+  it('reports a collision between an NFD sighting and an existing NFD target path', async () => {
+    const home = await tempHome();
+    const seeded = new SqlJsPhotosStore({ homeDirectory: home });
+    const folderId = await seed(seeded, `${OLD_ROOT}/Å`, 'ph_1');
+    value(await seeded.upsertSighting({
+      fingerprint: 'ph_1',
+      currentPath: `${NEW_ROOT}/Å/IMG_0001.jpg`,
+      folderId,
+      size: 10,
+      mtimeMs: 1,
+      lastSeenAt: now,
+    }));
+    value(await seeded.dispose());
+    await rewriteStoredPaths(seeded.databasePath(), [
+      ['UPDATE photo_paths SET current_path = ? WHERE current_path = ?', [`${NEW_ROOT}/Å/IMG_0001.jpg`.normalize('NFD'), `${NEW_ROOT}/Å/IMG_0001.jpg`]],
+    ]);
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+
+    expect(value(await store.rootRelocationStats(OLD_ROOT, NEW_ROOT)).pathCollisions).toEqual([`${OLD_ROOT}/Å/IMG_0001.jpg`]);
+    value(await store.dispose());
+  });
+});
+
+describe('read-only use of a missing database', () => {
+  it('leaves no catalog or photos database behind after listing and disposing', async () => {
+    const home = await tempHome();
+    const catalog = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'cli' });
+    const photos = new SqlJsPhotosStore({ homeDirectory: home, processName: 'cli' });
+
+    expect(value(await catalog.listFolders())).toEqual([]);
+    expect(value(await catalog.rootRelocationStats({ fromRoot: OLD_ROOT, toRoot: NEW_ROOT, folders: [], pathPrefixes: [] })))
+      .toEqual({ files: 0, driveRuns: 0, gridThumbnails: 0 });
+    expect(value(await photos.listFolders())).toEqual([]);
+    expect(value(await photos.rootRelocationStats(OLD_ROOT, NEW_ROOT))).toEqual({ photos: 0, paths: 0, runs: 0, pathCollisions: [] });
+    value(await catalog.dispose());
+    value(await photos.dispose());
+
+    expect(existsSync(catalog.databasePath())).toBe(false);
+    expect(existsSync(photos.databasePath())).toBe(false);
   });
 });

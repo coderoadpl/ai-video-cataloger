@@ -258,21 +258,23 @@ read-only mirror `read-only-folders/{oldId}` — or, when only that exists, its
 pre-canonical NFD-keyed twin — is renamed to `{newId}`. `--media video|photo`
 limits the rewrite to one database.
 
-Without `--apply` the command is a dry run that writes nothing and reports, per
-database, the folders, files or photo paths, ids that change, mirrors to
-rename, run records and up to 20 example rows. A collision — a target id that
-already exists as a folder row or a mirror directory, a target path held by a
-folder row that is not moving, or a photo sighting whose rewritten path already
-exists for the same content — makes the dry run exit with the `conflict` code
-and makes `--apply` abort before its first write, listing every collision.
-`--apply` takes the catalog lock (and refuses with `catalog_locked` while the
-app holds it), snapshots both databases into
+Without `--apply` the command is a dry run: it rewrites no row, renames no
+mirror and creates neither a backup nor a database that does not exist yet (only
+the schema upgrade that every command applies to a database from an older
+version is persisted). It reports, per database, the folders, files or photo
+paths, ids that change, mirrors to rename, run records and up to 20 example
+rows. A collision — a target id that already exists as a folder row or a mirror
+directory, a target path held by a folder row that is not moving, or a photo
+sighting whose rewritten path already exists for the same content — makes the
+dry run exit with the `conflict` code and makes `--apply` abort before its first
+write, listing every collision. `--apply` takes the catalog lock (and refuses
+with `catalog_locked` while the app holds it), snapshots both databases into
 `~/.ai-video-cataloger/backups/<timestamp>--relocate-root/`, renames the
-mirrors, rewrites the databases (a failed catalog rewrite moves the mirrors
-back), flushes, and then re-plans to report how many rows still reference the
-old root — zero on success. Media files are never touched, and the new root
-does not have to be mounted; when it is, the first and the last planned folder
-must exist there or the run carries a warning.
+mirrors, rewrites each database that has something under the old root (a failed
+catalog rewrite moves the mirrors back), flushes, and then re-plans to report
+how many rows still reference the old root — zero on success. Media files are
+never touched, and the new root does not have to be mounted; when it is, the
+first and the last planned folder must exist there or the run carries a warning.
 
 A folder analysed read-only can be **materialized** once its mount becomes
 writable: `materialize <root>` looks every file up by fingerprint, takes the

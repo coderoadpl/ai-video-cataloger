@@ -421,6 +421,21 @@ describe('relocateRoot', () => {
     expect(await folderPaths(fixture.photos)).toEqual([`${NEW_ROOT}/photos`]);
   });
 
+  it('leaves a database with nothing under the old root untouched on --apply', async () => {
+    const fixture = createFixture();
+    await seedVideoFolder(fixture, `${OLD_ROOT}/trip`);
+    const photoRelocate = vi.spyOn(fixture.photos, 'relocateRoot');
+    const photoFlush = vi.spyOn(fixture.photos, 'flush');
+
+    const output = value(await fixture.run({ apply: true }));
+
+    expect(output.applied).toBe(true);
+    expect(output.databases.map((plan) => [plan.media, plan.folders])).toEqual([['video', 1], ['photo', 0]]);
+    expect(photoRelocate).not.toHaveBeenCalled();
+    expect(photoFlush).not.toHaveBeenCalled();
+    expect(await folderPaths(fixture.globalCatalog)).toEqual([`${NEW_ROOT}/trip`]);
+  });
+
   it('refuses to apply while another process holds the catalog lock', async () => {
     const fixture = createFixture();
     await seedVideoFolder(fixture, `${OLD_ROOT}/trip`, { mirror: true });

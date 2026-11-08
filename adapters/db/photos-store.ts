@@ -1306,23 +1306,12 @@ export class SqlJsPhotosStore implements PhotosStore {
 
   async rootRelocationStats(fromRoot: string, toRoot: string): Promise<Result<PhotosRootRelocationStats, AppError>> {
     return this.read((_db, client) => {
-      const scope = rootRelocationScope(fromRoot, toRoot);
-      const photoCount = client.exec(`SELECT COUNT(*) FROM photos WHERE ${scope.where}`, scope.params);
-      const pathCount = client.exec(`SELECT COUNT(*) FROM photo_paths WHERE ${scope.where}`, scope.params);
-      const movedScope = rootRelocationScope(fromRoot, toRoot, 'moved.current_path');
-      const collisions = client.exec(
-        `SELECT moved.current_path FROM photo_paths moved
-         JOIN photo_paths existing ON existing.fingerprint = moved.fingerprint
-           AND existing.current_path = $toRoot || substr(moved.current_path, length($fromRoot) + 1)
-         WHERE ${movedScope.where}
-         ORDER BY moved.current_path ASC`,
-        movedScope.params,
-      );
+      const plan = photoPathRelocationPlan(client, fromRoot, toRoot);
       return {
-        photos: numberValue(photoCount[0]?.values[0]?.[0]),
-        paths: numberValue(pathCount[0]?.values[0]?.[0]),
+        photos: plan.photos.length,
+        paths: plan.paths.length,
         runs: photoRunRelocations(client, fromRoot, toRoot).length,
-        pathCollisions: (collisions[0]?.values ?? []).map((row) => stringValue(row[0])),
+        pathCollisions: plan.pathCollisions,
       };
     });
   }
@@ -1331,7 +1320,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     return this.write((_db, client) => {
       let result: PhotosRootRelocationResult = { folders: 0, photos: 0, paths: 0, runs: 0 };
       runPhotosTransaction(client, () => {
-        const scope = rootRelocationScope(input.fromRoot, input.toRoot);
+        const plan = photoPathRelocationPlan(client, input.fromRoot, input.toRoot);
         for (const folder of input.folders) {
           client.run(
             'UPDATE photo_folders SET folder_id = ?, current_path = ?, display_name = ? WHERE folder_id = ?',
@@ -1341,14 +1330,18 @@ export class SqlJsPhotosStore implements PhotosStore {
           client.run('UPDATE photos SET folder_id = ? WHERE folder_id = ?', [folder.toFolderId, folder.fromFolderId]);
           client.run('UPDATE photo_paths SET folder_id = ? WHERE folder_id = ?', [folder.toFolderId, folder.fromFolderId]);
         }
-        const rebased = '$toRoot || substr(current_path, length($fromRoot) + 1)';
-        client.run(`UPDATE photos SET current_path = ${rebased} WHERE ${scope.where}`, scope.params);
-        const photoCount = client.getRowsModified();
-        client.run(`UPDATE photo_paths SET current_path = ${rebased} WHERE ${scope.where}`, scope.params);
-        const pathCount = client.getRowsModified();
+        for (const photo of plan.photos) {
+          client.run('UPDATE photos SET current_path = ? WHERE fingerprint = ?', [photo.toPath, photo.fingerprint]);
+        }
+        for (const sighting of plan.paths) {
+          client.run(
+            'UPDATE photo_paths SET current_path = ? WHERE fingerprint = ? AND current_path = ?',
+            [sighting.toPath, sighting.fingerprint, sighting.fromPath],
+          );
+        }
         const runs = photoRunRelocations(client, input.fromRoot, input.toRoot);
         for (const run of runs) client.run('UPDATE photo_runs SET root = ? WHERE run_id = ?', [run.root, run.runId]);
-        result = { folders: input.folders.length, photos: photoCount, paths: pathCount, runs: runs.length };
+        result = { folders: input.folders.length, photos: plan.photos.length, paths: plan.paths.length, runs: runs.length };
       });
       return result;
     });
@@ -1441,7 +1434,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     const backfilled = ensurePhotoSearchDocuments(db, client);
     if (canPersist && (created || migrated || backfilled)) {
       persistDatabase(this.filePath, client);
-    } else if (created || migrated || backfilled) {
+    } else if (!created && (migrated || backfilled)) {
       this.dirtyCount = 1;
     }
     this.state?.client.close();
@@ -1543,19 +1536,45 @@ const readSchemaVersion = (client: Database): number => {
   return typeof value === 'number' ? value : 0;
 };
 
-const rootRelocationScope = (fromRoot: string, toRoot: string, column = 'current_path'): {
-  where: string;
-  params: Record<string, string>;
+interface PhotoPathRelocation {
+  fingerprint: string;
+  fromPath: string;
+  toPath: string;
+}
+
+const relocatedPhotoPaths = (rows: readonly SqlValue[][], fromRoot: string, toRoot: string): PhotoPathRelocation[] =>
+  rows.flatMap((row) => {
+    const fromPath = stringValue(row[1]);
+    const toPath = rebasePath(fromPath, fromRoot, toRoot);
+    return toPath === null ? [] : [{ fingerprint: stringValue(row[0]), fromPath, toPath }];
+  });
+
+const sightingKey = (fingerprint: string, currentPath: string): string => `${fingerprint}\u0000${currentPath}`;
+
+const photoPathRelocationPlan = (client: Database, fromRoot: string, toRoot: string): {
+  photos: PhotoPathRelocation[];
+  paths: PhotoPathRelocation[];
+  pathCollisions: string[];
 } => {
-  const canonicalRoot = canonicalPath(fromRoot);
+  const photoRows = client.exec('SELECT fingerprint, current_path FROM photos')[0]?.values ?? [];
+  const pathRows = client.exec('SELECT fingerprint, current_path FROM photo_paths')[0]?.values ?? [];
+  const paths = relocatedPhotoPaths(pathRows, fromRoot, toRoot);
+  const moving = new Set(paths.map((sighting) => sightingKey(sighting.fingerprint, sighting.fromPath)));
+  const taken = new Set(pathRows.flatMap((row) => {
+    const fingerprint = stringValue(row[0]);
+    const currentPath = stringValue(row[1]);
+    return moving.has(sightingKey(fingerprint, currentPath)) ? [] : [sightingKey(fingerprint, canonicalPath(currentPath))];
+  }));
+  const pathCollisions: string[] = [];
+  for (const sighting of paths) {
+    const target = sightingKey(sighting.fingerprint, sighting.toPath);
+    if (taken.has(target)) pathCollisions.push(sighting.fromPath);
+    taken.add(target);
+  }
   return {
-    where: `(${column} = $fromRoot OR (${column} >= $scopeLower AND ${column} < $scopeUpper))`,
-    params: {
-      $fromRoot: canonicalRoot,
-      $toRoot: canonicalPath(toRoot),
-      $scopeLower: `${canonicalRoot}/`,
-      $scopeUpper: `${canonicalRoot}0`,
-    },
+    photos: relocatedPhotoPaths(photoRows, fromRoot, toRoot),
+    paths,
+    pathCollisions: pathCollisions.sort(compareUtf8Bytes),
   };
 };
 
