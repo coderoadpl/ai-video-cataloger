@@ -11,6 +11,7 @@ import {
   WHISPER_MODELS,
   configSchema,
   derivedFolderId,
+  isDerivedFolderId,
   getLocalAiSupportLevel,
   analyzerProviderConfigSchema,
   builtInAnalyzerProvider,
@@ -290,6 +291,14 @@ describe('derivedFolderId', () => {
     const nfd = '/Volumes/video_lib/Å-ring';
     expect(nfc).not.toBe(nfd);
     expect(derivedFolderId(nfd)).toBe(derivedFolderId(nfc));
+  });
+});
+
+describe('isDerivedFolderId', () => {
+  it('tells a path-derived id from a marker UUID', () => {
+    expect(isDerivedFolderId(derivedFolderId('/Volumes/media/a'))).toBe(true);
+    expect(isDerivedFolderId('8d3f2c1e-5b6a-4c7d-9e8f-0a1b2c3d4e5f')).toBe(false);
+    expect(isDerivedFolderId('path-xyz')).toBe(false);
   });
 });
 

@@ -16,6 +16,8 @@ export const folderIdSchema = z.union([
   z.string().regex(DERIVED_FOLDER_ID_PATTERN),
 ]);
 
+export const isDerivedFolderId = (folderId: string): boolean => DERIVED_FOLDER_ID_PATTERN.test(folderId);
+
 export const derivedFolderId = (folder: string): string => {
   const canonical = canonicalPath(folder);
   let hash = 2_166_136_261;
