@@ -1,4 +1,4 @@
-# ai-video-cataloger — repo map for agents (branch: rewrite/foundation)
+# ai-video-cataloger — repo map for agents
 
 Ground-up rewrite on the agentproofarch foundation. Read before designing
 anything:

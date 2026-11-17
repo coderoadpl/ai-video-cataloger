@@ -227,7 +227,6 @@ export default tseslint.config(
       'build/**',
       'release/**',
       'visual/**',
-      'scripts/ralph/**',
       'landing/**',
       '.claude/**',
       '.cli-stage/**',
